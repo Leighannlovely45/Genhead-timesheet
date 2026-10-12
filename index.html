@@ -447,8 +447,8 @@ function upBillable(dayIdx,ei,selectEl){
   if(cb)cb.checked=billable===0;
 }
 let _cachedRate={};
-let GHL_WEBHOOK="https://services.leadconnectorhq.com/hooks/6BHLldSrdn5rbbMGKr1n/webhook-trigger/7a7b2a84-741e-4bb4-9f2b-a31139cf1d35";
-let GHL_STATUS_WEBHOOK="https://services.leadconnectorhq.com/hooks/6BHLldSrdn5rbbMGKr1n/webhook-trigger/cbf3628e-c2cd-4193-89d3-82d5d6a8a1f3";
+let GHL_WEBHOOK=""; // removed for staging
+let GHL_STATUS_WEBHOOK=""; // removed for staging
 let cur=null,pidx=0;
 let EMPS=[]; // loaded from employees.json via api.php
 let CLIENTS=[]; // loaded from clients table via api.php
