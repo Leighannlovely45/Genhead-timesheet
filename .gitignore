@@ -1,0 +1,6 @@
+db.php
+*.json
+error_log
+*.log
+request_log.txt
+.well-known/
