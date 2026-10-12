@@ -3,9 +3,9 @@
 // Local development settings — change for production
 
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'genhead_timesheetSM');
-define('DB_USER', 'TimeclockSM');
-define('DB_PASS', 'Sample2026!');
+define('DB_NAME', 'Stagging');
+define('DB_USER', 'Staginguser');
+define('DB_PASS', '123Staging123!');
 define('DB_CHARSET', 'utf8mb4');
 
 function getDB() {
