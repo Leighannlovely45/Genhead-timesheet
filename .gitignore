@@ -1,5 +1,6 @@
 db.php
-*.json
+employees.json
+timesheets.json
 error_log
 *.log
 request_log.txt
