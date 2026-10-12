@@ -1,0 +1,5 @@
+# Allow GHL to embed this page in an iframe
+Header always unset X-Frame-Options
+Header set X-Frame-Options "ALLOWALL"
+Header always set Content-Security-Policy "frame-ancestors *"
+Header set Access-Control-Allow-Origin "*"

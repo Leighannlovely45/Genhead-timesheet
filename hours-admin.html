@@ -1,0 +1,615 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Support Hours Admin — Genhead</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#08153A;--teal:#03AD8F;--purple:#351D72;
+  --lt-teal:#E0F7F4;--white:#fff;--dark:#1a1a2e;--mid:#64748b;
+  --border:#e2e8f0;--alt:#f8fafc;--bg:#fff;
+  --danger:#ef4444;--success:#10b981;--gold:#f59e0b;--warn:#fef3c7;
+}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark);min-height:100vh}
+
+/* TOPBAR */
+.topbar{background:var(--navy);padding:.75rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.brand{font-size:1.05rem;font-weight:700;color:#fff;letter-spacing:-.5px}
+.brand span{color:var(--teal)}
+.topbar-right{display:flex;align-items:center;gap:.75rem}
+.badge-admin{font-size:.7rem;padding:.2rem .65rem;background:rgba(3,173,143,.2);border:1px solid rgba(3,173,143,.35);border-radius:20px;color:var(--teal);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+
+/* PERIOD BAR */
+.period-bar{background:var(--teal);padding:.45rem 1.5rem;display:flex;align-items:center;gap:1rem}
+.period-label{font-size:.7rem;font-weight:600;color:rgba(0,0,0,.55);letter-spacing:.5px;text-transform:uppercase}
+.period-sel{padding:.25rem .55rem;background:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.4);border-radius:5px;font-size:.78rem;color:var(--navy);cursor:pointer;font-family:inherit}
+
+/* LAYOUT */
+.container{max-width:1100px;margin:0 auto;padding:1.5rem}
+
+/* SUMMARY CARDS */
+.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.25rem}
+.sc{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:.85rem 1rem;border-left:3px solid var(--teal)}
+.sc.warn{border-left-color:var(--gold)}
+.sc.danger{border-left-color:var(--danger)}
+.sc.purple{border-left-color:var(--purple)}
+.sc-lbl{font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);margin-bottom:.3rem}
+.sc-val{font-size:1.5rem;font-weight:700;color:var(--navy);font-family:'Segoe UI',monospace}
+.sc-sub{font-size:.72rem;color:var(--teal);margin-top:.2rem}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.65rem}
+.toolbar-left{display:flex;align-items:center;gap:.65rem}
+.toolbar h2{font-size:1rem;font-weight:700;color:var(--navy)}
+.search-box{padding:.38rem .75rem;border:1px solid var(--border);border-radius:7px;font-size:.84rem;font-family:inherit;width:220px;background:var(--bg)}
+.search-box:focus{outline:none;border-color:var(--teal)}
+.filter-sel{padding:.38rem .65rem;border:1px solid var(--border);border-radius:7px;font-size:.82rem;font-family:inherit;background:var(--bg);cursor:pointer}
+.filter-sel:focus{outline:none;border-color:var(--teal)}
+
+/* BUTTONS */
+.btn{padding:.45rem 1rem;border-radius:7px;font-size:.82rem;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .15s}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:#029e83}
+.btn-outline{background:var(--bg);color:var(--dark);border:1px solid var(--border)}
+.btn-outline:hover{background:var(--alt)}
+.btn-gold{background:var(--gold);color:#78350f;border:none}
+.btn-gold:hover{background:#f0c050}
+.btn-danger{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+.btn-sm{padding:.28rem .65rem;font-size:.75rem}
+
+/* CLIENT TABLE */
+.client-table-wrap{background:var(--bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:1.25rem}
+.client-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.client-table thead tr{background:var(--navy)}
+.client-table thead th{padding:.6rem 1rem;text-align:left;font-weight:600;color:rgba(255,255,255,.7);font-size:.66rem;text-transform:uppercase;letter-spacing:.4px}
+.client-table tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+.client-table tbody tr:hover{background:var(--alt)}
+.client-table tbody td{padding:.6rem 1rem;color:var(--dark);vertical-align:middle}
+.client-table tbody tr:last-child{border-bottom:none}
+
+/* PLAN BADGE */
+.plan-badge{display:inline-block;padding:.18rem .6rem;border-radius:20px;font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.plan-retainer{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+.plan-diy{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.plan-none{background:#f1f5f9;color:#64748b;border:1px solid var(--border)}
+
+/* PROGRESS BAR */
+.mini-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:4px;min-width:80px}
+.mini-fill{height:100%;border-radius:3px;transition:width .4s}
+.fill-green{background:var(--teal)}
+.fill-yellow{background:var(--gold)}
+.fill-red{background:var(--danger)}
+
+/* INLINE EDIT */
+.hrs-input{width:70px;padding:.25rem .45rem;border:1px solid var(--border);border-radius:5px;font-size:.82rem;font-family:inherit;text-align:center}
+.hrs-input:focus{outline:none;border-color:var(--teal)}
+.plan-select{padding:.25rem .45rem;border:1px solid var(--border);border-radius:5px;font-size:.78rem;font-family:inherit;background:var(--bg);cursor:pointer}
+.plan-select:focus{outline:none;border-color:var(--teal)}
+
+/* REFILL MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(8,21,58,.85);display:flex;align-items:center;justify-content:center;z-index:600;backdrop-filter:blur(4px)}
+.modal-overlay.hidden{display:none}
+.modal-box{background:#fff;border-radius:16px;padding:1.75rem;width:100%;max-width:520px}
+.modal-box h3{font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:.3rem}
+.modal-box p{font-size:.78rem;color:var(--mid);margin-bottom:1rem}
+.modal-list{max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:1rem}
+.modal-list-item{display:flex;align-items:center;justify-content:space-between;padding:.55rem .85rem;border-bottom:1px solid var(--border);font-size:.82rem}
+.modal-list-item:last-child{border-bottom:none}
+.modal-list-item.diy{opacity:.5}
+.modal-actions{display:flex;gap:.65rem;justify-content:flex-end}
+
+/* CLIENT DETAIL PANEL */
+.detail-panel{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:1.25rem;margin-bottom:1.25rem;display:none}
+.detail-panel.open{display:block}
+.detail-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.detail-title{font-size:1rem;font-weight:700;color:var(--navy)}
+.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem}
+.detail-stat{background:var(--alt);border-radius:8px;padding:.75rem 1rem;border:1px solid var(--border)}
+.detail-stat-val{font-size:1.4rem;font-weight:700;color:var(--navy)}
+.detail-stat-val.green{color:var(--teal)}
+.detail-stat-val.red{color:var(--danger)}
+.detail-stat-lbl{font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);margin-top:.2rem}
+.activity-mini{font-size:.78rem}
+.activity-mini table{width:100%;border-collapse:collapse}
+.activity-mini th{font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);padding:.3rem .5rem;border-bottom:1px solid var(--border);text-align:left}
+.activity-mini td{padding:.4rem .5rem;border-bottom:1px solid #f8fafc;color:var(--dark)}
+.activity-mini tr:last-child td{border-bottom:none}
+.no-activity{font-size:.78rem;color:var(--mid);padding:.75rem;text-align:center}
+
+/* TOAST */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--navy);color:#fff;padding:.8rem 1.15rem;border-radius:10px;font-size:.84rem;display:flex;align-items:center;gap:.65rem;transform:translateY(80px);opacity:0;transition:all .35s cubic-bezier(.34,1.56,.64,1);z-index:999;max-width:340px;border-left:3px solid var(--teal);box-shadow:0 8px 32px rgba(8,21,58,.25)}
+.toast.show{transform:translateY(0);opacity:1}
+
+/* LOADING */
+.loading{text-align:center;padding:2rem;color:var(--mid);font-size:.84rem}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:.5rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media(max-width:700px){
+  .summary-grid{grid-template-columns:1fr 1fr}
+  .detail-grid{grid-template-columns:1fr 1fr}
+  .toolbar{flex-direction:column;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">gen<span>head</span> <span style="font-size:.75rem;color:rgba(255,255,255,.4);font-weight:400">/ support hours admin</span></div>
+  <div class="topbar-right">
+    <span class="badge-admin">Genhead Internal</span>
+    <button class="btn btn-outline btn-sm" style="color:rgba(255,255,255,.6);border-color:rgba(255,255,255,.2)" onclick="window.location.href='index.html'">&#8592; Timesheet Portal</button>
+  </div>
+</div>
+
+<div class="period-bar">
+  <span class="period-label">Pay Period</span>
+  <select class="period-sel" id="period-sel" onchange="loadData()"></select>
+  <button class="btn btn-sm" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);color:var(--navy);font-size:.72rem;font-weight:600" onclick="openRefillModal()">&#8635; Refill All Retainers</button>
+</div>
+
+<div class="container">
+
+  <!-- SUMMARY CARDS -->
+  <div class="summary-grid" id="summary-grid">
+    <div class="sc"><div class="sc-lbl">Total Clients</div><div class="sc-val" id="sc-total">—</div><div class="sc-sub">Active plans</div></div>
+    <div class="sc purple"><div class="sc-lbl">Retainer Clients</div><div class="sc-val" id="sc-retainer">—</div><div class="sc-sub">Monthly hours</div></div>
+    <div class="sc warn"><div class="sc-lbl">Hours Used This Period</div><div class="sc-val" id="sc-used">—</div><div class="sc-sub">Across all clients</div></div>
+    <div class="sc danger"><div class="sc-lbl">Low Balance</div><div class="sc-val" id="sc-low">—</div><div class="sc-sub">Clients under 20%</div></div>
+  </div>
+
+  <!-- CLIENT DETAIL PANEL (expands on row click) -->
+  <div class="detail-panel" id="detail-panel">
+    <div class="detail-header">
+      <div class="detail-title" id="detail-title">Client Name</div>
+      <button class="btn btn-outline btn-sm" onclick="closeDetail()">&#10005; Close</button>
+    </div>
+    <div class="detail-grid" id="detail-grid"></div>
+    <div style="font-size:.75rem;font-weight:600;color:var(--navy);margin-bottom:.5rem">Activity This Period</div>
+    <div class="activity-mini" id="detail-activity"></div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <h2>Client Hours Bank</h2>
+      <input type="text" class="search-box" id="search-box" placeholder="Search clients..." oninput="filterTable()">
+      <select class="filter-sel" id="filter-plan" onchange="filterTable()">
+        <option value="">All Plans</option>
+        <option value="retainer">Retainer</option>
+        <option value="diy">DIY</option>
+        <option value="none">No Plan</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:.65rem">
+      <button class="btn btn-outline btn-sm" onclick="exportCSV()">&#11015; Export CSV</button>
+      <button class="btn btn-primary btn-sm" onclick="saveAllChanges()">&#128190; Save All Changes</button>
+    </div>
+  </div>
+
+  <!-- CLIENT TABLE -->
+  <div class="client-table-wrap">
+    <table class="client-table" id="client-table">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Plan</th>
+          <th>Monthly Hrs</th>
+          <th>Bank This Period</th>
+          <th>Used</th>
+          <th>Remaining</th>
+          <th>Usage</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="client-tbody">
+        <tr><td colspan="8" class="loading"><span class="spinner"></span>Loading clients...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- REFILL MODAL -->
+<div class="modal-overlay hidden" id="refill-modal">
+  <div class="modal-box">
+    <h3>&#8635; Refill Retainer Hours</h3>
+    <p>The following retainer clients will have their hours bank set for <strong id="refill-period-label"></strong>. DIY clients are skipped.</p>
+    <div class="modal-list" id="refill-list"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeRefillModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmRefill()">&#8635; Refill All</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span>&#10003;</span><span id="toast-msg"></span></div>
+
+<script>
+const API = 'api.php';
+const PERIODS = ["Apr 27 - May 10","May 11 - May 24","May 25 - Jun 07","Jun 08 - Jun 21","Jun 22 - Jul 05","Jul 06 - Jul 19","Jul 20 - Aug 02","Aug 03 - Aug 16","Aug 17 - Aug 30","Aug 31 - Sep 13","Sep 14 - Sep 27","Sep 28 - Oct 11","Oct 12 - Oct 25","Oct 26 - Nov 08","Nov 09 - Nov 22","Nov 23 - Dec 06","Dec 07 - Dec 20","Dec 21 - Jan 03"];
+const PSTARTS = [[2026,4,27],[2026,5,11],[2026,5,25],[2026,6,8],[2026,6,22],[2026,7,6],[2026,7,20],[2026,8,3],[2026,8,17],[2026,8,31],[2026,9,14],[2026,9,28],[2026,10,12],[2026,10,26],[2026,11,9],[2026,11,23],[2026,12,7],[2026,12,21]];
+
+let currentPidx = 0;
+let allClients = [];
+let pendingChanges = {}; // clientId -> {total_hours, plan_type, plan_label}
+
+// ── Init ──────────────────────────────────────────────────────
+function init() {
+  // Build period selector
+  const sel = document.getElementById('period-sel');
+  PERIODS.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = i; opt.textContent = p;
+    sel.appendChild(opt);
+  });
+  // Auto-select current period
+  const today = new Date();
+  for (let i = 0; i < PSTARTS.length; i++) {
+    const ps = PSTARTS[i];
+    const start = new Date(ps[0], ps[1]-1, ps[2]);
+    const end = new Date(start); end.setDate(end.getDate()+13);
+    if (today >= start && today <= end) { currentPidx = i; break; }
+    if (today > start) currentPidx = i;
+  }
+  sel.value = currentPidx;
+  loadData();
+}
+
+async function loadData() {
+  currentPidx = parseInt(document.getElementById('period-sel').value);
+  const period = PERIODS[currentPidx];
+  document.getElementById('client-tbody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span>Loading...</td></tr>';
+  pendingChanges = {};
+  closeDetail();
+
+  try {
+    // Load client banks + client list in parallel
+    const [banksRes, clientsRes] = await Promise.all([
+      fetch(`${API}?action=load_client_banks&period=${encodeURIComponent(period)}`).then(r=>r.json()),
+      fetch(`${API}?action=load_clients`).then(r=>r.json())
+    ]);
+
+    // Merge — banks has usage data, clients has full list
+    const banks = banksRes.success ? (banksRes.banks || []) : [];
+    const allClientList = clientsRes.success ? (clientsRes.clients || []) : [];
+
+    // Build merged list — include all active clients
+    allClients = allClientList
+      .filter(c => c.active)
+      .map(c => {
+        const bank = banks.find(b => b.id === c.id) || {};
+        return {
+          id: c.id,
+          name: c.name,
+          location_id: c.location_id || c.ghl_contact_id || '',
+          plan: bank.plan || c.plan_type || 'none',
+          plan_label: bank.plan_label || c.plan_label || '',
+          total_hours: parseFloat(bank.total_hours ?? c.monthly_hours ?? 0),
+          used_hours: parseFloat(bank.used_hours ?? 0),
+          remaining: parseFloat(bank.remaining ?? bank.total_hours ?? c.monthly_hours ?? 0),
+          type: c.type
+        };
+      });
+
+    renderTable(allClients);
+    updateSummary(allClients);
+  } catch(e) {
+    document.getElementById('client-tbody').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:1rem">Failed to load data. Check API connection.</td></tr>';
+    console.error(e);
+  }
+}
+
+// ── RENDER TABLE ──────────────────────────────────────────────
+function renderTable(clients) {
+  const tbody = document.getElementById('client-tbody');
+  if (!clients.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--mid);padding:1.5rem">No clients found. Sync from GHL in the Timesheet Portal → Clients tab.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = clients.map(c => {
+    const total = c.total_hours;
+    const used = c.used_hours;
+    const remaining = c.remaining;
+    const pct = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
+    const fillClass = pct > 40 ? 'fill-green' : pct > 15 ? 'fill-yellow' : 'fill-red';
+    const remColor = pct > 40 ? 'style="color:var(--teal)"' : pct > 15 ? 'style="color:var(--gold)"' : 'style="color:var(--danger)"';
+
+    const planBadgeClass = c.plan === 'retainer' ? 'plan-retainer' : c.plan === 'diy' ? 'plan-diy' : 'plan-none';
+    const planLabel = c.plan === 'retainer' ? (c.plan_label || 'Retainer') : c.plan === 'diy' ? 'DIY' : 'No Plan';
+
+    // Pending change indicator
+    const hasPending = !!pendingChanges[c.id];
+    const pendingDot = hasPending ? '<span style="display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-left:.35rem;vertical-align:middle" title="Unsaved changes"></span>' : '';
+
+    return `<tr id="row-${c.id}" onclick="showDetail(${c.id})" style="cursor:pointer">
+      <td><strong>${c.name}</strong>${pendingDot}${c.location_id?`<div style="font-size:.68rem;color:var(--mid);margin-top:.1rem;font-family:monospace">${c.location_id.substring(0,16)}...</div>`:''}</td>
+      <td onclick="event.stopPropagation()">
+        <select class="plan-select" id="plan-${c.id}" onchange="markChange(${c.id})">
+          <option value="retainer" ${c.plan==='retainer'?'selected':''}>Retainer</option>
+          <option value="diy" ${c.plan==='diy'?'selected':''}>DIY</option>
+          <option value="none" ${c.plan==='none'?'selected':''}>No Plan</option>
+        </select>
+      </td>
+      <td onclick="event.stopPropagation()">
+        <input type="number" class="hrs-input" id="hrs-${c.id}" value="${total||''}" min="0" step="1" placeholder="0" onchange="markChange(${c.id})" ${c.plan==='diy'?'disabled style="opacity:.4"':''}>
+      </td>
+      <td><strong>${total ? total + ' hrs' : '—'}</strong></td>
+      <td style="color:var(--danger)">${used ? used + ' hrs' : '0 hrs'}</td>
+      <td ${remColor}><strong>${total ? remaining + ' hrs' : '—'}</strong></td>
+      <td>
+        ${total > 0 ? `
+          <div style="font-size:.72rem;color:var(--mid);margin-bottom:3px">${Math.round(pct)}% left</div>
+          <div class="mini-bar"><div class="mini-fill ${fillClass}" style="width:${pct}%"></div></div>
+        ` : '<span style="font-size:.72rem;color:var(--mid)">—</span>'}
+      </td>
+      <td onclick="event.stopPropagation()">
+        <div style="display:flex;gap:.35rem">
+          <button class="btn btn-primary btn-sm" onclick="saveSingleClient(${c.id})">Save</button>
+          <button class="btn btn-outline btn-sm" onclick="showDetail(${c.id})">&#128065; View</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── SUMMARY CARDS ─────────────────────────────────────────────
+function updateSummary(clients) {
+  const retainers = clients.filter(c => c.plan === 'retainer');
+  const totalUsed = clients.reduce((s, c) => s + c.used_hours, 0);
+  const lowBalance = clients.filter(c => {
+    if (!c.total_hours) return false;
+    const pct = (c.remaining / c.total_hours) * 100;
+    return pct <= 20 && c.plan === 'retainer';
+  });
+  document.getElementById('sc-total').textContent = clients.length;
+  document.getElementById('sc-retainer').textContent = retainers.length;
+  document.getElementById('sc-used').textContent = totalUsed.toFixed(1) + ' hrs';
+  document.getElementById('sc-low').textContent = lowBalance.length;
+}
+
+// ── FILTER ────────────────────────────────────────────────────
+function filterTable() {
+  const search = document.getElementById('search-box').value.toLowerCase();
+  const plan = document.getElementById('filter-plan').value;
+  const filtered = allClients.filter(c => {
+    const matchSearch = !search || c.name.toLowerCase().includes(search);
+    const matchPlan = !plan || c.plan === plan;
+    return matchSearch && matchPlan;
+  });
+  renderTable(filtered);
+}
+
+// ── MARK CHANGE ───────────────────────────────────────────────
+function markChange(clientId) {
+  const planEl = document.getElementById('plan-' + clientId);
+  const hrsEl = document.getElementById('hrs-' + clientId);
+  if (!planEl) return;
+  const plan = planEl.value;
+  const hrs = parseFloat(hrsEl?.value) || 0;
+
+  // Enable/disable hours input based on plan
+  if (hrsEl) hrsEl.disabled = plan === 'diy';
+
+  pendingChanges[clientId] = {
+    plan_type: plan,
+    total_hours: hrs,
+    plan_label: plan === 'retainer' ? (hrs + ' hrs/period') : plan === 'diy' ? 'DIY Plan' : 'No Plan'
+  };
+
+  // Update client in allClients for summary
+  const c = allClients.find(x => x.id === clientId);
+  if (c) { c.plan = plan; c.total_hours = hrs; }
+
+  // Show pending dot
+  const row = document.getElementById('row-' + clientId);
+  if (row) {
+    const nameCell = row.querySelector('td:first-child strong');
+    if (nameCell && !nameCell.nextSibling?.title) {
+      const dot = document.createElement('span');
+      dot.style.cssText = 'display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-left:.35rem;vertical-align:middle';
+      dot.title = 'Unsaved changes';
+      nameCell.after(dot);
+    }
+  }
+}
+
+// ── SAVE SINGLE ───────────────────────────────────────────────
+async function saveSingleClient(clientId) {
+  const planEl = document.getElementById('plan-' + clientId);
+  const hrsEl = document.getElementById('hrs-' + clientId);
+  if (!planEl) return;
+  const plan = planEl.value;
+  const hrs = parseFloat(hrsEl?.value) || 0;
+  const planLabel = plan === 'retainer' ? hrs + ' hrs/period' : plan === 'diy' ? 'DIY Plan' : 'No Plan';
+
+  try {
+    const res = await fetch(`${API}?action=set_client_hours`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        client_id: clientId,
+        period: PERIODS[currentPidx],
+        period_index: currentPidx,
+        total_hours: hrs,
+        plan_type: plan,
+        plan_label: planLabel
+      })
+    }).then(r => r.json());
+
+    if (res.success) {
+      delete pendingChanges[clientId];
+      const c = allClients.find(x => x.id === clientId);
+      if (c) { c.plan = plan; c.total_hours = hrs; c.plan_label = planLabel; }
+      // Remove pending dot
+      const row = document.getElementById('row-' + clientId);
+      if (row) row.querySelectorAll('span[title="Unsaved changes"]').forEach(d => d.remove());
+      showToast('Saved!');
+    } else {
+      showToast('Error: ' + (res.error || 'Could not save'));
+    }
+  } catch(e) {
+    showToast('Network error — try again.');
+  }
+}
+
+// ── SAVE ALL ─────────────────────────────────────────────────
+async function saveAllChanges() {
+  const ids = Object.keys(pendingChanges);
+  if (!ids.length) { showToast('No unsaved changes.'); return; }
+  let saved = 0;
+  for (const id of ids) {
+    const ch = pendingChanges[id];
+    try {
+      const res = await fetch(`${API}?action=set_client_hours`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          client_id: parseInt(id),
+          period: PERIODS[currentPidx],
+          period_index: currentPidx,
+          total_hours: ch.total_hours,
+          plan_type: ch.plan_type,
+          plan_label: ch.plan_label
+        })
+      }).then(r => r.json());
+      if (res.success) { delete pendingChanges[id]; saved++; }
+    } catch(e) {}
+  }
+  showToast(`${saved} client${saved!==1?'s':''} saved!`);
+  await loadData();
+}
+
+// ── CLIENT DETAIL ─────────────────────────────────────────────
+async function showDetail(clientId) {
+  const c = allClients.find(x => x.id === clientId);
+  if (!c) return;
+
+  document.getElementById('detail-title').textContent = c.name;
+  const panel = document.getElementById('detail-panel');
+  panel.classList.add('open');
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+
+  const total = c.total_hours;
+  const used = c.used_hours;
+  const remaining = c.remaining;
+  const pct = total > 0 ? Math.round((remaining / total) * 100) : 0;
+  const remColor = pct > 40 ? 'green' : pct > 15 ? '' : 'red';
+
+  document.getElementById('detail-grid').innerHTML = `
+    <div class="detail-stat">
+      <div class="detail-stat-val">${total || '—'}</div>
+      <div class="detail-stat-lbl">Total Hours This Period</div>
+    </div>
+    <div class="detail-stat">
+      <div class="detail-stat-val" style="color:var(--danger)">${used.toFixed(1)}</div>
+      <div class="detail-stat-lbl">Hours Used</div>
+    </div>
+    <div class="detail-stat">
+      <div class="detail-stat-val ${remColor}">${remaining.toFixed(1)}</div>
+      <div class="detail-stat-lbl">Hours Remaining (${pct}%)</div>
+    </div>`;
+
+  // Load activity
+  const actEl = document.getElementById('detail-activity');
+  actEl.innerHTML = '<span class="spinner"></span> Loading activity...';
+  try {
+    const res = await fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(c.location_id)}&period=${encodeURIComponent(PERIODS[currentPidx])}`).then(r=>r.json());
+    if (res.success && res.activity && res.activity.length > 0) {
+      actEl.innerHTML = `<table>
+        <thead><tr><th>Date</th><th>Team Member</th><th>Work Performed</th><th>Hours</th></tr></thead>
+        <tbody>${res.activity.map(a => `<tr>
+          <td>${a.date ? new Date(a.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
+          <td>${a.team_member || '—'}</td>
+          <td>${a.deliverable || 'Support work'}</td>
+          <td style="color:var(--danger);font-weight:600">−${parseFloat(a.hours).toFixed(1)} hrs</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    } else {
+      actEl.innerHTML = '<div class="no-activity">No activity logged this period.</div>';
+    }
+  } catch(e) {
+    actEl.innerHTML = '<div class="no-activity">Could not load activity.</div>';
+  }
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+}
+
+// ── REFILL MODAL ──────────────────────────────────────────────
+function openRefillModal() {
+  const retainers = allClients.filter(c => c.plan === 'retainer' || c.plan === 'diy');
+  document.getElementById('refill-period-label').textContent = PERIODS[currentPidx];
+  document.getElementById('refill-list').innerHTML = retainers.length === 0
+    ? '<div style="padding:1rem;text-align:center;color:var(--mid);font-size:.82rem">No retainer clients found. Set client plans first.</div>'
+    : retainers.map(c => `
+        <div class="modal-list-item ${c.plan==='diy'?'diy':''}">
+          <div>
+            <strong>${c.name}</strong>
+            <div style="font-size:.72rem;color:var(--mid)">${c.plan==='diy'?'DIY — will be skipped':c.total_hours+' hrs'}</div>
+          </div>
+          <span class="plan-badge ${c.plan==='retainer'?'plan-retainer':'plan-diy'}">${c.plan==='retainer'?'Retainer':'DIY'}</span>
+        </div>`).join('');
+  document.getElementById('refill-modal').classList.remove('hidden');
+}
+
+function closeRefillModal() {
+  document.getElementById('refill-modal').classList.add('hidden');
+}
+
+async function confirmRefill() {
+  const retainers = allClients.filter(c => c.plan === 'retainer' && c.total_hours > 0);
+  if (!retainers.length) { showToast('No retainer clients to refill.'); closeRefillModal(); return; }
+  let count = 0;
+  for (const c of retainers) {
+    try {
+      const res = await fetch(`${API}?action=set_client_hours`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          client_id: c.id,
+          period: PERIODS[currentPidx],
+          period_index: currentPidx,
+          total_hours: c.total_hours,
+          plan_type: 'retainer',
+          plan_label: c.plan_label || c.total_hours + ' hrs/period'
+        })
+      }).then(r => r.json());
+      if (res.success) count++;
+    } catch(e) {}
+  }
+  closeRefillModal();
+  showToast(`&#8635; ${count} retainer client${count!==1?'s':''} refilled for ${PERIODS[currentPidx]}!`);
+  await loadData();
+}
+
+// ── EXPORT CSV ────────────────────────────────────────────────
+function exportCSV() {
+  let csv = 'Client,Plan,Total Hours,Used Hours,Remaining,Period\n';
+  allClients.forEach(c => {
+    csv += `"${c.name}","${c.plan}",${c.total_hours},${c.used_hours},${c.remaining},"${PERIODS[currentPidx]}"\n`;
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `client_hours_${PERIODS[currentPidx].replace(/ /g,'_')}.csv`;
+  a.click();
+  showToast('CSV exported.');
+}
+
+// ── TOAST ─────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+init();
+</script>
+</body>
+</html>
