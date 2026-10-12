@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Genhead Time Tracker</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 320px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #08153A; color: #fff; }
+  .header { padding: 1rem 1.1rem .75rem; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-size: .9rem; font-weight: 700; color: #03AD8F; }
+  .logo span { color: rgba(255,255,255,.5); font-weight: 400; }
+  .badge { font-size: .65rem; padding: .2rem .5rem; border-radius: 20px; font-weight: 600; }
+  .badge-active { background: rgba(3,173,143,.2); color: #03AD8F; }
+  .badge-inactive { background: rgba(255,255,255,.08); color: rgba(255,255,255,.4); }
+  .timer-block { padding: .85rem 1.1rem; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .timer-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .5px; color: rgba(255,255,255,.35); margin-bottom: .25rem; }
+  .timer-client { font-size: .9rem; font-weight: 600; margin-bottom: .2rem; min-height: 1.2rem; }
+  .timer-time { font-size: 1.5rem; font-weight: 700; color: #03AD8F; font-variant-numeric: tabular-nums; }
+  .entries { padding: .7rem 1.1rem; }
+  .entries-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .5px; color: rgba(255,255,255,.35); margin-bottom: .4rem; }
+  .entry { display: flex; justify-content: space-between; align-items: center; padding: .3rem 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: .8rem; }
+  .entry:last-child { border: none; }
+  .entry-name { color: rgba(255,255,255,.8); }
+  .entry-hrs { color: #03AD8F; font-weight: 600; }
+  .no-entries { font-size: .75rem; color: rgba(255,255,255,.3); text-align: center; padding: .4rem 0; }
+  .total { padding: .45rem 1.1rem; background: rgba(3,173,143,.1); display: flex; justify-content: space-between; align-items: center; font-size: .78rem; }
+  .total-label { color: rgba(255,255,255,.4); }
+  .total-val { color: #03AD8F; font-weight: 700; }
+  .email-block { padding: .7rem 1.1rem; border-top: 1px solid rgba(255,255,255,.08); }
+  .email-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .5px; color: rgba(255,255,255,.35); margin-bottom: .35rem; }
+  .email-row { display: flex; gap: .4rem; }
+  input { flex: 1; padding: .35rem .5rem; border-radius: 5px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: .75rem; font-family: inherit; }
+  input::placeholder { color: rgba(255,255,255,.3); }
+  input:focus { outline: none; border-color: #03AD8F; }
+  .btn { padding: .35rem .7rem; border-radius: 5px; border: none; font-size: .72rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-teal { background: #03AD8F; color: #fff; }
+  .btn-teal:hover { background: #029d81; }
+  .msg { font-size: .68rem; margin-top: .3rem; min-height: .9rem; }
+  .msg-ok { color: #03AD8F; }
+  .msg-err { color: #ef4444; }
+  .footer { padding: .6rem 1.1rem; border-top: 1px solid rgba(255,255,255,.08); display: flex; gap: .4rem; }
+  .btn-outline { flex: 1; background: transparent; color: rgba(255,255,255,.6); border: 1px solid rgba(255,255,255,.15); }
+  .btn-outline:hover { background: rgba(255,255,255,.05); }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">gen<span>head</span> tracker</div>
+  <span class="badge badge-inactive" id="status-badge">Inactive</span>
+</div>
+<div class="timer-block">
+  <div class="timer-label">Currently tracking</div>
+  <div class="timer-client" id="timer-client" style="color:rgba(255,255,255,.3)">—</div>
+  <div class="timer-time" id="timer-time">0:00:00</div>
+</div>
+<div class="entries">
+  <div class="entries-label">Today</div>
+  <div id="entries-list"><div class="no-entries">No time tracked yet</div></div>
+</div>
+<div class="total" id="total-bar" style="display:none">
+  <span class="total-label">Total today</span>
+  <span class="total-val" id="total-val">0.0 hrs</span>
+</div>
+<div class="email-block" id="email-block">
+  <div class="email-label">Your email (one-time setup)</div>
+  <div class="email-row">
+    <input type="email" id="email-inp" placeholder="you@genhead.com">
+    <button class="btn btn-teal" id="save-btn">Save</button>
+  </div>
+  <div class="msg" id="email-msg"></div>
+</div>
+<div class="footer">
+  <button class="btn btn-outline" id="open-btn">Open Timesheet</button>
+  <button class="btn btn-teal" id="refresh-btn">Refresh</button>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>
