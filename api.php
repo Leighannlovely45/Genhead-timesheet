@@ -364,7 +364,7 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $rawBody = file_get_contents('php://input');
     $body = json_decode($rawBody, true);
-    if (!is_array($body)) $body = [];
+    if (!is_array($body)) $body = !empty($_POST) ? $_POST : [];
     $db = getDB();
 
     // ── SET CLIENT HOURS BANK ──────────────────────────────────────────────
