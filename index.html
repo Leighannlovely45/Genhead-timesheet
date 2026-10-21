@@ -1038,28 +1038,95 @@ function renderDash(){
   <!-- TEAM PANE -->
   <div id="pane-team" style="display:none">
     <div class="dash-top"><div><h2>Team</h2><p>Manage employees and staff</p></div>
-      <button class="btn btn-primary" onclick="showAddTeamMember()">+ Add Member</button>
+      <button class="btn btn-primary" onclick="showAddMemberModal()">+ Add Member</button>
     </div>
     <div id="team-table-wrap" style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1rem"></div>
+    <!-- Add/Edit Member Modal -->
+    <div id="member-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center">
+      <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <h3 id="member-modal-title" style="margin:0 0 1.1rem;color:var(--dark)">Add Team Member</h3>
+        <input type="hidden" id="member-modal-id">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.85rem">
+          <div>
+            <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Full Name</label>
+            <input id="member-modal-name" type="text" placeholder="Jane Smith" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Role</label>
+            <select id="member-modal-role" style="width:100%;background:var(--hover);color:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;font-size:.85rem">
+              <option value="employee">Employee</option>
+              <option value="manager">Manager</option>
+              <option value="hr">HR</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:.85rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Email</label>
+          <input id="member-modal-email" type="email" placeholder="jane@genhead.com" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
+        </div>
+        <div id="member-modal-pin-row" style="margin-bottom:.85rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">PIN (4 digits, employees only)</label>
+          <input id="member-modal-pin" type="text" maxlength="4" placeholder="e.g. 1234" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
+        </div>
+        <div id="member-modal-pw-row" style="margin-bottom:.85rem;display:none">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Password (leave blank to set later)</label>
+          <input id="member-modal-pw" type="password" placeholder="Min 6 characters" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
+        </div>
+        <div style="display:flex;gap:.6rem;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="closeMemberModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveMember()">Save</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- HR MANAGEMENT PANE -->
   <div id="pane-hrm" style="display:none">
-    <div class="dash-top"><div><h2>HR Management</h2><p>Timecard approvals and HR actions</p></div></div>
-    <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:3rem;text-align:center;color:var(--mid)">
-      <div style="font-size:2rem;margin-bottom:.75rem">🏗️</div>
-      <div style="font-weight:600;color:var(--dark);margin-bottom:.35rem">HR Management — Coming Soon</div>
-      <div style="font-size:.84rem">Timecard approvals, rejections, and HR actions will be available here.</div>
+    <div class="dash-top">
+      <div><h2>HR Management</h2><p>Review and approve submitted timecards</p></div>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <select id="hrm-period-filter" style="background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:7px;padding:.4rem .75rem;font-size:.82rem" onchange="renderHRM()">
+          <option value="">All Periods</option>
+        </select>
+        <select id="hrm-status-filter" style="background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:7px;padding:.4rem .75rem;font-size:.82rem" onchange="renderHRM()">
+          <option value="submitted">Needs Review</option>
+          <option value="">All Statuses</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+    </div>
+    <div id="hrm-content" style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1rem">
+      <div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>
+    </div>
+    <!-- Approve/Reject modal -->
+    <div id="hrm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center">
+      <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <h3 id="hrm-modal-title" style="margin:0 0 1rem;color:var(--dark)">Review Timecard</h3>
+        <div id="hrm-modal-info" style="font-size:.85rem;color:var(--mid);margin-bottom:1rem"></div>
+        <label style="font-size:.82rem;font-weight:600;color:var(--dark);display:block;margin-bottom:.35rem">Comment <span id="hrm-comment-required" style="color:#ef4444">(required for rejection)</span></label>
+        <textarea id="hrm-modal-comment" style="width:100%;min-height:80px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.6rem .75rem;color:var(--dark);font-size:.84rem;resize:vertical;box-sizing:border-box" placeholder="Optional note…"></textarea>
+        <div style="display:flex;gap:.6rem;margin-top:1rem;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="closeHRMModal()">Cancel</button>
+          <button id="hrm-modal-confirm" class="btn btn-primary">Confirm</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- AUDIT LOG PANE -->
   <div id="pane-auditlog" style="display:none">
-    <div class="dash-top"><div><h2>Audit Log</h2><p>System activity history</p></div></div>
-    <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:3rem;text-align:center;color:var(--mid)">
-      <div style="font-size:2rem;margin-bottom:.75rem">🏗️</div>
-      <div style="font-weight:600;color:var(--dark);margin-bottom:.35rem">Audit Log — Coming Soon</div>
-      <div style="font-size:.84rem">Login events, timecard submissions, edits, and admin changes will be logged here.</div>
+    <div class="dash-top">
+      <div><h2>Audit Log</h2><p>System activity history</p></div>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <select id="audit-period-filter" style="background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:7px;padding:.4rem .75rem;font-size:.82rem" onchange="renderAuditLog()">
+          <option value="">All Periods</option>
+        </select>
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.35rem .8rem" onclick="exportAuditCSV()">↧ Export CSV</button>
+      </div>
+    </div>
+    <div id="auditlog-content" style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1rem">
+      <div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>
     </div>
   </div>
 
@@ -1074,23 +1141,105 @@ function renderDash(){
 
   <!-- CLIENTS PANE (admin only) -->
   <div id="pane-clients" style="display:none">
-    <div class="dash-top"><div><h2>Clients</h2><p>Manage client list</p></div>
-      <button class="btn btn-primary" onclick="showAddClient()">+ Add Client</button>
+    <div class="dash-top">
+      <div><h2>Clients</h2><p>Manage client list</p></div>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="syncClientsFromGHL()">↻ Sync from GHL</button>
+        <button class="btn btn-primary" onclick="showAddClientModal()">+ Add Client</button>
+      </div>
     </div>
-    <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:3rem;text-align:center;color:var(--mid)">
-      <div style="font-size:2rem;margin-bottom:.75rem">🏗️</div>
-      <div style="font-weight:600;color:var(--dark);margin-bottom:.35rem">Client Management — Coming Soon</div>
-      <div style="font-size:.84rem">Add, edit, and manage clients here. Client hours are already tracked via the Reports tab.</div>
+    <div id="clients-content" style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1rem">
+      <div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>
+    </div>
+    <!-- Add/Edit Client Modal -->
+    <div id="client-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center">
+      <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <h3 id="client-modal-title" style="margin:0 0 1.1rem;color:var(--dark)">Add Client</h3>
+        <input type="hidden" id="client-modal-id">
+        <label style="font-size:.82rem;font-weight:600;color:var(--dark);display:block;margin-bottom:.3rem">Client Name</label>
+        <input id="client-modal-name" type="text" placeholder="Acme Corp" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.88rem;margin-bottom:.85rem;box-sizing:border-box">
+        <label style="font-size:.82rem;font-weight:600;color:var(--dark);display:block;margin-bottom:.3rem">Type</label>
+        <select id="client-modal-type" style="width:100%;background:var(--hover);color:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;font-size:.88rem;margin-bottom:1.1rem">
+          <option value="ghl_instance">GHL Instance</option>
+          <option value="retainer">Retainer</option>
+          <option value="marketing">Marketing</option>
+          <option value="internal">Internal</option>
+        </select>
+        <div style="display:flex;gap:.6rem;justify-content:flex-end">
+          <button class="btn btn-outline" onclick="closeClientModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveClient()">Save</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- SETTINGS PANE -->
   <div id="pane-settings" style="display:none">
     <div class="dash-top"><div><h2>Settings</h2><p>App configuration</p></div></div>
-    <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:3rem;text-align:center;color:var(--mid)">
-      <div style="font-size:2rem;margin-bottom:.75rem">🏗️</div>
-      <div style="font-weight:600;color:var(--dark);margin-bottom:.35rem">Settings — Coming Soon</div>
-      <div style="font-size:.84rem">Pay periods, company info, and app configuration will be managed here.</div>
+    <div style="max-width:660px;display:flex;flex-direction:column;gap:1.25rem">
+
+      <!-- Webhook URLs -->
+      <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
+        <h3 style="margin:0 0 1rem;font-size:1rem;color:var(--dark)">GHL Webhook URLs</h3>
+        <div style="margin-bottom:.9rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Submission Webhook</label>
+          <input id="set-wh-submit" type="url" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="https://services.leadconnectorhq.com/hooks/…">
+        </div>
+        <div style="margin-bottom:.9rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Invite Webhook</label>
+          <input id="set-wh-invite" type="url" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="https://services.leadconnectorhq.com/hooks/…">
+        </div>
+        <div style="margin-bottom:1rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Notification Webhook</label>
+          <input id="set-wh-notify" type="url" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="https://services.leadconnectorhq.com/hooks/…">
+        </div>
+        <button class="btn btn-primary" onclick="saveSettingsWebhooks()">Save Webhooks</button>
+        <div id="set-wh-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+      </div>
+
+      <!-- GHL API Integration -->
+      <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
+        <h3 style="margin:0 0 1rem;font-size:1rem;color:var(--dark)">GHL API Integration</h3>
+        <div style="margin-bottom:.9rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">API Key</label>
+          <input id="set-ghl-key" type="password" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…">
+        </div>
+        <div style="margin-bottom:1rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Location ID</label>
+          <input id="set-ghl-loc" type="text" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="abc123xyz…">
+        </div>
+        <button class="btn btn-primary" onclick="saveSettingsGHL()">Save GHL Settings</button>
+        <div id="set-ghl-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+      </div>
+
+      <!-- Overtime Thresholds -->
+      <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
+        <h3 style="margin:0 0 1rem;font-size:1rem;color:var(--dark)">Overtime Rules</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.85rem;margin-bottom:1rem">
+          <div>
+            <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Weekly Threshold (hrs)</label>
+            <input id="set-ot-threshold" type="number" min="1" max="80" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="40">
+          </div>
+          <div>
+            <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">OT Pay Multiplier</label>
+            <input id="set-ot-multiplier" type="number" min="1" max="3" step=".25" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="1.5">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="saveSettingsOT()">Save Overtime Rules</button>
+        <div id="set-ot-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+      </div>
+
+      <!-- Webhook Secret -->
+      <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
+        <h3 style="margin:0 0 .5rem;font-size:1rem;color:var(--dark)">Webhook Security</h3>
+        <p style="font-size:.8rem;color:var(--mid);margin:0 0 .85rem">This secret validates incoming GHL webhooks. It must match the <code>?secret=</code> param in your GHL workflow URL.</p>
+        <div style="margin-bottom:1rem">
+          <input id="set-secret" type="text" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="genhead2026ghl">
+        </div>
+        <button class="btn btn-primary" onclick="saveSettingsSecret()">Save Secret</button>
+        <div id="set-secret-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+      </div>
+
     </div>
   </div>
 
@@ -1172,7 +1321,11 @@ function switchTab(tab){
   });
   if(tab==="reports"){loadClientReport();const lbl=document.getElementById("cr-period-label");if(lbl)lbl.textContent=PERIODS[pidx]+" · Confidential";}
   if(tab==="records") renderRecords();
-  if(tab==="team") renderTeam();
+  if(tab==="team"){renderTeam();populatePeriodSelects();}
+  if(tab==="hrm"){populatePeriodSelects();renderHRM();}
+  if(tab==="auditlog"){populatePeriodSelects();renderAuditLog();}
+  if(tab==="clients") renderClients();
+  if(tab==="settings") renderSettings();
 }
 
 function renderRecords(){
@@ -1226,17 +1379,23 @@ function renderTeam(){
   if(!allStaff.length){wrap.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">No team members yet.</div>';return;}
   const rows=allStaff.map(e=>{
     const roleBadge=e.role==="manager"?'<span class="badge-role mgr">Manager</span>':e.role==="hr"?'<span class="badge-role hr">HR</span>':'<span class="badge-role">Employee</span>';
-    const statusDot=e.status==="active"?'<span style="color:#10b981;font-size:.78rem">● Active</span>':'<span style="color:#ef4444;font-size:.78rem">● Inactive</span>';
+    const isActive=e.active!==false&&e.status!=="inactive";
+    const statusDot=isActive?'<span style="color:#10b981;font-size:.78rem">● Active</span>':'<span style="color:#ef4444;font-size:.78rem">● Inactive</span>';
+    const credential=e.role==="employee"?(e.pin_set?'<span style="color:#10b981;font-size:.75rem">PIN set</span>':'<span style="color:#f59e0b;font-size:.75rem">No PIN</span>'):(e.password_set?'<span style="color:#10b981;font-size:.75rem">PW set</span>':'<span style="color:#f59e0b;font-size:.75rem">No PW</span>');
     return `<tr>
       <td><strong>${e.name}</strong></td>
       <td style="font-size:.78rem;color:var(--mid)">${e.email||"—"}</td>
       <td>${roleBadge}</td>
       <td>${statusDot}</td>
-      <td style="font-size:.78rem;color:var(--mid)">${e.pin_set?"PIN set":"No PIN"}</td>
+      <td>${credential}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;margin-right:.35rem" onclick="editMember('${e.id}')">Edit</button>
+        <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;color:${isActive?'#ef4444':'#10b981'}" onclick="toggleMemberActive('${e.id}',${isActive})">${isActive?"Deactivate":"Reactivate"}</button>
+      </td>
     </tr>`;
   }).join("");
   wrap.innerHTML=`<div class="billing-tbl"><table>
-    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>PIN</th></tr></thead>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Credential</th><th>Actions</th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
 }
@@ -1403,6 +1562,417 @@ function showToast(msg){
   document.getElementById("toast-msg").textContent=msg;
   t.classList.add("show");
   setTimeout(()=>t.classList.remove("show"),3500);
+}
+
+// ── PERIOD SELECT HELPER ──────────────────────────────────────────────────
+function populatePeriodSelects(){
+  ["hrm-period-filter","audit-period-filter"].forEach(id=>{
+    const sel=document.getElementById(id);
+    if(!sel||sel.options.length>1) return;
+    PERIODS.forEach((p,i)=>{
+      const o=document.createElement("option");
+      o.value=p;o.textContent=p;
+      if(i===pidx) o.selected=true;
+      sel.appendChild(o);
+    });
+  });
+}
+
+// ── HR MANAGEMENT ─────────────────────────────────────────────────────────
+let _hrmAction=null,_hrmTsId=null;
+
+async function renderHRM(){
+  const wrap=document.getElementById("hrm-content");
+  if(!wrap) return;
+  wrap.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>';
+  try{
+    const r=await fetch(`${API_BASE}?action=load_timesheets`);
+    const data=await r.json();
+    if(!data.success){wrap.innerHTML='<div style="padding:2rem;color:#ef4444">Failed to load timecards.</div>';return;}
+    let records=data.records||[];
+    const statusFilter=document.getElementById("hrm-status-filter")?document.getElementById("hrm-status-filter").value:"submitted";
+    const periodFilter=document.getElementById("hrm-period-filter")?document.getElementById("hrm-period-filter").value:"";
+    if(statusFilter) records=records.filter(r=>r.status===statusFilter);
+    if(periodFilter) records=records.filter(r=>r.period===periodFilter);
+    if(!records.length){
+      wrap.innerHTML='<div style="padding:2.5rem;text-align:center;color:var(--mid)">No timecards match the selected filters.</div>';
+      return;
+    }
+    const rows=records.map(r=>{
+      const statusColor={submitted:"#f59e0b",approved:"#10b981",rejected:"#ef4444",returned:"#6366f1",draft:"#94a3b8"}[r.status]||"#94a3b8";
+      const statusLabel={submitted:"Needs Review",approved:"Approved",rejected:"Rejected",returned:"Returned",draft:"Draft"}[r.status]||r.status;
+      const subAt=r.submitted_at?new Date(r.submitted_at).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+      const apBy=r.approved_by_name||"—";
+      return `<tr>
+        <td><strong>${r.employee||"—"}</strong></td>
+        <td style="font-size:.78rem;color:var(--mid)">${r.period||"—"}</td>
+        <td style="font-family:'DM Mono',monospace">${parseFloat(r.total_hours||0).toFixed(1)}</td>
+        <td><span style="background:${statusColor}22;color:${statusColor};padding:.2rem .55rem;border-radius:5px;font-size:.75rem;font-weight:600">${statusLabel}</span></td>
+        <td style="font-size:.76rem;color:var(--mid)">${subAt}</td>
+        <td style="font-size:.76rem;color:var(--mid)">${apBy}</td>
+        <td style="white-space:nowrap">
+          ${r.status==="submitted"?`
+            <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;color:#10b981;margin-right:.3rem" onclick="hrmAction('approve',${r.id},'${(r.employee||'').replace(/'/g,"\\'")}','${r.period||''}',${parseFloat(r.total_hours||0).toFixed(1)})">Approve</button>
+            <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;color:#ef4444" onclick="hrmAction('reject',${r.id},'${(r.employee||'').replace(/'/g,"\\'")}','${r.period||''}',${parseFloat(r.total_hours||0).toFixed(1)})">Reject</button>
+          `:`<span style="font-size:.76rem;color:var(--mid)">—</span>`}
+        </td>
+      </tr>`;
+    }).join("");
+    wrap.innerHTML=`<div class="billing-tbl"><table>
+      <thead><tr>
+        <th>Employee</th><th>Period</th><th>Hours</th><th>Status</th>
+        <th>Submitted</th><th>Reviewed By</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }catch(e){
+    wrap.innerHTML=`<div style="padding:2rem;color:#ef4444">Error: ${e.message}</div>`;
+  }
+}
+
+function hrmAction(action,tsId,employee,period,hours){
+  _hrmAction=action;_hrmTsId=tsId;
+  const modal=document.getElementById("hrm-modal");
+  const title=document.getElementById("hrm-modal-title");
+  const info=document.getElementById("hrm-modal-info");
+  const reqLabel=document.getElementById("hrm-comment-required");
+  const btn=document.getElementById("hrm-modal-confirm");
+  document.getElementById("hrm-modal-comment").value="";
+  title.textContent=action==="approve"?"Approve Timecard":"Reject Timecard";
+  info.textContent=`${employee} · ${period} · ${hours} hrs`;
+  reqLabel.style.display=action==="reject"?"inline":"none";
+  btn.textContent=action==="approve"?"Approve":"Reject";
+  btn.style.background=action==="approve"?"#10b981":"#ef4444";
+  btn.onclick=()=>confirmHRMAction();
+  modal.style.display="flex";
+}
+
+async function confirmHRMAction(){
+  const comment=document.getElementById("hrm-modal-comment").value.trim();
+  if(_hrmAction==="reject"&&!comment){alert("Please enter a reason for rejection.");return;}
+  const approverId=cur.id?parseInt(cur.id.replace(/^e/,''),10):null;
+  const approverName=cur.name||"HR";
+  const payload={timesheet_id:_hrmTsId,approver_id:approverId,approver_name:approverName,comment};
+  try{
+    const r=await api({action:_hrmAction==="approve"?"approve_timesheet":"reject_timesheet",...payload});
+    if(r.success){
+      closeHRMModal();
+      showToast(_hrmAction==="approve"?"Timecard approved!":"Timecard rejected.");
+      renderHRM();
+    } else {
+      alert(r.error||"Action failed.");
+    }
+  }catch(e){alert("Error: "+e.message);}
+}
+
+function closeHRMModal(){
+  const m=document.getElementById("hrm-modal");
+  if(m) m.style.display="none";
+}
+
+// ── AUDIT LOG ─────────────────────────────────────────────────────────────
+async function renderAuditLog(){
+  const wrap=document.getElementById("auditlog-content");
+  if(!wrap) return;
+  wrap.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>';
+  const periodFilter=document.getElementById("audit-period-filter")?document.getElementById("audit-period-filter").value:"";
+  try{
+    const url=periodFilter?`${API_BASE}?action=load_audit_period&period=${encodeURIComponent(periodFilter)}`:`${API_BASE}?action=load_timesheets`;
+    const r=await fetch(url);
+    const data=await r.json();
+    let log=[];
+    if(periodFilter){
+      if(!data.success){wrap.innerHTML='<div style="padding:2rem;color:#ef4444">Failed to load audit log.</div>';return;}
+      log=data.log||[];
+    } else {
+      // Synthesize a basic log from timesheet statuses when no period selected
+      const records=data.records||[];
+      records.forEach(ts=>{
+        if(ts.submitted_at) log.push({created_at:ts.submitted_at,user_name:ts.employee,action:'submitted',employee_name:ts.employee,period:ts.period});
+        if(ts.approved_at) log.push({created_at:ts.approved_at,user_name:ts.approved_by_name||'Staff',action:ts.status,employee_name:ts.employee,period:ts.period});
+      });
+      log.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    }
+    if(!log.length){wrap.innerHTML='<div style="padding:2.5rem;text-align:center;color:var(--mid)">No audit events found for this period.</div>';return;}
+    const actionColor={submitted:"#f59e0b",approved:"#10b981",rejected:"#ef4444",returned:"#6366f1",hr_override:"#8b5cf6",ghl_auto_add:"#06b6d4",flagged_discrepancy:"#f97316"};
+    const rows=log.map(entry=>{
+      const color=actionColor[entry.action]||"#94a3b8";
+      const dt=entry.created_at?new Date(entry.created_at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+      let detail="";
+      if(entry.after_state){try{const a=JSON.parse(entry.after_state);detail=a.reason||a.comment||a.total_hours||"";}catch(e){}}
+      return `<tr>
+        <td style="font-size:.76rem;color:var(--mid);white-space:nowrap">${dt}</td>
+        <td><strong>${entry.employee_name||entry.user_name||"—"}</strong></td>
+        <td style="font-size:.78rem;color:var(--mid)">${entry.period||"—"}</td>
+        <td><span style="background:${color}22;color:${color};padding:.2rem .5rem;border-radius:5px;font-size:.73rem;font-weight:600;white-space:nowrap">${entry.action}</span></td>
+        <td style="font-size:.76rem;color:var(--mid)">${entry.user_name||"—"}</td>
+        <td style="font-size:.76rem;color:var(--mid)">${detail}</td>
+      </tr>`;
+    }).join("");
+    wrap.innerHTML=`<div class="billing-tbl"><table>
+      <thead><tr><th>Time</th><th>Employee</th><th>Period</th><th>Event</th><th>By</th><th>Detail</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }catch(e){
+    wrap.innerHTML=`<div style="padding:2rem;color:#ef4444">Error: ${e.message}</div>`;
+  }
+}
+
+async function exportAuditCSV(){
+  const periodFilter=document.getElementById("audit-period-filter")?document.getElementById("audit-period-filter").value:PERIODS[pidx];
+  const period=periodFilter||PERIODS[pidx];
+  window.open(`${API_BASE}?action=export_audit&period=${encodeURIComponent(period)}`);
+}
+
+// ── CLIENTS ───────────────────────────────────────────────────────────────
+async function renderClients(){
+  const wrap=document.getElementById("clients-content");
+  if(!wrap) return;
+  wrap.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>';
+  try{
+    const r=await fetch(`${API_BASE}?action=load_clients`);
+    const data=await r.json();
+    if(!data.success){wrap.innerHTML='<div style="padding:2rem;color:#ef4444">Failed to load clients.</div>';return;}
+    const clients=data.clients||[];
+    if(!clients.length){wrap.innerHTML='<div style="padding:2.5rem;text-align:center;color:var(--mid)">No clients yet. Add one or sync from GHL.</div>';return;}
+    const typeColor={ghl_instance:"#06b6d4",retainer:"#10b981",marketing:"#8b5cf6",internal:"#94a3b8"};
+    const rows=clients.map(c=>{
+      const color=typeColor[c.type]||"#94a3b8";
+      return `<tr>
+        <td><strong>${c.name}</strong></td>
+        <td><span style="background:${color}22;color:${color};padding:.2rem .5rem;border-radius:5px;font-size:.73rem;font-weight:600">${c.type||"—"}</span></td>
+        <td style="font-size:.76rem;color:var(--mid)">${c.ghl_contact_id||c.location_id||"—"}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;margin-right:.35rem" onclick="editClient(${c.id},'${(c.name||'').replace(/'/g,"\\'")}','${c.type||'ghl_instance'}')">Edit</button>
+          <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;color:#ef4444" onclick="deactivateClient(${c.id},'${(c.name||'').replace(/'/g,"\\'")}')">Remove</button>
+        </td>
+      </tr>`;
+    }).join("");
+    wrap.innerHTML=`<div class="billing-tbl"><table>
+      <thead><tr><th>Name</th><th>Type</th><th>GHL ID</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }catch(e){
+    wrap.innerHTML=`<div style="padding:2rem;color:#ef4444">Error: ${e.message}</div>`;
+  }
+}
+
+function showAddClientModal(){
+  document.getElementById("client-modal-id").value="";
+  document.getElementById("client-modal-name").value="";
+  document.getElementById("client-modal-type").value="ghl_instance";
+  document.getElementById("client-modal-title").textContent="Add Client";
+  const m=document.getElementById("client-modal");
+  if(m) m.style.display="flex";
+}
+
+function editClient(id,name,type){
+  document.getElementById("client-modal-id").value=id;
+  document.getElementById("client-modal-name").value=name;
+  document.getElementById("client-modal-type").value=type;
+  document.getElementById("client-modal-title").textContent="Edit Client";
+  const m=document.getElementById("client-modal");
+  if(m) m.style.display="flex";
+}
+
+function closeClientModal(){
+  const m=document.getElementById("client-modal");
+  if(m) m.style.display="none";
+}
+
+async function saveClient(){
+  const id=document.getElementById("client-modal-id").value;
+  const name=document.getElementById("client-modal-name").value.trim();
+  const type=document.getElementById("client-modal-type").value;
+  if(!name){alert("Client name is required.");return;}
+  try{
+    let r;
+    if(id){
+      // For existing client we only update name and type — note: update_client only does active field
+      // For full name/type edit we'd need a new API action; for now, re-add won't help, inform user
+      r=await api({action:"update_client",id:parseInt(id),active:1});
+      if(r.success) showToast("Client updated (name/type changes require DB edit).");
+    } else {
+      r=await api({action:"add_client",name,type,billable:type!=="internal"?1:0});
+      if(r.success) showToast(`Client "${name}" added.`);
+    }
+    if(r.success){closeClientModal();renderClients();}
+    else alert(r.error||"Failed to save client.");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function deactivateClient(id,name){
+  if(!confirm(`Remove client "${name}"? This won't delete historical timecard entries.`)) return;
+  try{
+    const r=await api({action:"update_client",id:parseInt(id),active:0});
+    if(r.success){showToast(`"${name}" removed.`);renderClients();}
+    else alert(r.error||"Failed.");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function syncClientsFromGHL(){
+  showToast("Syncing from GHL…");
+  try{
+    const r=await api({action:"sync_clients"});
+    if(r.success){showToast(`Synced ${r.synced} clients from GHL.`);renderClients();}
+    else alert(r.error||"Sync failed. Check GHL API key in Settings.");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+// ── SETTINGS ──────────────────────────────────────────────────────────────
+function renderSettings(){
+  // Populate inputs from current GHL variables
+  const si=document.getElementById("set-wh-submit");
+  const ii=document.getElementById("set-wh-invite");
+  const ni=document.getElementById("set-wh-notify");
+  if(si) si.value=GHL_WEBHOOK||"";
+  if(ii) ii.value=GHL_INVITE_WEBHOOK||"";
+  if(ni) ni.value=GHL_NOTIFY_WEBHOOK||"";
+}
+
+async function saveSettingsWebhooks(){
+  const submit=document.getElementById("set-wh-submit").value.trim();
+  const invite=document.getElementById("set-wh-invite").value.trim();
+  const notify=document.getElementById("set-wh-notify").value.trim();
+  GHL_WEBHOOK=submit;GHL_INVITE_WEBHOOK=invite;GHL_NOTIFY_WEBHOOK=notify;
+  try{
+    await api({action:"update_settings",ghl_webhook_url:submit,ghl_invite_webhook_url:invite,ghl_notify_webhook_url:notify});
+    const st=document.getElementById("set-wh-status");
+    if(st){st.style.color="#10b981";st.textContent="✓ Webhook URLs saved.";}
+    showToast("Webhook URLs saved.");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function saveSettingsGHL(){
+  const key=document.getElementById("set-ghl-key").value.trim();
+  const loc=document.getElementById("set-ghl-loc").value.trim();
+  try{
+    await api({action:"update_settings",ghl_api_key:key,ghl_location_id:loc});
+    const st=document.getElementById("set-ghl-status");
+    if(st){st.style.color="#10b981";st.textContent="✓ GHL API settings saved.";}
+    showToast("GHL settings saved.");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function saveSettingsOT(){
+  const threshold=document.getElementById("set-ot-threshold").value.trim();
+  const multiplier=document.getElementById("set-ot-multiplier").value.trim();
+  if(!threshold||!multiplier){alert("Enter both threshold and multiplier.");return;}
+  try{
+    await api({action:"update_settings",overtime_weekly_threshold:threshold,overtime_multiplier:multiplier});
+    const st=document.getElementById("set-ot-status");
+    if(st){st.style.color="#10b981";st.textContent="✓ Overtime rules saved.";}
+    showToast("Overtime rules saved.");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function saveSettingsSecret(){
+  const secret=document.getElementById("set-secret").value.trim();
+  if(!secret){alert("Enter a webhook secret.");return;}
+  try{
+    await api({action:"update_secret",secret});
+    const st=document.getElementById("set-secret-status");
+    if(st){st.style.color="#10b981";st.textContent="✓ Webhook secret saved.";}
+    showToast("Webhook secret saved.");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+// ── TEAM ADD/EDIT MEMBER MODAL ─────────────────────────────────────────────
+function showAddMemberModal(){
+  document.getElementById("member-modal-id").value="";
+  document.getElementById("member-modal-name").value="";
+  document.getElementById("member-modal-email").value="";
+  document.getElementById("member-modal-pin").value="";
+  document.getElementById("member-modal-pw").value="";
+  document.getElementById("member-modal-role").value="employee";
+  document.getElementById("member-modal-title").textContent="Add Team Member";
+  document.getElementById("member-modal-pin-row").style.display="";
+  document.getElementById("member-modal-pw-row").style.display="none";
+  document.getElementById("member-modal-role").onchange=toggleMemberModalFields;
+  const m=document.getElementById("member-modal");
+  if(m) m.style.display="flex";
+}
+
+function editMember(uid){
+  const e=EMPS.find(e=>e.id===uid);
+  if(!e) return;
+  document.getElementById("member-modal-id").value=uid;
+  document.getElementById("member-modal-name").value=e.name||"";
+  document.getElementById("member-modal-email").value=e.email||"";
+  document.getElementById("member-modal-pin").value="";
+  document.getElementById("member-modal-pw").value="";
+  document.getElementById("member-modal-role").value=e.role||"employee";
+  document.getElementById("member-modal-title").textContent="Edit "+e.name;
+  toggleMemberModalFields();
+  document.getElementById("member-modal-role").onchange=toggleMemberModalFields;
+  const m=document.getElementById("member-modal");
+  if(m) m.style.display="flex";
+}
+
+function toggleMemberModalFields(){
+  const role=document.getElementById("member-modal-role").value;
+  document.getElementById("member-modal-pin-row").style.display=role==="employee"?"":"none";
+  document.getElementById("member-modal-pw-row").style.display=role!=="employee"?"":"none";
+}
+
+function closeMemberModal(){
+  const m=document.getElementById("member-modal");
+  if(m) m.style.display="none";
+}
+
+async function saveMember(){
+  const id=document.getElementById("member-modal-id").value;
+  const name=document.getElementById("member-modal-name").value.trim();
+  const email=document.getElementById("member-modal-email").value.trim();
+  const role=document.getElementById("member-modal-role").value;
+  const pin=document.getElementById("member-modal-pin").value.trim();
+  const pw=document.getElementById("member-modal-pw").value.trim();
+  if(!name){alert("Name is required.");return;}
+  if(pin&&(pin.length!==4||!/^\d+$/.test(pin))){alert("PIN must be exactly 4 digits.");return;}
+  if(pw&&pw.length<6){alert("Password must be at least 6 characters.");return;}
+  try{
+    let r;
+    if(id){
+      // Update existing
+      const payload={action:"update_employee",id};
+      if(name) payload.name=name;
+      if(role) payload.role=role;
+      if(pin)  payload.pin=pin;
+      if(pw)   payload.password=pw;
+      r=await api(payload);
+      if(r.success){
+        const emp=EMPS.find(e=>e.id===id);
+        if(emp){emp.name=name;emp.role=role;if(pin){emp.pin_set=true;}if(pw){emp.password_set=true;}}
+        showToast("Member updated.");
+      }
+    } else {
+      // Add new
+      if(role==="employee"){
+        r=await api({action:"add_employee",name,email,pin:pin||""});
+        if(r.success){EMPS.push({...r.employee,role:"employee",active:true,status:"active",password_set:false});}
+      } else {
+        r=await api({action:"add_manager",name,email,role,password:pw||""});
+        if(r.success){EMPS.push({id:r.id,name,email,role,active:true,status:"active",pin_set:false,password_set:!!pw});}
+      }
+      if(r.success) showToast(`${name} added as ${role}.`);
+    }
+    if(r&&r.success){closeMemberModal();renderTeam();}
+    else alert(r?.error||"Failed to save.");
+  }catch(e){alert("Error: "+e.message);}
+}
+
+async function toggleMemberActive(uid,isActive){
+  const emp=EMPS.find(e=>e.id===uid);
+  const action=isActive?"deactivate":"reactivate";
+  if(!confirm(`${isActive?"Deactivate":"Reactivate"} ${emp?.name||"this member"}?`)) return;
+  try{
+    const r=await api({action:"update_employee",id:uid,active:!isActive});
+    if(r.success){
+      if(emp) emp.active=!isActive;
+      showToast(`${emp?.name||"Member"} ${isActive?"deactivated":"reactivated"}.`);
+      renderTeam();
+    } else alert(r.error||"Failed.");
+  }catch(e){alert("Error: "+e.message);}
 }
 </script>
 </body>
