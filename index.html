@@ -580,8 +580,8 @@ function lfSubmit(){
       const pwConf=document.getElementById("lf-password-confirm").value;
       if(pw.length<6){document.getElementById("lf-error").textContent="Password must be at least 6 characters.";return;}
       if(pw!==pwConf){document.getElementById("lf-error").textContent="Passwords don't match — try again.";document.getElementById("lf-password-confirm").value="";return;}
-      api({action:"set_password",id:uid,password:pw}).then(r=>{
-        if(r.ok){
+      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
+        if(r.success){
           // Update local record so future checks work
           if(u) u.password_set=true;
           doLogin(u);
@@ -590,8 +590,8 @@ function lfSubmit(){
         }
       });
     } else {
-      api({action:"verify_password",id:uid,password:pw}).then(r=>{
-        if(r.ok) doLogin(u);
+      fetch(`api.php?action=verify_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
+        if(r.success) doLogin(u);
         else document.getElementById("lf-error").textContent="Incorrect password.";
       }).catch(()=>document.getElementById("lf-error").textContent="Error — try again.");
     }
