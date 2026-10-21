@@ -35,6 +35,7 @@ jobs:
           CPANEL_DEPLOY_PATH: ${{ secrets.CPANEL_DEPLOY_PATH }}
         run: |
           rsync -avz --delete \
+            -e "ssh -i ~/.ssh/id_rsa -p ${CPANEL_PORT:-22} -o StrictHostKeyChecking=no" \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.cpanel.yml' \
