@@ -236,11 +236,12 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
       </select>
     </div>
 
-    <div class="lf-group">
+    <div class="lf-group" id="lf-level-group">
       <label class="lf-label">Access Level</label>
       <select class="lf-select" id="lf-level" onchange="lfLevelChange()" autocomplete="off">
         <option value="">— Select access level —</option>
       </select>
+      <div id="lf-level-display" style="display:none;width:100%;background:rgba(255,255,255,.08);border:1.5px solid rgba(3,173,143,.4);border-radius:10px;color:#fff;padding:.65rem .85rem;font-size:.9rem;"></div>
     </div>
 
     <div class="lf-group" id="lf-pin-group" style="display:none">
@@ -440,6 +441,8 @@ function lfNameChange(){
   const levelEl=document.getElementById("lf-level");
   const uid=nameEl.value;
   levelEl.innerHTML='<option value="">— Select access level —</option>';
+  levelEl.style.display="";
+  document.getElementById("lf-level-display").style.display="none";
   document.getElementById("lf-pin-group").style.display="none";
   document.getElementById("lf-pw-group").style.display="none";
   document.getElementById("lf-pin-confirm").style.display="none";
@@ -459,8 +462,18 @@ function lfNameChange(){
     const o=document.createElement("option");
     o.value=l.val; o.textContent=l.label; levelEl.appendChild(o);
   });
-  // Auto-select if only one option
-  if(levels.length===1){ levelEl.value=levels[0].val; lfLevelChange(); }
+  // Auto-select if only one option — hide dropdown, show locked label
+  if(levels.length===1){
+    levelEl.style.display="none";
+    const disp=document.getElementById("lf-level-display");
+    disp.textContent=levels[0].label;
+    disp.style.display="";
+    levelEl.value=levels[0].val;
+    lfLevelChange();
+  } else {
+    levelEl.style.display="";
+    document.getElementById("lf-level-display").style.display="none";
+  }
 }
 
 function lfLevelChange(){
