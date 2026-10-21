@@ -663,7 +663,7 @@ if ($method === 'POST') {
         }
 
         $db->prepare("DELETE FROM timesheet_entries WHERE timesheet_id = ?")->execute([$tsId]);
-        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, deliverable, hours, pay_rate, billable, day_index, row_index) VALUES (?,?,?,?,?,?,?,?)");
+        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index) VALUES (?,?,?,?,?,?,?,?,?)");
         foreach ($entries as $i => $en) {
             if (empty($en['hrs']) && empty($en['co'])) continue;
             $clientId = null;
@@ -673,10 +673,14 @@ if ($method === 'POST') {
                 $client   = $cStmt->fetch();
                 $clientId = $client ? $client['id'] : null;
             }
-            $billable = isset($en['billable']) ? (int)$en['billable'] : 1;
+            // Support new billing_type field (billable/nonbillable/marketing)
+            $billingType = isset($en['bt']) ? $en['bt'] : (isset($en['billing_type']) ? $en['billing_type'] : 'billable');
+            $allowedTypes = ['billable', 'nonbillable', 'marketing'];
+            if (!in_array($billingType, $allowedTypes)) $billingType = 'billable';
+            $billable = ($billingType === 'billable') ? 1 : 0;
             $dayIdx   = (int)($en['day'] ?? 0);
             $rowIdx   = (int)($en['rowIndex'] ?? $i);
-            $entryStmt->execute([$tsId, $clientId, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $dayIdx, $rowIdx]);
+            $entryStmt->execute([$tsId, $clientId, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx]);
         }
 
         if ($submitted) {
@@ -753,9 +757,11 @@ if ($method === 'POST') {
         $db->prepare("UPDATE timesheets SET status='draft', approved_by=NULL, approved_at=NULL WHERE id=?")->execute([$tsId]);
         if ($entries !== null) {
             $db->prepare("DELETE FROM timesheet_entries WHERE timesheet_id=?")->execute([$tsId]);
-            $es = $db->prepare("INSERT INTO timesheet_entries (timesheet_id,client_id,deliverable,hours,pay_rate,billable,day_index,row_index) VALUES (?,?,?,?,?,?,?,?)");
+            $es = $db->prepare("INSERT INTO timesheet_entries (timesheet_id,client_id,deliverable,hours,pay_rate,billable,billing_type,day_index,row_index) VALUES (?,?,?,?,?,?,?,?,?)");
             foreach ($entries as $i => $en) {
-                $es->execute([$tsId,$en['client_id']??null,$en['del']??'',(float)($en['hrs']??0),$en['pay_rate']??0,(int)($en['billable']??1),(int)($en['day']??0),$i]);
+                $bt = isset($en['bt']) ? $en['bt'] : (isset($en['billing_type']) ? $en['billing_type'] : 'billable');
+                if (!in_array($bt, ['billable','nonbillable','marketing'])) $bt = 'billable';
+                $es->execute([$tsId,$en['client_id']??null,$en['del']??'',(float)($en['hrs']??0),$en['pay_rate']??0,($bt==='billable'?1:0),$bt,(int)($en['day']??0),$i]);
             }
         }
         $db->prepare("INSERT INTO timesheet_comments (timesheet_id,user_id,type,comment) VALUES (?,?,'override',?)")->execute([$tsId,$hrIdInt,$comment?:'HR override applied']);

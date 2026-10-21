@@ -1,12 +1,8 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="X-Frame-Options" content="ALLOWALL">
-<meta name="referrer" content="no-referrer-when-downgrade">
 <title>Genhead Timesheet Portal 2026</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -27,7 +23,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .login-brand{font-size:2.4rem;font-weight:600;color:#fff;letter-spacing:-1px;margin-bottom:.2rem}
 .login-brand span{color:var(--teal)}
 .login-sub{font-size:.72rem;color:rgba(255,255,255,.35);letter-spacing:2px;text-transform:uppercase;margin-bottom:2rem}
-.login-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:1.75rem;width:100%;max-width:440px}
+.login-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:1.75rem;width:100%;max-width:400px}
 .login-card h2{color:#fff;font-size:1rem;font-weight:500;margin-bottom:1.25rem}
 .emp-grid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin-bottom:1.25rem}
 .emp-btn{padding:.7rem;background:rgba(3,173,143,.1);border:1px solid rgba(3,173,143,.25);border-radius:9px;color:var(--teal);font-family:'DM Sans',sans-serif;font-size:.82rem;font-weight:500;cursor:pointer;transition:all .15s;text-align:center}
@@ -37,34 +33,6 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .emp-btn.hr{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.25);color:var(--gold)}
 .emp-btn.hr:hover{background:rgba(245,158,11,.2);border-color:var(--gold)}
 .login-note{font-size:.7rem;color:rgba(255,255,255,.28);text-align:center;line-height:1.6}
-.login-empty{font-size:.8rem;color:rgba(255,255,255,.35);text-align:center;padding:1rem 0;grid-column:1/-1}
-
-/* PIN OVERLAY */
-.pin-overlay{position:fixed;inset:0;background:rgba(8,21,58,.92);display:flex;align-items:center;justify-content:center;z-index:500;backdrop-filter:blur(4px)}
-.pin-overlay.hidden{display:none}
-.pin-box{background:#fff;border-radius:16px;padding:2rem;width:100%;max-width:340px;text-align:center}
-.pin-box h3{font-size:1rem;font-weight:600;color:var(--navy);margin-bottom:.25rem}
-.pin-box p{font-size:.78rem;color:var(--mid);margin-bottom:1.25rem}
-.pin-dots{display:flex;gap:.65rem;justify-content:center;margin-bottom:1.25rem}
-.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);background:transparent;transition:all .15s}
-.pin-dot.filled{background:var(--teal);border-color:var(--teal)}
-.pin-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.75rem}
-.pin-key{padding:.75rem;border:1px solid var(--border);border-radius:9px;font-size:1.1rem;font-weight:500;cursor:pointer;background:var(--alt);color:var(--dark);font-family:'DM Sans',sans-serif;transition:all .12s}
-.pin-key:hover{background:var(--lt-teal);border-color:var(--teal)}
-.pin-key.del{font-size:.85rem;color:var(--mid)}
-.pin-key.wide{grid-column:1/-1}
-.pin-error{font-size:.78rem;color:var(--danger);min-height:1.2rem;margin-bottom:.5rem}
-.pin-cancel{font-size:.75rem;color:var(--mid);cursor:pointer;text-decoration:underline}
-
-/* PASSWORD OVERLAY */
-.pw-overlay{position:fixed;inset:0;background:rgba(8,21,58,.92);display:flex;align-items:center;justify-content:center;z-index:500;backdrop-filter:blur(4px)}
-.pw-overlay.hidden{display:none}
-.pw-box{background:#fff;border-radius:16px;padding:2rem;width:100%;max-width:340px;text-align:center}
-.pw-box h3{font-size:1rem;font-weight:600;color:var(--navy);margin-bottom:.25rem}
-.pw-box p{font-size:.78rem;color:var(--mid);margin-bottom:1.25rem}
-.pw-input{width:100%;padding:.55rem .85rem;border:1px solid var(--border);border-radius:8px;font-size:.9rem;font-family:'DM Sans',sans-serif;margin-bottom:.75rem;text-align:center;letter-spacing:2px}
-.pw-input:focus{outline:none;border-color:var(--teal)}
-.pw-error{font-size:.78rem;color:var(--danger);min-height:1.2rem;margin-bottom:.5rem}
 
 /* APP SHELL */
 #s-app.active{display:flex;flex-direction:column;min-height:100vh}
@@ -76,10 +44,12 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .topbar-user strong{color:#fff}
 .btn-sm{padding:.32rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer;border:1px solid rgba(255,255,255,.18);background:transparent;color:rgba(255,255,255,.55);font-family:'DM Sans',sans-serif;transition:all .15s}
 .btn-sm:hover{border-color:rgba(255,255,255,.5);color:#fff}
+
 .period-bar{background:var(--teal);padding:.42rem 1.5rem;display:flex;align-items:center;justify-content:space-between}
 .period-label{font-size:.7rem;font-weight:500;color:rgba(0,0,0,.55);letter-spacing:.5px;text-transform:uppercase}
 .period-sel{padding:.22rem .5rem;background:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.4);border-radius:5px;font-size:.75rem;color:var(--navy);cursor:pointer;font-family:'DM Sans',sans-serif}
-.app-body{padding:1.25rem 1.5rem;flex:1;max-width:1100px;width:100%;margin:0 auto}
+
+.app-body{padding:1.25rem 1.5rem;flex:1;max-width:1200px;width:100%;margin:0 auto}
 
 /* EMPLOYEE INFO */
 .emp-info{background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:.9rem 1.15rem;margin-bottom:.9rem;display:grid;grid-template-columns:2fr 1fr 1fr;gap:1rem;align-items:center}
@@ -96,7 +66,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .week-stats{display:flex;gap:1.25rem}
 .wstat{font-size:.72rem;color:rgba(255,255,255,.5)}
 .wstat strong{color:var(--teal)}
-.col-hdrs{display:grid;grid-template-columns:1.8fr 2.2fr 1fr 1fr 1fr;gap:.4rem;padding:.3rem .9rem;background:var(--alt);border-bottom:1px solid var(--border)}
+.col-hdrs{display:grid;grid-template-columns:1.6fr 2fr 1.1fr 0.9fr 0.9fr 0.9fr;gap:.4rem;padding:.3rem .9rem;background:var(--alt);border-bottom:1px solid var(--border)}
 .col-hdr-lbl{font-size:.62rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);text-align:center}
 .col-hdr-lbl:first-child,.col-hdr-lbl:nth-child(2){text-align:left}
 .day-block{background:var(--bg)}
@@ -106,21 +76,45 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .day-nm{font-size:.75rem;font-weight:600;color:var(--navy);min-width:76px}
 .day-hdr.wknd .day-nm{color:var(--purple)}
 .day-dt{font-size:.68rem;color:var(--mid);font-family:'DM Mono',monospace}
-.entry-row{display:grid;gap:.35rem;padding:.38rem .9rem;border-bottom:1px solid #f8fafc;align-items:center;min-width:0;overflow:hidden}
-.entry-row>*{min-width:0;overflow:hidden}
+.entry-row{display:grid;grid-template-columns:1.6fr 2fr 1.1fr 0.9fr 0.9fr 0.9fr;gap:.4rem;padding:.38rem .9rem;border-bottom:1px solid #f8fafc;align-items:center}
 .entry-row:last-child{border-bottom:none}
 .entry-row input{padding:.32rem .55rem;border:1px solid var(--border);border-radius:5px;font-size:.8rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg);width:100%}
 .entry-row input:focus{outline:none;border-color:var(--teal)}
 .entry-row input[type=number]{text-align:center}
+.btype-sel{padding:.3rem .45rem;border:1px solid var(--border);border-radius:5px;font-size:.72rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg);width:100%;cursor:pointer}
+.btype-sel:focus{outline:none;border-color:var(--teal)}
+.btype-sel.bt-billable{background:#f0fdf4;border-color:#86efac;color:#166534}
+.btype-sel.bt-nonbillable{background:#fef9c3;border-color:#fde047;color:#854d0e}
+.btype-sel.bt-marketing{background:#f0f4ff;border-color:#a5b4fc;color:#3730a3}
 .dpay{font-size:.8rem;font-weight:500;color:var(--teal);text-align:center;font-family:'DM Mono',monospace}
 .dpay.dim{color:var(--mid);font-weight:400}
 
 /* GRAND TOTAL */
-.grand{background:var(--navy);border-radius:10px;padding:.9rem 1.15rem;display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem}
+.grand{background:var(--navy);border-radius:10px;padding:.9rem 1.15rem;margin-bottom:.6rem}
+.grand-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem}
 .grand-lbl{font-size:.78rem;color:rgba(255,255,255,.45)}
 .grand-vals{display:flex;gap:2.5rem}
 .gv .val{font-size:1.4rem;font-weight:600;color:var(--teal);font-family:'DM Mono',monospace}
 .gv .lbl{font-size:.65rem;color:rgba(255,255,255,.32);text-transform:uppercase;letter-spacing:.4px;margin-top:.1rem}
+
+/* BILLING BREAKDOWN */
+.billing-breakdown{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.9rem}
+.bb-card{border-radius:8px;padding:.6rem .85rem}
+.bb-card.bb-bill{background:#f0fdf4;border:1px solid #86efac}
+.bb-card.bb-nb{background:#fef9c3;border:1px solid #fde047}
+.bb-card.bb-mkt{background:#f0f4ff;border:1px solid #a5b4fc}
+.bb-lbl{font-size:.62rem;text-transform:uppercase;letter-spacing:.4px;margin-bottom:.2rem;font-weight:500}
+.bb-card.bb-bill .bb-lbl{color:#166534}
+.bb-card.bb-nb .bb-lbl{color:#854d0e}
+.bb-card.bb-mkt .bb-lbl{color:#3730a3}
+.bb-val{font-size:1.05rem;font-weight:600;font-family:'DM Mono',monospace}
+.bb-card.bb-bill .bb-val{color:#166534}
+.bb-card.bb-nb .bb-val{color:#854d0e}
+.bb-card.bb-mkt .bb-val{color:#3730a3}
+.bb-sub{font-size:.68rem;margin-top:.1rem}
+.bb-card.bb-bill .bb-sub{color:#4ade80}
+.bb-card.bb-nb .bb-sub{color:#ca8a04}
+.bb-card.bb-mkt .bb-sub{color:#818cf8}
 
 /* BUTTONS */
 .action-bar{display:flex;gap:.65rem;justify-content:flex-end;margin-bottom:1.5rem}
@@ -131,8 +125,6 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .btn-outline:hover{background:var(--alt)}
 .btn-purple{background:var(--purple);color:#fff}
 .btn-purple:hover{background:#2d186a}
-.btn-danger{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
-.btn-danger:hover{background:#fecaca}
 
 /* BADGE */
 .badge{display:inline-block;padding:.15rem .58rem;border-radius:20px;font-size:.68rem;font-weight:500}
@@ -141,7 +133,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .b-prog{background:#ede9fe;color:#5b21b6}
 
 /* DASHBOARD */
-.tab-bar{display:flex;gap:.4rem;margin-bottom:.9rem;flex-wrap:wrap}
+.tab-bar{display:flex;gap:.4rem;margin-bottom:.9rem}
 .tab{padding:.4rem .9rem;border-radius:7px;font-size:.8rem;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--mid);font-family:'DM Sans',sans-serif;transition:all .15s}
 .tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
 .dash-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem}
@@ -154,6 +146,18 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .mc .ml{font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);margin-bottom:.25rem}
 .mc .mv{font-size:1.4rem;font-weight:600;color:var(--navy);font-family:'DM Mono',monospace}
 .mc .ms{font-size:.7rem;color:var(--teal);margin-top:.15rem}
+
+/* BILLING SUMMARY TABLE */
+.billing-tbl{background:var(--bg);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:.9rem}
+.billing-tbl table{width:100%;border-collapse:collapse;font-size:.8rem}
+.billing-tbl thead tr{background:var(--navy)}
+.billing-tbl thead th{padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.7);font-size:.64rem;text-transform:uppercase;letter-spacing:.4px}
+.billing-tbl tbody tr{border-bottom:1px solid #f1f5f9}
+.billing-tbl tbody tr:hover{background:var(--alt)}
+.billing-tbl tbody td{padding:.5rem .85rem;color:var(--dark)}
+.billing-tbl tfoot tr{background:#f8fafc;border-top:2px solid var(--border)}
+.billing-tbl tfoot td{padding:.5rem .85rem;font-weight:600;color:var(--navy);font-size:.8rem}
+
 .master-tbl{background:var(--bg);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:.9rem}
 .master-tbl table{width:100%;border-collapse:collapse;font-size:.8rem}
 .master-tbl thead tr{background:var(--navy)}
@@ -161,21 +165,6 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .master-tbl tbody tr{border-bottom:1px solid #f1f5f9;transition:background .12s}
 .master-tbl tbody tr:hover{background:var(--alt)}
 .master-tbl tbody td{padding:.58rem .95rem;color:var(--dark)}
-
-/* TEAM MANAGEMENT */
-.team-panel{background:var(--bg);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:.9rem}
-.team-header{background:var(--navy);padding:.62rem 1rem;display:flex;align-items:center;justify-content:space-between}
-.team-header h3{font-size:.8rem;font-weight:500;color:#fff}
-.team-body{padding:1rem}
-.add-emp-form{display:grid;grid-template-columns:1fr 1fr auto;gap:.65rem;margin-bottom:1rem;align-items:end}
-.add-emp-form label{font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.22rem}
-.add-emp-form input{width:100%;padding:.42rem .72rem;border:1px solid var(--border);border-radius:7px;font-size:.84rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--alt)}
-.add-emp-form input:focus{outline:none;border-color:var(--teal)}
-.emp-list-item{display:grid;grid-template-columns:1fr auto auto auto;gap:.65rem;align-items:center;padding:.55rem .75rem;border-radius:8px;border:1px solid var(--border);margin-bottom:.45rem;background:var(--alt)}
-.emp-list-item.inactive{opacity:.5}
-.emp-list-name{font-size:.84rem;font-weight:500;color:var(--dark)}
-.emp-list-pin{font-size:.72rem;color:var(--mid);font-family:'DM Mono',monospace}
-.toggle-active{padding:.22rem .6rem;border-radius:5px;font-size:.7rem;cursor:pointer;border:1px solid var(--border);background:var(--bg);font-family:'DM Sans',sans-serif}
 
 /* GHL */
 .ghl-panel{background:var(--bg);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:.9rem}
@@ -195,114 +184,19 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .dot-g{background:#10b981}.dot-y{background:#f59e0b}.dot-r{background:#ef4444}
 .code-block{background:var(--alt);border:1px solid var(--border);border-radius:7px;padding:.6rem .85rem;font-size:.73rem;font-family:'DM Mono',monospace;color:var(--dark);margin-top:.45rem;word-break:break-all;line-height:1.6}
 
-/* SETTINGS */
-.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem}
-.settings-card{background:var(--bg);border-radius:10px;border:1px solid var(--border);overflow:hidden}
-.settings-card-hdr{background:var(--alt);padding:.55rem .85rem;border-bottom:1px solid var(--border);font-size:.75rem;font-weight:600;color:var(--navy)}
-.settings-card-body{padding:.85rem}
-.settings-field{margin-bottom:.65rem}
-.settings-field label{font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.22rem}
-.settings-field input{width:100%;padding:.38rem .65rem;border:1px solid var(--border);border-radius:7px;font-size:.84rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--alt)}
-.settings-field input:focus{outline:none;border-color:var(--teal)}
-
 /* SETUP STEPS */
+.setup-steps{}
 .step{display:flex;gap:.85rem;padding:.9rem 1rem;border-bottom:1px solid var(--border)}
 .step:last-child{border-bottom:none}
 .step-num{width:26px;height:26px;border-radius:50%;background:var(--teal);color:#fff;font-size:.75rem;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.05rem}
 .step h4{font-size:.84rem;font-weight:600;color:var(--navy);margin-bottom:.28rem}
 .step p{font-size:.76rem;color:var(--mid);line-height:1.6}
 
-/* CLIENT DROPDOWN */
-.client-select{width:100%;padding:.32rem .55rem;border:1px solid var(--border);border-radius:5px;font-size:.8rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg);cursor:pointer}
-.client-select:focus{outline:none;border-color:var(--teal)}
-.client-select option[data-type="internal"]{color:var(--mid)}
-.client-select optgroup{font-size:.75rem}
-
-/* NON-BILLABLE CHECKBOX */
-.nb-wrap{display:flex;align-items:center;justify-content:center;gap:.25rem}
-.nb-wrap input[type=checkbox]{width:14px;height:14px;cursor:pointer;accent-color:var(--purple)}
-.nb-wrap label{font-size:.68rem;color:var(--mid);cursor:pointer;white-space:nowrap}
-
-/* ADD LINE / DELETE ROW */
-.add-line-btn{background:none;border:1px dashed var(--teal);color:var(--teal);border-radius:6px;padding:.22rem .65rem;font-size:.75rem;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;margin:.25rem .9rem .35rem}
-.add-line-btn:hover{background:var(--lt-teal)}
-.del-row-btn{background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:0;border-radius:4px;line-height:1;display:flex;align-items:center;justify-content:center;width:24px;height:24px;flex-shrink:0}
-.del-row-btn:hover{background:#fee2e2}
-.rate-ro{padding:.38rem .65rem;border:1px solid var(--border);border-radius:7px;background:var(--alt);font-size:.88rem;color:var(--mid);font-family:'DM Mono',monospace}
-/* RECORDS LOG */
-.rec-wrap{background:var(--bg);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:.9rem}
-.rec-hdr{background:var(--navy);padding:.55rem 1rem;display:flex;align-items:center;justify-content:space-between}
-.rec-hdr h3{font-size:.75rem;font-weight:500;color:rgba(255,255,255,.9);text-transform:uppercase;letter-spacing:.5px}
-.rec-period{padding:.7rem 1rem;border-bottom:1px solid var(--border);background:var(--alt)}
-.rec-period-title{font-size:.78rem;font-weight:600;color:var(--navy)}
-.rec-period-meta{font-size:.7rem;color:var(--mid);margin-top:.1rem}
-.rec-day{padding:.45rem 1rem .2rem;border-bottom:1px solid #f1f5f9}
-.rec-day-nm{font-size:.72rem;font-weight:600;color:var(--purple);text-transform:uppercase;letter-spacing:.4px;margin-bottom:.2rem}
-.rec-entry{display:grid;grid-template-columns:2fr 3fr 1fr 1fr;gap:.5rem;font-size:.78rem;color:var(--dark);padding:.1rem 0}
-.rec-entry-hdr{font-size:.65rem;color:var(--mid);text-transform:uppercase;letter-spacing:.4px}
-/* APPROVAL WORKFLOW */
-.status-bar{padding:.65rem 1rem;border-radius:8px;margin-bottom:.9rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
-.status-bar.sb-submitted{background:#dbeafe;border:1px solid #93c5fd}
-.status-bar.sb-under_review{background:#ede9fe;border:1px solid #c4b5fd}
-.status-bar.sb-approved{background:#d1fae5;border:1px solid #6ee7b7}
-.status-bar.sb-rejected{background:#fee2e2;border:1px solid #fca5a5}
-.status-bar.sb-returned{background:#fef3c7;border:1px solid #fcd34d}
-.status-bar.sb-draft{background:var(--alt);border:1px solid var(--border)}
-.sb-label{font-size:.82rem;font-weight:600}
-.sb-submitted .sb-label{color:#1d4ed8}
-.sb-under_review .sb-label{color:#6d28d9}
-.sb-approved .sb-label{color:#065f46}
-.sb-rejected .sb-label{color:#991b1b}
-.sb-returned .sb-label{color:#92400e}
-.sb-draft .sb-label{color:var(--mid)}
-.sb-msg{font-size:.78rem;flex:1}
-.sb-submitted .sb-msg{color:#1e40af}
-.sb-approved .sb-msg{color:#065f46}
-.sb-rejected .sb-msg,.sb-returned .sb-msg{color:#92400e}
-
-.rejection-box{background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:.75rem 1rem;margin-bottom:.9rem}
-.rejection-box-title{font-size:.75rem;font-weight:600;color:#92400e;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.4px}
-.rejection-box-comment{font-size:.84rem;color:#78350f;line-height:1.6}
-
-/* APPROVAL MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(8,21,58,.85);display:flex;align-items:center;justify-content:center;z-index:600;backdrop-filter:blur(4px)}
-.modal-overlay.hidden{display:none}
-.modal-box{background:#fff;border-radius:16px;padding:1.75rem;width:100%;max-width:480px}
-.modal-box h3{font-size:1rem;font-weight:600;color:var(--navy);margin-bottom:.25rem}
-.modal-box p{font-size:.78rem;color:var(--mid);margin-bottom:1rem}
-.modal-box textarea{width:100%;padding:.55rem .75rem;border:1px solid var(--border);border-radius:8px;font-size:.84rem;font-family:'DM Sans',sans-serif;resize:vertical;min-height:80px;margin-bottom:.75rem}
-.modal-box textarea:focus{outline:none;border-color:var(--teal)}
-.modal-actions{display:flex;gap:.65rem;justify-content:flex-end}
-.modal-error{font-size:.75rem;color:var(--danger);margin-bottom:.5rem;min-height:1rem}
-
-/* APPROVAL ACTIONS in dashboard */
-.approval-actions{display:flex;gap:.4rem;flex-wrap:wrap}
-.btn-approve{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;padding:.25rem .65rem;font-size:.72rem;border-radius:5px;cursor:pointer;font-family:'DM Sans',sans-serif}
-.btn-approve:hover{background:#a7f3d0}
-.btn-reject{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:.25rem .65rem;font-size:.72rem;border-radius:5px;cursor:pointer;font-family:'DM Sans',sans-serif}
-.btn-reject:hover{background:#fecaca}
-.btn-return{background:#fef3c7;color:#92400e;border:1px solid #fcd34d;padding:.25rem .65rem;font-size:.72rem;border-radius:5px;cursor:pointer;font-family:'DM Sans',sans-serif}
-.btn-return:hover{background:#fde68a}
-.btn-flag{background:#f3f4f6;color:#374151;border:1px solid #d1d5db;padding:.25rem .65rem;font-size:.72rem;border-radius:5px;cursor:pointer;font-family:'DM Sans',sans-serif}
-.btn-flag:hover{background:#e5e7eb}
-.btn-override{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;padding:.25rem .65rem;font-size:.72rem;border-radius:5px;cursor:pointer;font-family:'DM Sans',sans-serif}
-.btn-override:hover{background:#ddd6fe}
-
-/* OVERTIME FLAG */
-.overtime-badge{display:inline-block;padding:.15rem .55rem;background:#fef3c7;border:1px solid #fcd34d;border-radius:20px;font-size:.65rem;font-weight:600;color:#92400e}
-
-/* APPROVED RECORD VIEW */
-.approved-stamp{background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;padding:.55rem 1rem;display:flex;align-items:center;gap:.65rem;margin-bottom:.9rem}
-.approved-stamp-icon{font-size:1.1rem}
-.approved-stamp-text{font-size:.82rem;font-weight:600;color:#065f46}
-.approved-stamp-sub{font-size:.72rem;color:#047857;margin-top:.1rem}
-
 /* TOAST */
 .toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--navy);color:#fff;padding:.8rem 1.15rem;border-radius:10px;font-size:.84rem;display:flex;align-items:center;gap:.65rem;transform:translateY(80px);opacity:0;transition:all .35s cubic-bezier(.34,1.56,.64,1);z-index:999;max-width:340px;border-left:3px solid var(--teal);box-shadow:0 8px 32px rgba(8,21,58,.25)}
 .toast.show{transform:translateY(0);opacity:1}
 .toast-icon{color:var(--teal);font-size:14px}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -314,64 +208,6 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
     <h2>Select your profile to continue</h2>
     <div class="emp-grid" id="emp-grid"></div>
     <div class="login-note">Each employee sees only their own timesheet.<br>Manager &amp; HR have full payroll access.</div>
-  </div>
-</div>
-
-<!-- PIN OVERLAY -->
-<div class="pin-overlay hidden" id="pin-overlay">
-  <div class="pin-box">
-    <h3 id="pin-title">Enter your PIN</h3>
-    <p id="pin-subtitle">Enter your 4-digit PIN to continue</p>
-    <div class="pin-dots" id="pin-dots">
-      <div class="pin-dot" id="pd0"></div>
-      <div class="pin-dot" id="pd1"></div>
-      <div class="pin-dot" id="pd2"></div>
-      <div class="pin-dot" id="pd3"></div>
-    </div>
-    <div class="pin-error" id="pin-error"></div>
-    <div class="pin-keypad">
-      <button class="pin-key" onclick="pinKey('1')">1</button>
-      <button class="pin-key" onclick="pinKey('2')">2</button>
-      <button class="pin-key" onclick="pinKey('3')">3</button>
-      <button class="pin-key" onclick="pinKey('4')">4</button>
-      <button class="pin-key" onclick="pinKey('5')">5</button>
-      <button class="pin-key" onclick="pinKey('6')">6</button>
-      <button class="pin-key" onclick="pinKey('7')">7</button>
-      <button class="pin-key" onclick="pinKey('8')">8</button>
-      <button class="pin-key" onclick="pinKey('9')">9</button>
-      <button class="pin-key del" onclick="pinDel()">&#9003;</button>
-      <button class="pin-key" onclick="pinKey('0')">0</button>
-      <button class="pin-key del" onclick="pinClear()">CLR</button>
-    </div>
-    <div><span class="pin-cancel" onclick="cancelPin()">Cancel</span></div>
-  </div>
-</div>
-
-<!-- PASSWORD OVERLAY -->
-<div class="pw-overlay hidden" id="pw-overlay">
-  <div class="pw-box">
-    <h3 id="pw-title">Manager Access</h3>
-    <p>Enter password to continue</p>
-    <input type="password" class="pw-input" id="pw-input" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitPw()">
-    <div class="pw-error" id="pw-error"></div>
-    <div style="display:flex;gap:.65rem;justify-content:center">
-      <button class="btn btn-primary" onclick="submitPw()">Login</button>
-      <button class="btn btn-outline" onclick="cancelPw()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- APPROVAL MODAL -->
-<div class="modal-overlay hidden" id="approval-modal">
-  <div class="modal-box">
-    <h3 id="modal-title">Approve Timesheet</h3>
-    <p id="modal-subtitle">Add an optional note for the employee.</p>
-    <div class="modal-error" id="modal-error"></div>
-    <textarea id="modal-comment" placeholder="Add a comment (required for rejection/return)..."></textarea>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="modal-confirm-btn" onclick="confirmModal()">Confirm</button>
-    </div>
   </div>
 </div>
 
@@ -394,924 +230,293 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 <div class="toast" id="toast"><span class="toast-icon">&#10003;</span><span id="toast-msg"></span></div>
 
 <script>
-const API = "api.php";
+// ── BILLING TYPES ──────────────────────────────────────────────────────────
+// To add a new type in the future: add one object to this array.
+// key   = stored value (keep stable — changing breaks saved data)
+// label = what shows in the dropdown
+// css   = CSS class suffix for color-coding
+const BILLING_TYPES = [
+  { key: "billable",    label: "Billable",      css: "bt-billable"    },
+  { key: "nonbillable", label: "Non-Billable",  css: "bt-nonbillable" },
+  { key: "marketing",   label: "Marketing",     css: "bt-marketing"   }
+];
+const BT_DEFAULT = "billable";
+
+function btLabel(key){ const t=BILLING_TYPES.find(b=>b.key===key); return t?t.label:key; }
+function btCss(key){   const t=BILLING_TYPES.find(b=>b.key===key); return t?t.css:"";    }
+
+// ── CONFIG ─────────────────────────────────────────────────────────────────
 const PERIODS=["Apr 27 - May 10","May 11 - May 24","May 25 - Jun 07","Jun 08 - Jun 21","Jun 22 - Jul 05","Jul 06 - Jul 19","Jul 20 - Aug 02","Aug 03 - Aug 16","Aug 17 - Aug 30","Aug 31 - Sep 13","Sep 14 - Sep 27","Sep 28 - Oct 11","Oct 12 - Oct 25","Oct 26 - Nov 08","Nov 09 - Nov 22","Nov 23 - Dec 06","Dec 07 - Dec 20","Dec 21 - Jan 03"];
-const PSTARTS=[[2026,4,27],[2026,5,11],[2026,5,25],[2026,6,8],[2026,6,22],[2026,7,6],[2026,7,20],[2026,8,3],[2026,8,17],[2026,8,31],[2026,9,14],[2026,9,28],[2026,10,12],[2026,10,26],[2026,11,9],[2026,11,23],[2026,12,7],[2026,12,21]];
+const PSTARTS=[[2026,3,27],[2026,4,11],[2026,4,25],[2026,5,8],[2026,5,22],[2026,6,6],[2026,6,20],[2026,7,3],[2026,7,17],[2026,7,31],[2026,8,14],[2026,8,28],[2026,9,12],[2026,9,26],[2026,10,9],[2026,10,23],[2026,11,7],[2026,11,21]];
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const EMPS=[
+  {id:"e1",name:"Michelle Beaudry",role:"employee"},{id:"e2",name:"Raksha Kadekar",role:"employee"},
+  {id:"e3",name:"Morgan McNeal",role:"employee"},{id:"e4",name:"Leighann Lovely",role:"employee"},
+  {id:"e5",name:"Nikki Lee",role:"employee"},{id:"e6",name:"Ana Bartel",role:"employee"},
+  {id:"e7",name:"Britt Reynolds",role:"employee"},{id:"e8",name:"Eric Vallee",role:"employee"},
+  {id:"e9",name:"Christen Pappas",role:"employee"},{id:"e10",name:"Employee 10",role:"employee"},
+  {id:"e11",name:"Employee 11",role:"employee"},{id:"e12",name:"Employee 12",role:"employee"},
+  {id:"mgr",name:"Manager",role:"manager"},{id:"hr",name:"HR",role:"hr"}
+];
 
-let autoSaveTimer=null;
-
-// Build client dropdown options grouped by type
-function buildClientOptions(selected){
-  // If no clients loaded yet show a placeholder
-  if(!CLIENTS||CLIENTS.length===0){
-    return `<option value="${selected||''}">${selected||'Loading clients...'}</option>`;
-  }
-  const internal=CLIENTS.filter(c=>c.active&&c.type==='internal');
-  const ghl=CLIENTS.filter(c=>c.active&&c.type==='ghl_instance');
-  const marketing=CLIENTS.filter(c=>c.active&&c.type==='marketing');
-  let opts=`<option value="">-- Select Client --</option>`;
-  if(internal.length){
-    opts+=`<optgroup label="── Internal ──">`;
-    internal.forEach(c=>{const sel=c.name===selected?'selected':'';opts+=`<option value="${c.name}" ${sel} data-type="internal" data-billable="0">${c.name}</option>`;});
-    opts+=`</optgroup>`;
-  }
-  if(ghl.length){
-    opts+=`<optgroup label="── GHL Clients ──">`;
-    ghl.forEach(c=>{const sel=c.name===selected?'selected':'';opts+=`<option value="${c.name}" ${sel} data-type="ghl_instance" data-billable="1">${c.name}</option>`;});
-    opts+=`</optgroup>`;
-  }
-  if(marketing.length){
-    opts+=`<optgroup label="── Marketing Clients ──">`;
-    marketing.forEach(c=>{const sel=c.name===selected?'selected':'';opts+=`<option value="${c.name}" ${sel} data-type="marketing" data-billable="1">${c.name}</option>`;});
-    opts+=`</optgroup>`;
-  }
-  // If selected value not in list add it
-  if(selected&&!CLIENTS.find(c=>c.name===selected)){
-    opts+=`<option value="${selected}" selected>${selected}</option>`;
-  }
-  return opts;
-}
-
-// Auto-set non-billable when Genhead/internal client selected
-function upBillable(dayIdx,ei,selectEl){
-  const opt=selectEl.options[selectEl.selectedIndex];
-  const billable=opt?parseInt(opt.dataset.billable??1):1;
-  const uid=cur._vid||cur.id;
-  const d=gd(uid,pidx);
-  if(d.entries[dayIdx]&&d.entries[dayIdx][ei]){
-    d.entries[dayIdx][ei].billable=billable;
-  }
-  // Update checkbox
-  const cb=document.getElementById('nb-'+dayIdx+'-'+ei);
-  if(cb)cb.checked=billable===0;
-}
-let _cachedRate={};
-let GHL_WEBHOOK=""; // removed for staging
-let GHL_STATUS_WEBHOOK=""; // removed for staging
+let GHL_WEBHOOK=localStorage.getItem("ghl_webhook")||"";
 let cur=null,pidx=0;
-let EMPS=[]; // loaded from employees.json via api.php
-let CLIENTS=[]; // loaded from clients table via api.php
-let SETTINGS={manager_password:"pa55word!",hr_password:"pa55word!"};
 const store={};
 
-// ── API helpers ──────────────────────────────────────
-async function apiGet(action){
-  const r=await fetch(`${API}?action=${action}`);
-  return r.json();
-}
-async function apiPost(action,body){
-  const r=await fetch(`${API}?action=${action}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  return r.json();
-}
-
-// ── Load employees from backend ──────────────────────
-async function loadEmployees(){
-  try{
-    const res=await apiGet("load");
-    if(res.success){
-      EMPS=res.data.employees||[];
-      SETTINGS=res.data.settings||SETTINGS;
-    }
-  }catch(e){
-    console.warn("Could not load employees — using empty list");
-  }
-  try{
-    const cRes=await apiGet("load_clients");
-    if(cRes.success) CLIENTS=cRes.clients||[];
-  }catch(e){
-    console.warn("Could not load clients");
-  }
-  buildLoginGrid();
-}
-
-// ── Login grid ───────────────────────────────────────
-function buildLoginGrid(){
-  const grid=document.getElementById("emp-grid");
-  grid.innerHTML="";
-  // Only show employees (not managers) on the login grid
-  const active=EMPS.filter(e=>e.active&&e.role==="employee");
-  const managers=EMPS.filter(e=>e.active&&e.role==="manager");
-  if(active.length===0&&managers.length===0){
-    grid.innerHTML='<div class="login-empty">No team members added yet.<br>HR must add employees first.</div>';
-  } else {
-    active.forEach(e=>{
-      const b=document.createElement("button");
-      b.className="emp-btn";
-      b.textContent=e.name;
-      b.onclick=()=>startEmpLogin(e);
-      grid.appendChild(b);
-    });
-  }
-  // Each manager gets their own button
-  if(managers.length>0){
-    managers.forEach(m=>{
-      const b=document.createElement("button");
-      b.className="emp-btn mgr";
-      b.textContent=m.name;
-      b.onclick=()=>startMgrLogin(m);
-      grid.appendChild(b);
-    });
-  } else {
-    // Fallback generic manager button
-    const mgr=document.createElement("button");
-    mgr.className="emp-btn mgr";mgr.textContent="Manager";
-    mgr.onclick=()=>startPwLogin("manager");
-    grid.appendChild(mgr);
-  }
-  const hr=document.createElement("button");
-  hr.className="emp-btn hr";hr.textContent="HR";
-  hr.onclick=()=>startPwLogin("hr");
-  grid.appendChild(hr);
-}
-
-// ── PIN login flow ───────────────────────────────────
-let pinTarget=null,pinBuffer="",pinMode="verify"; // modes: verify, set
-
-function startEmpLogin(emp){
-  pinTarget=emp;
-  pinBuffer="";
-  updatePinDots();
-  document.getElementById("pin-error").textContent="";
-  if(!emp.pin_set){
-    pinMode="set";
-    document.getElementById("pin-title").textContent="Welcome, "+emp.name+"!";
-    document.getElementById("pin-subtitle").textContent="You've been added to the Genhead Timesheet Portal. Please create a 4-digit PIN — you'll use this every time you log in.";
-  } else {
-    pinMode="verify";
-    document.getElementById("pin-title").textContent="Welcome, "+emp.name;
-    document.getElementById("pin-subtitle").textContent="Enter your 4-digit PIN";
-  }
-  document.getElementById("pin-overlay").classList.remove("hidden");
-}
-
-function pinKey(d){
-  if(pinBuffer.length>=4)return;
-  pinBuffer+=d;
-  updatePinDots();
-  if(pinBuffer.length===4)setTimeout(submitPin,200);
-}
-function pinDel(){pinBuffer=pinBuffer.slice(0,-1);updatePinDots();}
-function pinClear(){pinBuffer="";updatePinDots();}
-function updatePinDots(){
-  for(let i=0;i<4;i++){
-    document.getElementById("pd"+i).classList.toggle("filled",i<pinBuffer.length);
-  }
-}
-
-async function submitPin(){
-  if(pinMode==="set"){
-    const res=await apiPost("set_pin",{id:pinTarget.id,pin:pinBuffer});
-    if(res.success){
-      pinTarget.pin=pinBuffer;pinTarget.pin_set=true;
-      document.getElementById("pin-overlay").classList.add("hidden");
-      // Show transition message on main screen
-      document.getElementById("pin-error").textContent="";
-      showLoginTransition(pinTarget.name);
-      await completeLogin(pinTarget);
-      showToast("PIN set! Welcome, "+pinTarget.name.split(" ")[0]+"!");
-    } else {
-      document.getElementById("pin-error").textContent=res.error||"Could not save PIN";
-      pinBuffer="";updatePinDots();
-    }
-  } else {
-    if(pinBuffer===pinTarget.pin){
-      document.getElementById("pin-overlay").classList.add("hidden");
-      // Show transition message so employee knows they're logging in
-      showLoginTransition(pinTarget.name);
-      await completeLogin(pinTarget);
-    } else {
-      document.getElementById("pin-error").textContent="Incorrect PIN. Try again.";
-      pinBuffer="";updatePinDots();
-    }
-  }
-}
-
-function showLoginTransition(name){
-  // Flash the login screen with a welcome message before app loads
-  const grid=document.getElementById("emp-grid");
-  if(grid){
-    grid.innerHTML=`<div style="text-align:center;padding:2rem;color:var(--teal);font-size:1.1rem;font-weight:600;width:100%">
-      &#10003; Welcome, ${name.split(" ")[0]}!<br>
-      <span style="font-size:.8rem;color:var(--mid);font-weight:400">Loading your timesheet...</span>
-    </div>`;
-  }
-}
-function cancelPin(){
-  document.getElementById("pin-overlay").classList.add("hidden");
-  pinTarget=null;pinBuffer="";
-}
-
-// ── Password login flow ──────────────────────────────
-let pwRole=null;
-let pwMgr=null; // the manager user object when logging in as specific manager
-
-function startMgrLogin(mgr){
-  pwMgr=mgr;
-  pwRole="manager_user";
-  document.getElementById("pw-title").textContent="Manager Login";
-  document.getElementById("pw-subtitle")?document.getElementById("pw-subtitle").textContent="Welcome, "+mgr.name:null;
-  document.getElementById("pw-input").value="";
-  document.getElementById("pw-error").textContent="";
-  document.getElementById("pw-overlay").classList.remove("hidden");
-  setTimeout(()=>document.getElementById("pw-input").focus(),100);
-}
-
-function startPwLogin(role){
-  pwRole=role;
-  document.getElementById("pw-title").textContent=role==="manager"?"Manager Access":"HR Access";
-  document.getElementById("pw-input").value="";
-  document.getElementById("pw-error").textContent="";
-  document.getElementById("pw-overlay").classList.remove("hidden");
-  setTimeout(()=>document.getElementById("pw-input").focus(),100);
-}
-async function submitPw(){
-  const val=document.getElementById("pw-input").value;
-  if(pwRole==="manager_user"&&pwMgr){
-    // Verify against individual manager's stored password
-    const res=await apiPost("verify_password",{id:pwMgr.id,password:val});
-    if(res&&res.success){
-      document.getElementById("pw-overlay").classList.add("hidden");
-      completeLogin({...pwMgr,role:"manager"});
-      pwMgr=null;
-    } else {
-      document.getElementById("pw-error").textContent="Incorrect password. Try again.";
-      document.getElementById("pw-input").value="";
-    }
-  } else {
-    const correct=pwRole==="manager"?SETTINGS.manager_password:SETTINGS.hr_password;
-    if(val===correct){
-      document.getElementById("pw-overlay").classList.add("hidden");
-      completeLogin({id:pwRole,name:pwRole==="manager"?"Manager":"HR",role:pwRole});
-    } else {
-      document.getElementById("pw-error").textContent="Incorrect password. Try again.";
-      document.getElementById("pw-input").value="";
-    }
-  }
-}
-function cancelPw(){
-  document.getElementById("pw-overlay").classList.add("hidden");
-  pwRole=null;
-}
-
-// ── Complete login ───────────────────────────────────
-async function completeLogin(u){
-  cur={...u,role:u.role||"employee"};
-  document.getElementById("tb-name").textContent=u.name;
-  const sel=document.getElementById("period-sel");
-  sel.innerHTML=PERIODS.map((p,i)=>`<option value="${i}">${p}</option>`).join("");
-
-  // Auto-select current pay period based on today's date
-  const today=new Date();
-  let currentPidx=0;
-  for(let i=0;i<PSTARTS.length;i++){
-    const ps=PSTARTS[i];
-    const start=new Date(ps[0],ps[1]-1,ps[2]);
-    const end=new Date(start);
-    end.setDate(end.getDate()+13);
-    if(today>=start&&today<=end){currentPidx=i;break;}
-    // If today is past this period start and no match found yet, keep updating
-    if(today>start)currentPidx=i;
-  }
-  pidx=currentPidx;
-  sel.value=pidx;
-
-  // Show loading state on login screen before transitioning
-  const loginBtn=document.querySelector('.emp-btn.active');
-  if(loginBtn)loginBtn.textContent='Loading...';
-
-  show("s-app");
-  window.scrollTo({top:0,behavior:'instant'});
-
-  // Load clients and draft in parallel
-  const [cRes,_]=await Promise.all([
-    apiGet("load_clients").catch(()=>({success:false})),
-    loadDraftFromServer(cur.id,pidx)
-  ]);
-  if(cRes.success) CLIENTS=cRes.clients||[];
-
-  renderApp();
-  window.scrollTo({top:0,behavior:'instant'});
-}
-
-function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");}
-
-// Load saved draft or submission from server into memory store
-async function loadDraftFromServer(uid,periodIdx){
-  try{
-    // Always fetch fresh from server — never use cached store status
-    const res=await fetch(`${API}?action=load_draft&uid=${uid}&period=${encodeURIComponent(PERIODS[periodIdx])}&t=${Date.now()}`);
-    const data=await res.json();
-    if(data.success&&data.record){
-      const rec=data.record;
-      const k=dk(uid,periodIdx);
-      // Rebuild entries array from flat server entries
-      const entries=Array.from({length:14},()=>[{co:"",del:"",hrs:""}]);
-      if(rec.entries&&rec.entries.length>0){
-        const byDay={};
-        rec.entries.forEach(e=>{
-          const d=typeof e.day_index==="number"?e.day_index:typeof e.day==="number"?e.day:parseInt(e.day_index||e.day)||0;
-          if(!byDay[d])byDay[d]=[];
-          byDay[d].push({co:e.client_name||e.co||"",del:e.deliverable||e.del||"",hrs:e.hours||e.hrs||"",billable:e.billable!==undefined?e.billable:1});
-        });
-        Object.keys(byDay).forEach(d=>{entries[parseInt(d)]=byDay[d];});
-      }
-      // Store server-side status and metadata
-      const latestComment=rec.comments&&rec.comments.length>0?rec.comments[0].comment:'';
-      store[k]={
-        entries,
-        submitted:rec.status!=='draft',
-        serverStatus:rec.status||'draft',
-        serverComment:latestComment,
-        serverId:rec.id?parseInt(rec.id):null,
-        approvedByName:rec.approved_by_name||rec.approvedByName||'',
-        approvedAt:rec.approved_at||rec.approvedAt||''
-      };
-      console.log("Draft loaded for",uid,"period",PERIODS[periodIdx],"status:",rec.status);
-    }
-  }catch(e){
-    console.warn("Could not load draft:",e);
-  }
-}
-function logout(){cur=null;_cachedRate={};show("s-login");loadEmployees();}
-async function changePeriod(){
-  pidx=parseInt(document.getElementById("period-sel").value);
-  await loadDraftFromServer(cur.id,pidx);
-  renderApp();
-  window.scrollTo({top:0,behavior:'instant'});
-}
-async function renderApp(){
-  if(!cur)return;
-  if(cur.role==="manager"||cur.role==="hr") await renderDash();
-  else renderTS(cur._vid||cur.id);
-  // Show welcome toast so employee knows they're logged in
-  if(cur.role==="employee"){
-    showToast("Welcome back, "+cur.name.split(" ")[0]+"! "+PERIODS[pidx]);
-  }
-}
-
-// ── Timesheet ────────────────────────────────────────
 function dk(uid,p){return uid+"_"+p;}
 function gd(uid,p){
   const k=dk(uid,p);
-  // entries is now array of 14 days, each day is an array of row objects
-  if(!store[k]){store[k]={entries:Array.from({length:14},()=>[{co:"",del:"",hrs:""}]),submitted:false};}
+  if(!store[k]){
+    store[k]={
+      rate:"",
+      // Each entry now includes billingType (defaulting to "billable")
+      entries:Array.from({length:14*3},(_,i)=>({day:Math.floor(i/3),ei:i%3,co:"",del:"",hrs:"",bt:BT_DEFAULT})),
+      submitted:false
+    };
+  }
   return store[k];
 }
-function getRate(uid){
-  // 1. Cached rate — fastest
-  if(_cachedRate[uid]&&_cachedRate[uid]>0)return _cachedRate[uid];
-  // 2. DOM data-rate attribute — most reliable, set at render time
-  const wrap=document.getElementById("emp-info-wrap");
-  if(wrap){const v=parseFloat(wrap.dataset.rate);if(v>0){_cachedRate[uid]=v;return v;}}
-  // 3. EMPS array
-  const emp=EMPS.find(e=>e.id===uid);
-  if(emp&&emp.rate&&parseFloat(emp.rate)>0){_cachedRate[uid]=parseFloat(emp.rate);return _cachedRate[uid];}
-  // 4. Pay rate input (manager view)
-  const prEl=document.getElementById("pr");
-  if(prEl&&parseFloat(prEl.value)>0){_cachedRate[uid]=parseFloat(prEl.value);return _cachedRate[uid];}
-  // 5. Read-only rate div (employee view)
-  const roEl=document.querySelector(".rate-ro");
-  if(roEl){const v=parseFloat(roEl.textContent.replace(/[^0-9.]/g,""));if(v>0){_cachedRate[uid]=v;return v;}}
-  return 0;
-}
-function setRateCache(uid,rate){_cachedRate[uid]=parseFloat(rate)||0;}
 function pfl(v){const n=parseFloat(v);return isNaN(n)?0:n;}
 function fm(n){return"$"+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/,",");}
-function pdate(pi,offset){const[y,m,d]=PSTARTS[pi];const dt=new Date(y,m-1,d);dt.setDate(dt.getDate()+offset);return dt;}
+function pdate(pi,offset){const[y,m,d]=PSTARTS[pi];const dt=new Date(y,m,d);dt.setDate(dt.getDate()+offset);return dt;}
 
+// ── BILLING TYPE DROPDOWN HTML ─────────────────────────────────────────────
+function btSelect(dayIdx, ei, currentVal, readonly){
+  if(readonly){
+    return `<div class="btype-sel ${btCss(currentVal)}" style="padding:.3rem .45rem;font-size:.72rem;border-radius:5px;text-align:center">${btLabel(currentVal)}</div>`;
+  }
+  const opts = BILLING_TYPES.map(t=>
+    `<option value="${t.key}"${t.key===currentVal?" selected":""}>${t.label}</option>`
+  ).join("");
+  return `<select class="btype-sel ${btCss(currentVal)}" onchange="upBT(${dayIdx},${ei},this.value);this.className='btype-sel '+btCss(this.value)">${opts}</select>`;
+}
+
+// ── BUILD LOGIN GRID ───────────────────────────────────────────────────────
+const grid=document.getElementById("emp-grid");
+EMPS.forEach(e=>{
+  const b=document.createElement("button");
+  b.className="emp-btn"+(e.role==="manager"?" mgr":e.role==="hr"?" hr":"");
+  b.textContent=e.name;b.onclick=()=>login(e);grid.appendChild(b);
+});
+
+function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");}
+function login(u){
+  cur=u;document.getElementById("tb-name").textContent=u.name;
+  const sel=document.getElementById("period-sel");
+  sel.innerHTML=PERIODS.map((p,i)=>`<option value="${i}">${p}</option>`).join("");
+  pidx=0;sel.value=0;show("s-app");renderApp();
+}
+function logout(){cur=null;show("s-login");}
+function changePeriod(){pidx=parseInt(document.getElementById("period-sel").value);renderApp();}
+function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr")?renderDash():renderTS(cur._vid||cur.id);}
+
+// ── TIMESHEET VIEW ─────────────────────────────────────────────────────────
 function renderTS(uid){
   const d=gd(uid,pidx);
-  const emp=EMPS.find(e=>e.id===uid)||cur;
+  const emp=EMPS.find(e=>e.id===uid);
   const isViewing=!!cur._vid;
-  const isMgr=(cur.role==="manager"||cur.role==="hr");
-  // Cache rate from EMPS at render time so upE always has it
-  const emp_rate_src=EMPS.find(e=>e.id===uid);
-  if(emp_rate_src&&emp_rate_src.rate)setRateCache(uid,emp_rate_src.rate);
-  const rt=getRate(uid);
   const body=document.getElementById("app-body");
 
-  // Pay rate: manager/hr edits per employee in Team tab — employee sees read-only
-  const rateHtml=isMgr
-    ?`<div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${emp.rate||''}" placeholder="0.00" min="0" step="0.01" onchange="setEmpRate('${uid}',this.value)"></div>`
-    :`<div class="field"><label>Pay Rate ($/hr)</label><div class="rate-ro">${rt?'$'+rt.toFixed(2):"Set by manager"}</div></div>`;
-
-  // Status from server record
-  const tsStatus=d.serverStatus||'draft';
-  const tsComment=d.serverComment||'';
-  const approvedBy=d.approvedByName||'';
-  const approvedAt=d.approvedAt||'';
-
-  // Status bar
-  const statusLabels={draft:'Draft',submitted:'Submitted — Awaiting Review',under_review:'Under Review',approved:'Approved',rejected:'Rejected',returned:'Returned for Correction'};
-  const statusBar=tsStatus!=='draft'?`<div class="status-bar sb-${tsStatus}">
-    <span class="sb-label">${statusLabels[tsStatus]||tsStatus}</span>
-    <span class="sb-msg">${tsStatus==='approved'?'Approved by '+approvedBy+' on '+new Date(approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):
-      tsStatus==='submitted'?'Your timesheet is awaiting manager review.':
-      tsStatus==='under_review'?'Your manager is reviewing your timesheet.':
-      tsStatus==='rejected'||tsStatus==='returned'?'See comments below. Make corrections and resubmit.':''}</span>
-  </div>`:'';
-
-  // Rejection/return comment box
-  const commentBox=tsComment&&(tsStatus==='rejected'||tsStatus==='returned')?`<div class="rejection-box">
-    <div class="rejection-box-title">&#9888; Manager Comment</div>
-    <div class="rejection-box-comment">${tsComment}</div>
-  </div>`:'';
-
-  // Approved stamp
-  const approvedStamp=tsStatus==='approved'?`<div class="approved-stamp">
-    <span class="approved-stamp-icon">&#10003;</span>
-    <div><div class="approved-stamp-text">Timesheet Approved</div>
-    <div class="approved-stamp-sub">Approved by ${approvedBy} &middot; ${new Date(approvedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>
-  </div>`:'';
-
-  const isLocked=tsStatus==='approved'||(tsStatus!=='draft'&&tsStatus!=='returned'&&tsStatus!=='rejected'&&!isMgr);
-  const isEditable=!isLocked&&!isViewing;
-
-  let h=`<div class="emp-info" id="emp-info-wrap" data-rate="${rt}">
+  let h=`<div class="emp-info">
     <div><div class="emp-name">${emp.name}</div><div class="emp-period">${PERIODS[pidx]} &middot; Bi-Weekly Timesheet</div></div>
-    ${rateHtml}
-    <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:.4rem">
-      ${isViewing?"":'<button class="btn btn-primary" style="padding:.32rem .85rem;font-size:.78rem" onclick="manualSave()">&#128190; Save Draft</button>'}
-      <span id="save-confirm" style="font-size:.68rem;color:var(--teal);display:none">&#10003; Saved</span>
-    </div>
-  </div>
-  ${statusBar}
-  ${approvedStamp}
-  ${commentBox}`;
+    <div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" onchange="upRate(this.value)"${isViewing?" readonly":""}></div>
+    <div style="text-align:right">${d.submitted?'<span class="badge b-sub">&#10003; Submitted</span>':'<span class="badge b-pend">Pending</span>'}</div>
+  </div>`;
 
   for(let wk=0;wk<2;wk++){
+    const ws=wk*7,we=ws+6;
     let wH=0,wP=0;
-    for(let di=0;di<7;di++){
-      const dx=wk*7+di;
-      (d.entries[dx]||[]).forEach(e=>{wH+=pfl(e.hrs);wP+=pfl(e.hrs)*rt;});
-    }
-    h+=`<div class="week-wrap" data-rate="${rt}"><div class="week-hdr"><h3>Week ${wk+1}</h3><div class="week-stats"><span class="wstat">Hours: <strong id="wh${wk}">${wH.toFixed(1)}</strong></span><span class="wstat">Pay: <strong id="wp${wk}">${fm(wP)}</strong></span></div></div>`;
-    if(wk===0){
-      const extraCol=isViewing?"":`<div class="col-hdr-lbl"></div>`;
-      const cols=isViewing?"1.6fr 2fr 0.65fr 0.55fr 0.65fr 0.65fr":"1.6fr 2fr 0.65fr 0.55fr 0.65fr 0.65fr 24px";
-      h+=`<div class="col-hdrs" style="grid-template-columns:${cols}"><div class="col-hdr-lbl">Client</div><div class="col-hdr-lbl">Deliverable</div><div class="col-hdr-lbl">Hrs</div><div class="col-hdr-lbl">NB</div><div class="col-hdr-lbl">Rate</div><div class="col-hdr-lbl">Pay</div>${extraCol}</div>`;
-    }
+    d.entries.forEach(e=>{if(e.day>=ws&&e.day<=we){wH+=pfl(e.hrs);wP+=pfl(e.hrs)*pfl(d.rate);}});
+    h+=`<div class="week-wrap"><div class="week-hdr"><h3>Week ${wk+1}</h3><div class="week-stats"><span class="wstat">Hours: <strong id="wh${wk}">${wH.toFixed(1)}</strong></span><span class="wstat">Pay: <strong id="wp${wk}">${fm(wP)}</strong></span></div></div>`;
+    h+=`<div class="col-hdrs"><div class="col-hdr-lbl">Company</div><div class="col-hdr-lbl">Deliverable</div><div class="col-hdr-lbl">Billing Type</div><div class="col-hdr-lbl">Hrs</div><div class="col-hdr-lbl">Rate</div><div class="col-hdr-lbl">Pay</div></div>`;
     for(let di=0;di<7;di++){
       const dayIdx=wk*7+di,dt=pdate(pidx,dayIdx),isWk=di>=5;
-      const dayRows=d.entries[dayIdx]||[{co:"",del:"",hrs:""}];
-      h+=`<div class="day-block" id="day-${dayIdx}"><div class="day-hdr${isWk?" wknd":""}"><span class="day-nm">${DAYS[di]}</span><span class="day-dt">${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span></div>`;
-      const cols=isViewing?"1.6fr 2fr 0.65fr 0.55fr 0.65fr 0.65fr":"1.6fr 2fr 0.65fr 0.55fr 0.65fr 0.65fr 24px";
-      dayRows.forEach((en,ei)=>{
-        const hr=pfl(en.hrs),pay=hr*rt;
-        const canDel=!isViewing&&dayRows.length>1;
-        const delBtn=isViewing?"":`<button class="del-row-btn" onclick="delRow(${dayIdx},${ei})" ${canDel?"":'style="visibility:hidden"'} title="Delete row">&times;</button>`;
-        const nbChecked=(en.billable===0||en.billable==='0')?'checked':'';
-        const clientOpts=buildClientOptions(en.co||'');
-        const isEd=!isViewing&&!isLocked;
-        h+=`<div class="entry-row" style="grid-template-columns:${cols}" id="er-${dayIdx}-${ei}">
-          ${isEd
-            ?`<select class="client-select" onchange="upE(${dayIdx},${ei},'co',this.value);upBillable(${dayIdx},${ei},this)">${clientOpts}</select>`
-            :`<div style="font-size:.8rem;padding:.32rem .55rem;color:var(--dark)">${en.co||'—'}</div>`}
-          <input type="text" placeholder="Deliverable / Task" value="${(en.del||'').replace(/"/g,'&quot;')}" oninput="upE(${dayIdx},${ei},'del',this.value)"${!isEd?" readonly":""}>
-          <input type="number" placeholder="0" value="${en.hrs||''}" min="0" max="24" step="0.5" oninput="upE(${dayIdx},${ei},'hrs',this.value)"${!isEd?" readonly":""}>
-          <div class="nb-wrap">${isEd?`<input type="checkbox" id="nb-${dayIdx}-${ei}" ${nbChecked} onchange="upE(${dayIdx},${ei},'billable',this.checked?0:1)"><label for="nb-${dayIdx}-${ei}">NB</label>`:`<span style="font-size:.72rem;color:var(--mid)">${nbChecked?'NB':''}</span>`}</div>
-          <div class="dpay dim" id="rate-${dayIdx}-${ei}">${rt?fm(rt):"-"}</div>
-          <div class="dpay" id="pay-${dayIdx}-${ei}">${(hr&&rt)?fm(pay):"-"}</div>
-          ${delBtn}
+      h+=`<div class="day-block"><div class="day-hdr${isWk?" wknd":""}"><span class="day-nm">${DAYS[di]}</span><span class="day-dt">${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span></div>`;
+      for(let ei=0;ei<3;ei++){
+        const en=d.entries.find(e=>e.day===dayIdx&&e.ei===ei);
+        const hr=pfl(en.hrs),rt=pfl(d.rate),pay=hr*rt;
+        const btVal=en.bt||BT_DEFAULT;
+        const ro=isViewing?" readonly":"";
+        h+=`<div class="entry-row">
+          <input type="text" placeholder="Company" value="${en.co}" onchange="upE(${dayIdx},${ei},'co',this.value)"${ro}>
+          <input type="text" placeholder="Deliverable" value="${en.del}" onchange="upE(${dayIdx},${ei},'del',this.value)"${ro}>
+          ${btSelect(dayIdx, ei, btVal, isViewing)}
+          <input type="number" placeholder="0" value="${en.hrs}" min="0" max="24" step="0.5" onchange="upE(${dayIdx},${ei},'hrs',this.value)"${ro}>
+          <div class="dpay dim">${rt?fm(rt):"-"}</div>
+          <div class="dpay">${(hr&&rt)?fm(pay):"-"}</div>
         </div>`;
-      });
-      if(!isViewing&&dayRows.length<15){
-        h+=`<button class="add-line-btn" onclick="addRow(${dayIdx})">+ Add Line</button>`;
       }
       h+=`</div>`;
     }
     h+=`</div>`;
   }
 
-  let allH=0;
-  d.entries.forEach(rows=>(rows||[]).forEach(e=>allH+=pfl(e.hrs)));
-  const allP=allH*rt;
-  h+=`<div class="grand"><div class="grand-lbl">${PERIODS[pidx]}</div><div class="grand-vals"><div class="gv"><div class="val" id="gh">${allH.toFixed(1)} hrs</div><div class="lbl">Total Hours</div></div><div class="gv"><div class="val" id="gp">${fm(allP)}</div><div class="lbl">Total Paycheck</div></div></div></div>`;
+  // Grand total + billing breakdown
+  const allH=d.entries.reduce((s,e)=>s+pfl(e.hrs),0),allP=allH*pfl(d.rate);
+  const breakdown=calcBreakdown(d);
+  const rt=pfl(d.rate);
+
+  h+=`<div class="grand">
+    <div class="grand-top">
+      <div class="grand-lbl">${PERIODS[pidx]}</div>
+      <div class="grand-vals">
+        <div class="gv"><div class="val" id="gh">${allH.toFixed(1)} hrs</div><div class="lbl">Total Hours</div></div>
+        <div class="gv"><div class="val" id="gp">${fm(allP)}</div><div class="lbl">Total Paycheck</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="billing-breakdown">
+    <div class="bb-card bb-bill">
+      <div class="bb-lbl">&#9679; Billable</div>
+      <div class="bb-val" id="bb-billable-h">${breakdown.billable.h.toFixed(1)} hrs</div>
+      <div class="bb-sub" id="bb-billable-p">${rt?fm(breakdown.billable.h*rt):""}</div>
+    </div>
+    <div class="bb-card bb-nb">
+      <div class="bb-lbl">&#9632; Non-Billable</div>
+      <div class="bb-val" id="bb-nonbillable-h">${breakdown.nonbillable.h.toFixed(1)} hrs</div>
+      <div class="bb-sub" id="bb-nonbillable-p">${rt?fm(breakdown.nonbillable.h*rt):""}</div>
+    </div>
+    <div class="bb-card bb-mkt">
+      <div class="bb-lbl">&#9670; Marketing</div>
+      <div class="bb-val" id="bb-marketing-h">${breakdown.marketing.h.toFixed(1)} hrs</div>
+      <div class="bb-sub" id="bb-marketing-p">${rt?fm(breakdown.marketing.h*rt):""}</div>
+    </div>
+  </div>`;
+
   if(!isViewing){
-    const canSubmit=tsStatus==='draft'||tsStatus==='returned'||tsStatus==='rejected';
-    const canExport=true;
-    let actionBtns='';
-    if(canExport) actionBtns+=`<button class="btn btn-outline" onclick="doExport()">Export CSV</button>`;
-    if(canSubmit) actionBtns+=`<button class="btn btn-primary" onclick="doSubmit()">Submit to Genhead</button>`;
-    if(tsStatus==='approved') actionBtns+=`<button class="btn btn-outline" onclick="doExport()">&#128190; Download Record</button>`;
-    h+=`<div class="action-bar">${actionBtns}</div>`;
+    h+=`<div class="action-bar"><button class="btn btn-outline" onclick="doExport()">Export CSV</button><button class="btn btn-primary" onclick="doSubmit()">${d.submitted?"Resubmit":"Submit to GHL"}</button></div>`;
   } else {
-    // Manager viewing employee timesheet
-    const mgrActions=isMgr&&cur.role!=='employee'?`
-      <div class="approval-actions">
-        ${tsStatus==='submitted'||tsStatus==='under_review'?`
-          <button class="btn-approve" onclick="showModal('approve',${d.serverId||'null'})">&#10003; Approve</button>
-          <button class="btn-reject" onclick="showModal('reject',${d.serverId||'null'})">&#10007; Reject</button>
-          <button class="btn-return" onclick="showModal('return',${d.serverId||'null'})">&#8629; Return</button>
-          <button class="btn-flag" onclick="showModal('flag',${d.serverId||'null'})">&#9888; Flag</button>`:''}
-        ${cur.role==='hr'&&d.serverId?`<button class="btn-override" title="Unlock timesheet for editing" onclick="showModal('override',${d.serverId||'null'})">&#9998; Unlock</button>`:cur.role==='hr'?`<button class="btn-override" title="No timesheet found for this period" disabled style="opacity:.4">&#9998; Unlock</button>`:''}
-        <button class="btn btn-primary" style="padding:.28rem .75rem;font-size:.75rem" onclick="saveManagerEdits('${uid}',${d.serverId||'null'})">&#128190; Save Changes</button>
-      </div>`:'';
-    h+=`<div class="action-bar">${mgrActions}<button class="btn btn-outline" onclick="backDash()">&#8592; Back to Dashboard</button></div>`;
+    h+=`<div class="action-bar"><button class="btn btn-outline" onclick="backDash()">&#8592; Back to Dashboard</button></div>`;
   }
-  body.innerHTML=h;
-  // After render: force recalc of all rate/pay cells
-  setTimeout(()=>{
-    const thisUid=uid;
-    const thisEmp=EMPS.find(e=>e.id===thisUid);
-    let rt2=0;
-    // Try all sources in order
-    if(thisEmp&&thisEmp.rate&&parseFloat(thisEmp.rate)>0) rt2=parseFloat(thisEmp.rate);
-    if(!rt2){const wrap=document.getElementById("emp-info-wrap");if(wrap)rt2=parseFloat(wrap.dataset.rate)||0;}
-    if(!rt2){const roEl=document.querySelector(".rate-ro");if(roEl)rt2=parseFloat(roEl.textContent.replace(/[^0-9.]/g,""))||0;}
-    if(!rt2){const prEl=document.getElementById("pr");if(prEl)rt2=parseFloat(prEl.value)||0;}
-    if(rt2>0){
-      setRateCache(thisUid,rt2);
-      // Update data-rate on wrapper to match
-      const wrap=document.getElementById("emp-info-wrap");
-      if(wrap)wrap.dataset.rate=rt2;
-      // Force update every visible rate/pay cell
-      const d2=gd(thisUid,pidx);
-      d2.entries.forEach((rows,dayIdx)=>{
-        (rows||[]).forEach((en,ei)=>{
-          const rEl=document.getElementById("rate-"+dayIdx+"-"+ei);
-          const pEl=document.getElementById("pay-"+dayIdx+"-"+ei);
-          if(rEl)rEl.textContent=fm(rt2);
-          if(pEl){const h=pfl(en.hrs);pEl.textContent=h?fm(h*rt2):"-";}
-        });
-      });
-      // Force week and period totals
-      let allH=0;
-      d2.entries.forEach(rows=>(rows||[]).forEach(e=>allH+=pfl(e.hrs)));
-      const ge=document.getElementById("gh"),gpe=document.getElementById("gp");
-      if(ge)ge.textContent=allH.toFixed(1)+" hrs";
-      if(gpe)gpe.textContent=fm(allH*rt2);
-      for(let wk=0;wk<2;wk++){
-        let wH=0,wP=0;
-        for(let di=0;di<7;di++){const dx=wk*7+di;(d2.entries[dx]||[]).forEach(e=>{wH+=pfl(e.hrs);wP+=pfl(e.hrs)*rt2;});}
-        const he=document.getElementById("wh"+wk),pe=document.getElementById("wp"+wk);
-        if(he)he.textContent=wH.toFixed(1);if(pe)pe.textContent=fm(wP);
-      }
-    }
-  },100);
+  body.innerHTML=h;recalc(uid);
 }
 
-// Add a row to a day — DOM only, no re-render
-function addRow(dayIdx){
-  const uid=cur._vid||cur.id;
-  const d=gd(uid,pidx);
-  if(!d.entries[dayIdx])d.entries[dayIdx]=[{co:"",del:"",hrs:""}];
-  if(d.entries[dayIdx].length>=15)return;
-  // Add to store
-  const ei=d.entries[dayIdx].length;
-  d.entries[dayIdx].push({co:"",del:"",hrs:""});
-  // Find the day block and insert a new row before the add-line button
-  const dayBlock=document.getElementById("day-"+dayIdx);
-  if(!dayBlock)return;
-  const addBtn=dayBlock.querySelector(".add-line-btn");
-  const rt=getRate(uid);
-  const isViewing=!!cur._vid;
-  const cols=isViewing?"1.6fr 2fr 0.65fr 0.55fr 0.65fr 0.65fr":"1.6fr 2fr 0.65fr 0.55fr 0.65fr 0.65fr 24px";
-  const canDel=d.entries[dayIdx].length>1;
-  const newRow=document.createElement("div");
-  newRow.className="entry-row";
-  newRow.id="er-"+dayIdx+"-"+ei;
-  newRow.style.gridTemplateColumns=cols;
-  newRow.innerHTML=`
-    <select class="client-select" onchange="upE(${dayIdx},${ei},'co',this.value);upBillable(${dayIdx},${ei},this)">${buildClientOptions('')}</select>
-    <input type="text" placeholder="Deliverable / Task" oninput="upE(${dayIdx},${ei},'del',this.value)">
-    <input type="number" placeholder="0" min="0" max="24" step="0.5" oninput="upE(${dayIdx},${ei},'hrs',this.value)">
-    <div class="nb-wrap"><input type="checkbox" id="nb-${dayIdx}-${ei}" onchange="upE(${dayIdx},${ei},'billable',this.checked?0:1)"><label for="nb-${dayIdx}-${ei}">NB</label></div>
-    <div class="dpay dim" id="rate-${dayIdx}-${ei}">${rt?fm(rt):"-"}</div>
-    <div class="dpay" id="pay-${dayIdx}-${ei}">-</div>
-    <button class="del-row-btn" onclick="delRow(${dayIdx},${ei})" title="Delete row">&times;</button>
-  `;
-  dayBlock.insertBefore(newRow,addBtn);
-  // Hide add button if at max
-  if(d.entries[dayIdx].length>=15&&addBtn)addBtn.style.display="none";
-  // Show del buttons on all rows now that there are multiple
-  dayBlock.querySelectorAll(".del-row-btn").forEach(b=>b.style.visibility="visible");
-  // Auto-save
-  if(autoSaveTimer)clearTimeout(autoSaveTimer);
-  autoSaveTimer=setTimeout(()=>autoSaveDraft(uid),3000);
-}
-
-// Delete a row — DOM only, no re-render
-function delRow(dayIdx,ei){
-  const uid=cur._vid||cur.id;
-  const d=gd(uid,pidx);
-  if(!d.entries[dayIdx]||d.entries[dayIdx].length<=1)return;
-  // Remove from store
-  d.entries[dayIdx].splice(ei,1);
-  // Remove the row element
-  const rowEl=document.getElementById("er-"+dayIdx+"-"+ei);
-  if(rowEl)rowEl.remove();
-  // Re-index remaining rows in store and DOM
-  const dayBlock=document.getElementById("day-"+dayIdx);
-  if(dayBlock){
-    const rows=dayBlock.querySelectorAll(".entry-row");
-    rows.forEach((row,newEi)=>{
-      row.id="er-"+dayIdx+"-"+newEi;
-      // Update oninput handlers
-      const inputs=row.querySelectorAll("input");
-      if(inputs[0])inputs[0].setAttribute("oninput","upE("+dayIdx+","+newEi+",'co',this.value)");
-      if(inputs[1])inputs[1].setAttribute("oninput","upE("+dayIdx+","+newEi+",'del',this.value)");
-      if(inputs[2])inputs[2].setAttribute("oninput","upE("+dayIdx+","+newEi+",'hrs',this.value)");
-      // Update rate/pay IDs
-      const rEl=row.querySelector("[id^='rate-']");
-      const pEl=row.querySelector("[id^='pay-']");
-      if(rEl)rEl.id="rate-"+dayIdx+"-"+newEi;
-      if(pEl)pEl.id="pay-"+dayIdx+"-"+newEi;
-      // Update del button
-      const delBtn=row.querySelector(".del-row-btn");
-      if(delBtn)delBtn.setAttribute("onclick","delRow("+dayIdx+","+newEi+")");
-    });
-    // Show/hide del buttons and add button
-    const addBtn=dayBlock.querySelector(".add-line-btn");
-    if(addBtn)addBtn.style.display="";
-    if(d.entries[dayIdx].length<=1){
-      dayBlock.querySelectorAll(".del-row-btn").forEach(b=>b.style.visibility="hidden");
-    }
-  }
-  recalcTotals(uid);
-  if(autoSaveTimer)clearTimeout(autoSaveTimer);
-  autoSaveTimer=setTimeout(()=>autoSaveDraft(uid),3000);
-}
-
-function recalcTotals(uid){
-  const d=gd(uid,pidx);
-  // Read rate from cache or DOM
-  const wrap=document.getElementById("emp-info-wrap");
-  // Get rate — check cache first, then EMPS directly
-  const empForRate=EMPS.find(e=>e.id===uid);
-  let rt=0;
-  if(_cachedRate[uid]&&_cachedRate[uid]>0) rt=_cachedRate[uid];
-  else if(empForRate&&empForRate.rate&&parseFloat(empForRate.rate)>0){rt=parseFloat(empForRate.rate);_cachedRate[uid]=rt;}
-  else if(wrap)rt=parseFloat(wrap.dataset.rate)||0;
-  // Update visible rate/pay cells — use dayIdx to match row IDs
-  d.entries.forEach((rows,dayIdx)=>{
-    (rows||[]).forEach((en,ei)=>{
-      const rEl=document.getElementById("rate-"+dayIdx+"-"+ei);
-      const pEl=document.getElementById("pay-"+dayIdx+"-"+ei);
-      if(rEl)rEl.textContent=rt?fm(rt):"-";
-      if(pEl){const h=pfl(en.hrs);pEl.textContent=(h&&rt)?fm(h*rt):"-";}
-    });
+// ── DATA HELPERS ──────────────────────────────────────────────────────────
+function calcBreakdown(d){
+  const result={};
+  BILLING_TYPES.forEach(bt=>{ result[bt.key]={h:0}; });
+  d.entries.forEach(en=>{
+    const bt=en.bt||BT_DEFAULT;
+    if(!result[bt]) result[bt]={h:0};
+    result[bt].h+=pfl(en.hrs);
   });
-  // Week totals
+  return result;
+}
+
+function upRate(v){gd(cur._vid||cur.id,pidx).rate=v;recalc(cur._vid||cur.id);}
+function upE(day,ei,field,val){
+  const d=gd(cur._vid||cur.id,pidx);
+  const en=d.entries.find(e=>e.day===day&&e.ei===ei);
+  if(en)en[field]=val;recalc(cur._vid||cur.id);
+}
+function upBT(day,ei,val){
+  const d=gd(cur._vid||cur.id,pidx);
+  const en=d.entries.find(e=>e.day===day&&e.ei===ei);
+  if(en){en.bt=val;}recalc(cur._vid||cur.id);
+}
+
+function recalc(uid){
+  const d=gd(uid||cur.id,pidx),rt=pfl(d.rate);
   for(let wk=0;wk<2;wk++){
     let wH=0,wP=0;
-    for(let di=0;di<7;di++){
-      const dx=wk*7+di;
-      (d.entries[dx]||[]).forEach(e=>{wH+=pfl(e.hrs);wP+=pfl(e.hrs)*rt;});
-    }
+    d.entries.forEach(e=>{if(e.day>=wk*7&&e.day<=wk*7+6){wH+=pfl(e.hrs);wP+=pfl(e.hrs)*rt;}});
     const he=document.getElementById("wh"+wk),pe=document.getElementById("wp"+wk);
-    if(he)he.textContent=wH.toFixed(1);
-    if(pe)pe.textContent=fm(wP);
+    if(he)he.textContent=wH.toFixed(1);if(pe)pe.textContent=fm(wP);
   }
-  // Period totals
-  let allH=0;
-  d.entries.forEach(rows=>(rows||[]).forEach(e=>allH+=pfl(e.hrs)));
+  const allH=d.entries.reduce((s,e)=>s+pfl(e.hrs),0),allP=allH*rt;
   const ge=document.getElementById("gh"),gpe=document.getElementById("gp");
-  if(ge)ge.textContent=allH.toFixed(1)+" hrs";
-  if(gpe)gpe.textContent=fm(allH*rt);
-}
+  if(ge)ge.textContent=allH.toFixed(1)+" hrs";if(gpe)gpe.textContent=fm(allP);
 
-
-
-async function manualSave(){
-  const uid=cur._vid||cur.id;
-  await autoSaveDraft(uid);
-  // Also recalc display after save
-  recalcTotals(uid);
-  const el=document.getElementById("save-confirm");
-  if(el){el.style.display="inline";setTimeout(()=>el.style.display="none",2500);}
-}
-
-async function autoSaveDraft(uid){
-  const d=gd(uid,pidx);
-  const emp=EMPS.find(e=>e.id===uid)||cur;
-  const rt=(_cachedRate[uid]&&_cachedRate[uid]>0)?_cachedRate[uid]:getRate(uid);
-  let allH=0;
-  const flatEntries=[];
-  d.entries.forEach((rows,dayIdx)=>{
-    (rows||[]).forEach((en,ei)=>{
-      flatEntries.push({day:dayIdx,dayName:DAYS[dayIdx%7],co:en.co||"",del:en.del||"",hrs:en.hrs||"",billable:en.billable!==undefined?en.billable:1,rowIndex:ei});
-      if(en.hrs)allH+=pfl(en.hrs);
-    });
+  // Update billing breakdown cards
+  const breakdown=calcBreakdown(d);
+  BILLING_TYPES.forEach(bt=>{
+    const hEl=document.getElementById("bb-"+bt.key+"-h");
+    const pEl=document.getElementById("bb-"+bt.key+"-p");
+    if(hEl)hEl.textContent=breakdown[bt.key].h.toFixed(1)+" hrs";
+    if(pEl)pEl.textContent=rt?fm(breakdown[bt.key].h*rt):"";
   });
-  const draft={
-    employeeId:uid,
-    employee:emp.name,
-    email:emp.email||"",
-    period:PERIODS[pidx],
-    periodIndex:pidx,
-    totalHours:allH.toFixed(1),
-    totalPay:(allH*rt).toFixed(2),
-    payRate:rt,
-    submitted:false,
-    submittedAt:null,
-    isDraft:true,
-    entries:flatEntries
-  };
-  try{
-    await apiPost("save_timesheet",draft);
-    const badge=document.querySelector(".emp-period");
-    if(badge){
-      const orig=badge.textContent.replace(" · Auto-saved","");
-      badge.textContent=orig+" · Auto-saved";
-      setTimeout(()=>{badge.textContent=orig;},2000);
-    }
-  }catch(e){}
-}
-function upE(dayIdx,ei,field,val){
-  const uid=cur._vid||cur.id;
-  const d=gd(uid,pidx);
-  // Update 2D entries array
-  if(!d.entries[dayIdx])d.entries[dayIdx]=[{co:"",del:"",hrs:""}];
-  if(!d.entries[dayIdx][ei])d.entries[dayIdx][ei]={co:"",del:"",hrs:""};
-  d.entries[dayIdx][ei][field]=val;
-  // Get rate from cache or EMPS directly
-  const empR=EMPS.find(e=>e.id===uid);
-  let rt=0;
-  if(_cachedRate[uid]&&_cachedRate[uid]>0) rt=_cachedRate[uid];
-  else if(empR&&empR.rate&&parseFloat(empR.rate)>0){rt=parseFloat(empR.rate);_cachedRate[uid]=rt;}
-  // Update this row's rate and pay display
-  const rEl=document.getElementById("rate-"+dayIdx+"-"+ei);
-  const pEl=document.getElementById("pay-"+dayIdx+"-"+ei);
-  if(rEl)rEl.textContent=rt?fm(rt):"-";
-  if(pEl){const h=pfl(d.entries[dayIdx][ei].hrs);pEl.textContent=(h&&rt)?fm(h*rt):"-";}
-  // Update week and period totals
-  for(let wk=0;wk<2;wk++){
-    let wH=0,wP=0;
-    for(let di=0;di<7;di++){
-      const dx=wk*7+di;
-      (d.entries[dx]||[]).forEach(e=>{wH+=pfl(e.hrs);wP+=pfl(e.hrs)*rt;});
-    }
-    const he=document.getElementById("wh"+wk),pe=document.getElementById("wp"+wk);
-    if(he)he.textContent=wH.toFixed(1);
-    if(pe)pe.textContent=fm(wP);
-  }
-  let allH=0;
-  d.entries.forEach(rows=>(rows||[]).forEach(e=>allH+=pfl(e.hrs)));
-  const ge=document.getElementById("gh"),gpe=document.getElementById("gp");
-  if(ge)ge.textContent=allH.toFixed(1)+" hrs";
-  if(gpe)gpe.textContent=fm(allH*rt);
-  // Auto-save after 3s idle
-  if(autoSaveTimer)clearTimeout(autoSaveTimer);
-  autoSaveTimer=setTimeout(()=>autoSaveDraft(uid),3000);
-}
 
-async function doSubmit(){
-  const uid=cur.id;
-  const d=gd(uid,pidx);
-  const emp=EMPS.find(e=>e.id===uid)||cur;
-  const rt=getRate(uid);
-  d.submitted=true;
-  // If was rejected/returned, resubmit goes back to 'submitted'
-  d.serverStatus='submitted';
-  d.serverComment='';
-
-  // Flatten entries for payload and storage
-  let allH=0;
-  const flatEntries=[];
-  d.entries.forEach((rows,dayIdx)=>{
-    (rows||[]).forEach(en=>{
-      flatEntries.push({day:dayIdx,dayName:DAYS[dayIdx%7],co:en.co||"",del:en.del||"",hrs:en.hrs||"",billable:en.billable!==undefined?en.billable:1});
-      if(en.hrs)allH+=pfl(en.hrs);
-    });
+  // Update pay cells
+  d.entries.forEach((en,i)=>{
+    const rows=document.querySelectorAll(".entry-row");if(!rows[i])return;
+    const cells=rows[i].querySelectorAll(".dpay");const h=pfl(en.hrs);
+    if(cells[0])cells[0].textContent=rt?fm(rt):"-";
+    if(cells[1])cells[1].textContent=(h&&rt)?fm(h*rt):"-";
   });
-  const allP=(allH*rt).toFixed(2);
-  const submittedAt=new Date().toISOString();
+}
 
-  // Build full record for server storage
-  const record={
-    employeeId:uid,           // api.php strips 'e' prefix automatically
-    employee:emp.name,
-    email:emp.email||"",
+// ── SUBMIT ────────────────────────────────────────────────────────────────
+function doSubmit(){
+  const d=gd(cur.id,pidx);d.submitted=true;
+  const allH=d.entries.reduce((s,e)=>s+pfl(e.hrs),0);
+  const breakdown=calcBreakdown(d);
+  // totalPay intentionally excluded from GHL payload for confidentiality
+  const payload={
+    employee:cur.name,
     period:PERIODS[pidx],
-    periodIndex:pidx,
     totalHours:allH.toFixed(1),
-    totalPay:allP,
-    payRate:rt,
-    submittedAt,
-    submitted:true,           // marks as submitted not draft
-    isDraft:false,
-    entries:flatEntries
+    billableHours:breakdown.billable.h.toFixed(1),
+    nonBillableHours:breakdown.nonbillable.h.toFixed(1),
+    marketingHours:breakdown.marketing.h.toFixed(1),
+    submittedAt:new Date().toISOString(),
+    entries:d.entries.filter(e=>e.hrs||e.co).map(e=>({...e,billingType:e.bt||BT_DEFAULT}))
   };
-
-  // Save to server and wait for response
-  let saveOk=false;
-  try{
-    const saveRes=await apiPost("save_timesheet",record);
-    saveOk=saveRes&&saveRes.success;
-    if(!saveOk)console.warn("Save failed:",saveRes);
-  }catch(e){console.warn("Could not save timesheet record:",e);}
-
-  // Send to Genhead webhook — includes email for Find Contact lookup
   if(GHL_WEBHOOK){
-    const payload={
-      timesheet_status:'Submitted',
-      employee:emp.name,
-      email:emp.email||"",
-      timesheet_period:PERIODS[pidx],
-      timesheet_total_hours:allH.toFixed(1),
-      timesheet_submitted_at:submittedAt,
-      entries:flatEntries.filter(e=>e.hrs||e.co)
-    };
-    fetch(API+"?action=proxy_webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:GHL_WEBHOOK,payload})})
-      .then(r=>r.json())
-      .then(res=>showToast(res.success?"Submitted! Genhead notified.":"Saved — check Genhead webhook."))
-      .catch(()=>showToast("Submitted — check Genhead webhook."));
+    fetch(GHL_WEBHOOK,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+      .then(()=>showToast("Submitted! GHL workflow triggered. Manager will be notified."))
+      .catch(()=>showToast("Submitted locally. Check GHL webhook URL in Settings."));
   } else {
-    showToast(saveOk?"Submitted successfully!":"Submission saved locally.");
+    showToast("Submitted! Add your GHL webhook URL in the GHL Setup tab to auto-notify manager.");
   }
   renderApp();
 }
 
+// ── EXPORT ────────────────────────────────────────────────────────────────
 function doExport(){
-  const uid=cur._vid||cur.id;
-  const d=gd(uid,pidx);
-  const emp=EMPS.find(e=>e.id===uid)||cur;
-  const rt=getRate(uid);
-  let csv="Employee,Period,Day,Date,Company,Deliverable,Hours,PayRate,DailyPay\n";
-  d.entries.forEach((rows,dayIdx)=>{
-    (rows||[]).forEach(en=>{
-      if(!en.hrs&&!en.co)return;
-      const dt=pdate(pidx,dayIdx),h=pfl(en.hrs);
-      csv+=`${emp.name},"${PERIODS[pidx]}",${DAYS[dayIdx%7]},${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})},"${en.co||''}","${en.del||''}",${h},${rt},${fm(h*rt)}\n`;
-    });
+  const d=gd(cur.id,pidx),rt=pfl(d.rate);
+  let csv="Employee,Period,Day,Date,Company,Deliverable,BillingType,Hours,PayRate,DailyPay\n";
+  d.entries.forEach(en=>{
+    if(!en.hrs&&!en.co)return;
+    const dt=pdate(pidx,en.day),h=pfl(en.hrs);
+    csv+=`${cur.name},"${PERIODS[pidx]}",${DAYS[en.day]},${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})},"${en.co}","${en.del}",${btLabel(en.bt||BT_DEFAULT)},${h},${rt},${fm(h*rt)}\n`;
   });
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-  a.download=`${emp.name.replace(/ /g,"_")}_${PERIODS[pidx].replace(/ /g,"_")}.csv`;a.click();
-  showToast("CSV exported.");
+  a.download=`${cur.name.replace(/ /g,"_")}_${PERIODS[pidx].replace(/ /g,"_")}.csv`;a.click();
+  showToast("CSV exported successfully.");
 }
 
-// ── Dashboard ────────────────────────────────────────
-async function renderDash(){
+// ── DASHBOARD ─────────────────────────────────────────────────────────────
+function renderDash(){
   const body=document.getElementById("app-body");
-  // Filter employees based on role:
-  // - HR sees everyone
-  // - Manager sees only their direct reports (manager_id matches their db_id)
-  // - Generic manager login (no db_id) sees all employees for backward compatibility
-  let emps;
-  if(cur.role==="hr"){
-    emps=EMPS.filter(e=>e.active&&e.role==="employee");
-  } else if(cur.role==="manager"&&cur.db_id){
-    emps=EMPS.filter(e=>e.active&&e.role==="employee"&&(e.manager_id===cur.db_id||String(e.manager_id)===String(cur.db_id)));
-  } else {
-    emps=EMPS.filter(e=>e.active&&e.role==="employee");
-  }
+  const emps=EMPS.filter(e=>e.role==="employee");
   let tH=0,tP=0,sub=0;
-  // Load all employee drafts so serverStatus and serverId are populated
-  await Promise.all(emps.map(emp=>loadDraftFromServer(emp.id,pidx)));
+  let totals={billable:{h:0},nonbillable:{h:0},marketing:{h:0}};
+
   const rows=emps.map(emp=>{
-    const d=gd(emp.id,pidx);
-    let h=0;d.entries.forEach(rows=>(rows||[]).forEach(e=>h+=pfl(e.hrs)));
-    const rt=emp.rate&&parseFloat(emp.rate)>0?parseFloat(emp.rate):0;
-    const pay=h*rt;
-    tH+=h;tP+=pay;
-    const empStatus=d.serverStatus||'draft';
-    if(empStatus==='submitted'||empStatus==='under_review')sub++;
-    const statusColors={draft:'b-pend',submitted:'b-sub',under_review:'b-prog',approved:'b-sub',rejected:'b-pend',returned:'b-pend'};
-    const statusLabels={draft:'Pending',submitted:'Submitted',under_review:'Under Review',approved:'Approved ✓',rejected:'Rejected',returned:'Returned'};
-    const st=`<span class="badge ${statusColors[empStatus]||'b-pend'}">${statusLabels[empStatus]||empStatus}</span>`;
-    const tsId=d.serverId||null;
-    const approvalBtns=tsId&&(empStatus==='submitted'||empStatus==='under_review')?`
-      <button class="btn-approve" onclick="event.stopPropagation();showModal('approve',${tsId})">&#10003;</button>
-      <button class="btn-reject" onclick="event.stopPropagation();showModal('reject',${tsId})">&#10007;</button>`:'';
-    // HR can override any timesheet regardless of status
-    const overrideBtn=cur.role==='hr'&&tsId?`<button class="btn-override" title="HR Override — unlock timesheet" onclick="event.stopPropagation();showModal('override',${tsId})">&#9998; Unlock</button>`:'';
+    const d=gd(emp.id,pidx),h=d.entries.reduce((s,e)=>s+pfl(e.hrs),0),rt=pfl(d.rate),pay=h*rt;
+    tH+=h;tP+=pay;if(d.submitted)sub++;
+    const bd=calcBreakdown(d);
+    BILLING_TYPES.forEach(bt=>{ totals[bt.key].h+=bd[bt.key].h; });
+    const st=d.submitted?'<span class="badge b-sub">Submitted</span>':h>0?'<span class="badge b-prog">In Progress</span>':'<span class="badge b-pend">Pending</span>';
     return `<tr>
       <td><strong>${emp.name}</strong></td>
       <td>${h.toFixed(1)}</td>
+      <td style="color:#166534;font-weight:500">${bd.billable.h.toFixed(1)}</td>
+      <td style="color:#854d0e;font-weight:500">${bd.nonbillable.h.toFixed(1)}</td>
+      <td style="color:#3730a3;font-weight:500">${bd.marketing.h.toFixed(1)}</td>
       <td>${rt?fm(rt):"-"}</td>
       <td style="color:var(--teal);font-weight:600">${pay?fm(pay):"-"}</td>
       <td>${st}</td>
-      <td>
-        <div style="display:flex;gap:.3rem;align-items:center">
-          ${approvalBtns}${overrideBtn}
-          <button class="btn btn-outline" style="padding:.25rem .65rem;font-size:.72rem" onclick="viewEmp('${emp.id}')">View</button>
-        </div>
-      </td>
+      <td><button class="btn btn-outline" style="padding:.25rem .65rem;font-size:.72rem" onclick="viewEmp('${emp.id}')">View</button></td>
     </tr>`;
-  }).join("")||'<tr><td colspan="6" style="text-align:center;color:var(--mid);padding:1rem">No active employees yet.</td></tr>';
-
-  const managerTabs=`<button class="tab active" id="tab-dash" onclick="switchTab('dash')">Dashboard</button>
-       <button class="tab" id="tab-records" onclick="switchTab('records');loadRecords()">Records</button>
-       <button class="tab" id="tab-team" onclick="switchTab('team')">Team</button>
-       <button class="tab" id="tab-clients" onclick="switchTab('clients');loadClientsTab()">Clients</button>
-       <button class="tab" id="tab-ghl" onclick="switchTab('ghl')">GHL Setup</button>
-       <button class="tab" id="tab-settings" onclick="switchTab('settings')">Settings</button>`;
-  const hrTabs=`<button class="tab active" id="tab-dash" onclick="switchTab('dash')">Dashboard</button>
-       <button class="tab" id="tab-records" onclick="switchTab('records');loadRecords()">Records</button>
-       <button class="tab" id="tab-team" onclick="switchTab('team')">Team</button>
-       <button class="tab" id="tab-clients" onclick="switchTab('clients');loadClientsTab()">Clients</button>
-       <button class="tab" id="tab-hr-mgmt" onclick="switchTab('hr-mgmt');loadHRMgmt()">HR Management</button>
-       <button class="tab" id="tab-audit" onclick="switchTab('audit');loadAuditLog()">Audit Log</button>
-       <button class="tab" id="tab-reports" onclick="switchTab('reports');loadReports()">Reports</button>
-       <button class="tab" id="tab-ghl" onclick="switchTab('ghl')">GHL Setup</button>
-       <button class="tab" id="tab-settings" onclick="switchTab('settings')">Settings</button>`;
-  const tabs=cur.role==="hr"?hrTabs:cur.role==="manager"?managerTabs:`<button class="tab active" id="tab-dash" onclick="switchTab('dash')">Dashboard</button>
-       <button class="tab" id="tab-records" onclick="switchTab('records');loadRecords()">Records</button>`;
+  }).join("");
 
   body.innerHTML=`
-  <div class="tab-bar">${tabs}</div>
+  <div class="tab-bar">
+    <button class="tab active" id="tab-dash" onclick="switchTab('dash')">Dashboard</button>
+    <button class="tab" id="tab-ghl" onclick="switchTab('ghl')">GHL Setup</button>
+    <button class="tab" id="tab-instructions" onclick="switchTab('instructions')">Setup Guide</button>
+  </div>
 
   <div id="pane-dash">
     <div class="dash-top">
@@ -1321,329 +526,82 @@ async function renderDash(){
     <div class="metrics">
       <div class="mc accent"><div class="ml">Total Hours</div><div class="mv">${tH.toFixed(1)}</div><div class="ms">This period</div></div>
       <div class="mc accent"><div class="ml">Total Payroll</div><div class="mv">${fm(tP)}</div><div class="ms">This period</div></div>
-      <div class="mc"><div class="ml">Awaiting Approval</div><div class="mv">${sub}/${emps.length}</div><div class="ms">Employees</div></div>
+      <div class="mc"><div class="ml">Submitted</div><div class="mv">${sub}/${emps.length}</div><div class="ms">Employees</div></div>
       <div class="mc"><div class="ml">Avg Hours</div><div class="mv">${emps.length?(tH/emps.length).toFixed(1):"0.0"}</div><div class="ms">Per employee</div></div>
     </div>
-    <div class="master-tbl"><table>
-      <thead><tr><th>Employee</th><th>Hours</th><th>Pay Rate</th><th>Total Pay</th><th>Status</th><th>Action</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>
-  </div>
 
-  ${(cur.role==="manager"||cur.role==="hr")?`
-  <div id="pane-team" style="display:none">
-    <div class="team-panel">
-      <div class="team-header"><h3>Team Members</h3><span style="font-size:.7rem;color:rgba(255,255,255,.5)">${EMPS.length} total</span></div>
-      <div class="team-body">
-        <div class="add-emp-form">
-          <div><label>Full Name</label><input type="text" id="new-emp-name" placeholder="Jane Smith"></div>
-          <div><label>Starting PIN (optional)</label><input type="text" id="new-emp-pin" placeholder="4 digits" maxlength="4"></div>
-          <button class="btn btn-primary" style="margin-top:1.1rem" onclick="addEmployee()">Add Employee</button>
-        </div>
-        <div id="emp-list">${renderEmpList()}</div>
-      </div>
+    <div class="billing-tbl">
+      <table>
+        <thead><tr>
+          <th>Employee</th><th>Total Hrs</th>
+          <th style="color:#86efac">Billable</th>
+          <th style="color:#fde047">Non-Billable</th>
+          <th style="color:#a5b4fc">Marketing</th>
+          <th>Pay Rate</th><th>Total Pay</th><th>Status</th><th>Action</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td>TOTAL</td>
+          <td>${tH.toFixed(1)}</td>
+          <td style="color:#166534">${totals.billable.h.toFixed(1)}</td>
+          <td style="color:#854d0e">${totals.nonbillable.h.toFixed(1)}</td>
+          <td style="color:#3730a3">${totals.marketing.h.toFixed(1)}</td>
+          <td>—</td>
+          <td style="color:var(--teal)">${fm(tP)}</td>
+          <td colspan="2"></td>
+        </tr></tfoot>
+      </table>
     </div>
   </div>
 
   <div id="pane-ghl" style="display:none">
     <div class="ghl-panel">
-      <div class="ghl-header"><h3>GHL Webhook Configuration</h3><span class="ghl-badge">GHL Workflow</span></div>
+      <div class="ghl-header"><h3>Go High Level Webhook Configuration</h3><span class="ghl-badge">GHL Workflow</span></div>
       <div class="ghl-body">
-        <div class="ghl-field"><label>Submission Webhook URL — fires when employee submits</label>
-        <div style="display:flex;gap:.65rem">
-          <input class="ghl-input" id="wh-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${GHL_WEBHOOK||'https://services.leadconnectorhq.com/hooks/6BHLldSrdn5rbbMGKr1n/webhook-trigger/7a7b2a84-741e-4bb4-9f2b-a31139cf1d35'}" style="flex:1">
-          <button class="btn btn-primary" onclick="saveWH(document.getElementById('wh-url').value)">Save</button>
-        </div></div>
-        <div id="wh-status" class="ghl-status ghl-warn"><span class="dot dot-y"></span>${GHL_WEBHOOK?"Submission webhook saved":"Enter your submission webhook URL above"}</div>
-        <div style="display:flex;gap:.65rem;margin-top:.5rem">
+        <div class="ghl-field"><label>GHL Webhook URL</label><input class="ghl-input" id="wh-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${GHL_WEBHOOK}" onchange="saveWH(this.value)"></div>
+        <div id="wh-status" class="ghl-status ghl-warn"><span class="dot dot-y"></span>${GHL_WEBHOOK?"Webhook saved — not yet tested":"Enter your GHL webhook URL above"}</div>
+        <div style="display:flex;gap:.65rem;margin-top:.85rem">
           <button class="btn btn-primary" onclick="testWH()">Send Test Payload</button>
-        </div>
-        <div class="ghl-field" style="margin-top:1rem"><label>Status Update Webhook URL — fires on Approve / Reject / Return / Flag</label>
-        <div style="display:flex;gap:.65rem">
-          <input class="ghl-input" id="wh-status-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${GHL_STATUS_WEBHOOK||'https://services.leadconnectorhq.com/hooks/6BHLldSrdn5rbbMGKr1n/webhook-trigger/cbf3628e-c2cd-4193-89d3-82d5d6a8a1f3'}" style="flex:1">
-          <button class="btn btn-primary" onclick="saveStatusWH()">Save</button>
-        </div></div>
-        <div id="wh-status2" class="ghl-status ghl-warn"><span class="dot dot-y"></span>${GHL_STATUS_WEBHOOK?"Status webhook saved":"Enter your status webhook URL above"}</div>
-        <div style="display:flex;gap:.65rem;margin-top:.5rem">
-          <button class="btn btn-primary" onclick="testStatusWH()">Send Test Payload</button>
+          <button class="btn btn-outline" onclick="switchTab('instructions')">View Setup Guide</button>
         </div>
       </div>
     </div>
     <div class="ghl-panel">
-      <div class="ghl-header"><h3>GHL Auto-Add Employee Endpoint</h3><span class="ghl-badge">Phase 2</span></div>
+      <div class="ghl-header"><h3>Payload sent to GHL on each submission</h3></div>
       <div class="ghl-body">
-        <p style="font-size:.78rem;color:var(--mid);margin-bottom:.65rem">Use this URL in a GHL workflow to automatically add an employee to the portal when triggered from a contact record.</p>
-        <div class="code-block">POST https://timesheet.genhead.com/api.php?action=ghl_add&amp;secret=YOUR_SECRET<br><br>{ "name": "{{contact.full_name}}", "email": "{{contact.email}}" }</div>
-        <div class="ghl-field" style="margin-top:.75rem"><label>Webhook Secret (optional but recommended)</label>
-        <div style="display:flex;gap:.65rem">
-          <input class="ghl-input" id="wh-secret" placeholder="e.g. genhead2026ghl" style="flex:1">
-          <button class="btn btn-primary" onclick="saveSecret(document.getElementById('wh-secret').value)">Save</button>
-        </div></div>
-        <div id="secret-status" class="ghl-status ghl-warn" style="margin-top:.5rem"><span class="dot dot-y"></span>Set a secret key above, then add it to the GHL workflow URL parameter.</div>
+        <div class="code-block">{<br>&nbsp;&nbsp;"employee": "Raksha Kadekar",<br>&nbsp;&nbsp;"period": "Sep 28 - Oct 11",<br>&nbsp;&nbsp;"totalHours": "38.5",<br>&nbsp;&nbsp;"billableHours": "28.0",<br>&nbsp;&nbsp;"nonBillableHours": "6.5",<br>&nbsp;&nbsp;"marketingHours": "4.0",<br>&nbsp;&nbsp;"submittedAt": "2026-10-02T09:00:00Z",<br>&nbsp;&nbsp;"entries": [...]<br>}</div>
+        <div class="ghl-status ghl-ok" style="margin-top:.65rem"><span class="dot dot-g"></span>totalPay and payRate are intentionally excluded for confidentiality. Billing type breakdown is included.</div>
       </div>
     </div>
   </div>
 
-  <div id="pane-records" style="display:none">
-    <div class="dash-top"><div><h2>Submitted Timesheets</h2><p>Permanent record of all submissions &nbsp;<span class="conf">Confidential</span></p></div></div>
-    <div id="records-content"><p style="font-size:.82rem;color:var(--mid);padding:.5rem 0">Loading records...</p></div>
-  </div>
-
-  <div id="pane-hr-mgmt" style="display:none">
-    <div class="team-panel">
-      <div class="team-header"><h3>HR Management</h3></div>
-      <div class="team-body">
-
-        <!-- Add Manager Section -->
-        <div style="margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">
-          <div style="font-size:.8rem;font-weight:600;color:var(--navy);margin-bottom:.65rem">Add New Manager</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:.5rem;align-items:end">
-            <div><label style="font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.2rem">Full Name</label>
-            <input type="text" id="new-mgr-name" class="ghl-input" placeholder="Manager name"></div>
-            <div><label style="font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.2rem">Email</label>
-            <input type="email" id="new-mgr-email" class="ghl-input" placeholder="email@genhead.com"></div>
-            <div><label style="font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.2rem">Password</label>
-            <input type="password" id="new-mgr-password" class="ghl-input" placeholder="Set password"></div>
-            <button class="btn btn-primary" onclick="addManager()">Add Manager</button>
-          </div>
-        </div>
-
-        <!-- Assign Employees to Managers -->
-        <div style="font-size:.8rem;font-weight:600;color:var(--navy);margin-bottom:.65rem">Assign Employees to Managers</div>
-        <div id="hr-assign-list">Loading...</div>
-
+  <div id="pane-instructions" style="display:none">
+    <div class="ghl-panel">
+      <div class="ghl-header"><h3>Step-by-step GHL integration guide</h3><span class="ghl-badge">5 steps</span></div>
+      <div class="setup-steps">
+        <div class="step"><div class="step-num">1</div><div><h4>Create a Webhook Trigger in GHL</h4><p>In your GHL sub-account go to <strong>Automation &rarr; Workflows &rarr; New Workflow</strong>. Name it "Timesheet Submission". Choose <strong>Webhook</strong> as the trigger type. GHL will generate a unique webhook URL — copy it.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div><h4>Paste the URL into this app</h4><p>Go to the <strong>GHL Setup tab</strong> above, paste the webhook URL in the field. Click <strong>"Send Test Payload"</strong> to fire a test to GHL. In GHL's workflow, check the execution history — you should see the test payload arrive with all the fields.</p></div></div>
+        <div class="step"><div class="step-num">3</div><div><h4>Create Custom Fields in GHL</h4><p>In your sub-account go to <strong>Settings &rarr; Custom Fields</strong>. Create these fields for Contacts:<br><br>
+        &bull; <code>timesheet_period</code> (Text)<br>
+        &bull; <code>timesheet_total_hours</code> (Number)<br>
+        &bull; <code>timesheet_billable_hours</code> (Number)<br>
+        &bull; <code>timesheet_nonbillable_hours</code> (Number)<br>
+        &bull; <code>timesheet_marketing_hours</code> (Number)<br>
+        &bull; <code>timesheet_submitted_at</code> (Date)<br>
+        &bull; <code>timesheet_status</code> (Text)</p></div></div>
+        <div class="step"><div class="step-num">4</div><div><h4>Map fields &amp; add Email Notification in the Workflow</h4><p>Back in your workflow, after the Webhook trigger add two actions:</p>
+        <p style="margin-top:.4rem"><strong>Action 1 — Update Contact:</strong> Map <code>{{trigger.period}}</code>, <code>{{trigger.totalHours}}</code>, <code>{{trigger.billableHours}}</code>, <code>{{trigger.nonBillableHours}}</code>, <code>{{trigger.marketingHours}}</code>, <code>{{trigger.submittedAt}}</code> to their respective custom fields.</p>
+        <p style="margin-top:.4rem"><strong>Action 2 — Send Email:</strong> Set To: manager's email. Use this subject:</p>
+        <div class="code-block">Timesheet Submitted: {{trigger.employee}} &mdash; {{trigger.period}}</div></div></div>
+        <div class="step"><div class="step-num">5</div><div><h4>Host the app on your subdomain</h4><p>Upload this HTML file to <code>timesheet.genhead.com</code>. Once uploaded, employees log in with their PIN and the timesheet is live.</p></div></div>
       </div>
     </div>
-  </div>
-
-  <div id="pane-clients" style="display:none">
-    <div class="team-panel">
-      <div class="team-header">
-        <h3>Client List</h3>
-        <button class="btn btn-primary" style="font-size:.75rem;padding:.3rem .8rem" onclick="syncClients()">&#8635; Sync from Genhead</button>
-      </div>
-      <div class="team-body">
-        <div class="ghl-field" style="margin-bottom:.75rem">
-          <label style="font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.22rem">GHL API Key</label>
-          <div style="display:flex;gap:.5rem">
-            <input class="ghl-input" id="ghl-api-key" placeholder="eyJ..." style="flex:1">
-            <button class="btn btn-primary" onclick="saveApiSettings()">Save</button>
-          </div>
-        </div>
-        <div class="ghl-field" style="margin-bottom:.75rem">
-          <label style="font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.22rem">Location ID</label>
-          <input class="ghl-input" id="ghl-location-id" placeholder="Your Genhead Location ID">
-        </div>
-        <div id="sync-status" class="ghl-status ghl-warn" style="margin-bottom:.75rem;display:none"><span class="dot dot-y"></span><span id="sync-msg">Syncing...</span></div>
-        <div id="clients-list"><p style="font-size:.82rem;color:var(--mid)">Click "Sync from Genhead" to load your client list, or add clients manually below.</p></div>
-        <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
-          <div style="font-size:.75rem;font-weight:600;color:var(--navy);margin-bottom:.5rem">Add Client Manually</div>
-          <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:.5rem;align-items:end">
-            <div><label style="font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.2rem">Client Name</label>
-            <input type="text" id="new-client-name" class="ghl-input" placeholder="Client name"></div>
-            <div><label style="font-size:.65rem;text-transform:uppercase;letter-spacing:.4px;color:var(--mid);display:block;margin-bottom:.2rem">Type</label>
-            <select id="new-client-type" class="ghl-input">
-              <option value="ghl_instance">GHL Client</option>
-              <option value="marketing">Marketing Only</option>
-              <option value="internal">Internal</option>
-            </select></div>
-            <button class="btn btn-primary" onclick="addClientManually()">Add</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- AUDIT LOG PANE -->
-  <div id="pane-audit" style="display:none">
-    <div class="team-panel">
-      <div class="team-header">
-        <h3>Audit Log</h3>
-        <div style="display:flex;gap:.5rem;align-items:center">
-          <select id="audit-period-sel" class="ghl-input" style="font-size:.75rem;padding:.28rem .45rem" onchange="loadAuditLog()">
-          </select>
-          <button class="btn btn-outline" style="font-size:.72rem;padding:.25rem .65rem" onclick="exportAuditLog()">&#11015; Export CSV</button>
-        </div>
-      </div>
-      <div class="team-body" style="padding:0">
-        <div id="audit-log-list"><p style="font-size:.82rem;color:var(--mid);padding:1rem">Loading...</p></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- REPORTS PANE -->
-  <div id="pane-reports" style="display:none">
-    <div class="team-panel">
-      <div class="team-header">
-        <h3>Reports</h3>
-        <div style="display:flex;gap:.5rem;align-items:center">
-          <select id="report-period-sel" class="ghl-input" style="font-size:.75rem;padding:.28rem .45rem" onchange="loadReports()">
-          </select>
-          <button class="btn btn-primary" style="font-size:.72rem;padding:.25rem .65rem" onclick="exportPayrollCSV()">&#11015; Payroll CSV</button>
-          <button class="btn btn-outline" style="font-size:.72rem;padding:.25rem .65rem" onclick="exportClientCSV()">&#11015; Client Hours CSV</button>
-        </div>
-      </div>
-      <div class="team-body">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.25rem" id="report-summary"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">
-          <div class="team-panel" style="padding:.75rem">
-            <div style="font-size:.78rem;font-weight:600;color:var(--navy);margin-bottom:.65rem">Hours by Employee</div>
-            <canvas id="chart-emp" height="200"></canvas>
-          </div>
-          <div class="team-panel" style="padding:.75rem">
-            <div style="font-size:.78rem;font-weight:600;color:var(--navy);margin-bottom:.65rem">Billable Hours by Client</div>
-            <canvas id="chart-client" height="200"></canvas>
-          </div>
-        </div>
-        <div style="font-size:.78rem;font-weight:600;color:var(--navy);margin-bottom:.5rem">Payroll Summary</div>
-        <div style="overflow-x:auto" id="report-table"></div>
-        <div style="font-size:.78rem;font-weight:600;color:var(--navy);margin:.75rem 0 .5rem">Billable Hours by Client</div>
-        <div style="overflow-x:auto" id="client-table"></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="pane-settings" style="display:none">
-    <div class="settings-grid">
-      <div class="settings-card">
-        <div class="settings-card-hdr">Manager Password</div>
-        <div class="settings-card-body">
-          <div class="settings-field"><label>New Password</label><input type="password" id="mgr-pw1" placeholder="New password"></div>
-          <div class="settings-field"><label>Confirm Password</label><input type="password" id="mgr-pw2" placeholder="Confirm password"></div>
-          <button class="btn btn-primary" onclick="updatePassword('manager')">Update Manager Password</button>
-        </div>
-      </div>
-      <div class="settings-card">
-        <div class="settings-card-hdr">HR Password</div>
-        <div class="settings-card-body">
-          <div class="settings-field"><label>New Password</label><input type="password" id="hr-pw1" placeholder="New password"></div>
-          <div class="settings-field"><label>Confirm Password</label><input type="password" id="hr-pw2" placeholder="Confirm password"></div>
-          <button class="btn btn-primary" onclick="updatePassword('hr')">Update HR Password</button>
-        </div>
-      </div>
-    </div>
-  </div>`:""}`;
-}
-
-function renderEmpList(){
-  if(EMPS.length===0) return '<p style="font-size:.8rem;color:var(--mid);text-align:center;padding:.75rem">No employees added yet.</p>';
-  return EMPS.map(emp=>`
-    <div class="emp-list-item${emp.active?"":" inactive"}" id="eli-${emp.id}" style="grid-template-columns:1fr auto auto auto auto">
-      <div>
-        <div class="emp-list-name">${emp.name}</div>
-        <div class="emp-list-pin">${emp.pin_set?"PIN set":"No PIN set yet"} &middot; ${emp.email||"no email"}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:.4rem">
-        <label style="font-size:.65rem;color:var(--mid);text-transform:uppercase;letter-spacing:.4px">Rate&nbsp;$/hr</label>
-        <input type="number" id="rate-input-${emp.id}" value="${emp.rate||''}" placeholder="0.00" min="0" step="0.01" style="width:80px;padding:.28rem .45rem;border:1px solid var(--border);border-radius:5px;font-size:.8rem;font-family:'DM Sans',sans-serif" title="Pay rate for ${emp.name}">
-        <button class="btn btn-primary" style="padding:.25rem .65rem;font-size:.72rem" onclick="saveEmpRate('${emp.id}')">Save</button>
-        <span id="rate-saved-${emp.id}" style="font-size:.7rem;color:var(--teal);display:none">&#10003; Saved</span>
-      </div>
-      <button class="toggle-active" onclick="toggleActive('${emp.id}',${!emp.active})">${emp.active?"Deactivate":"Activate"}</button>
-      <button class="btn btn-outline" style="padding:.25rem .65rem;font-size:.72rem" onclick="resetPin('${emp.id}')">Reset PIN</button>
-      <button class="btn btn-danger" style="padding:.25rem .65rem;font-size:.72rem" onclick="removeEmployee('${emp.id}')">Remove</button>
-    </div>`).join("");
-}
-
-async function saveEmpRate(id){
-  const emp=EMPS.find(e=>e.id===id);
-  if(!emp)return;
-  const input=document.getElementById("rate-input-"+id);
-  if(!input)return;
-  const val=input.value.trim();
-  if(!val||isNaN(parseFloat(val))){showToast("Please enter a valid rate.");return;}
-  emp.rate=val;
-  // Save to server — permanent record
-  const res=await apiPost("update_employee",{id,rate:val});
-  if(res&&res.success){
-    // Show inline confirmation
-    const savedEl=document.getElementById("rate-saved-"+id);
-    if(savedEl){savedEl.style.display="inline";setTimeout(()=>savedEl.style.display="none",3000);}
-    // Update cache so timesheet picks it up immediately
-    setRateCache(id,val);
-    showToast("Pay rate saved for "+emp.name);
-  } else {
-    showToast("Error saving rate — try again.");
-  }
-}
-
-async function addEmployee(){
-  const name=document.getElementById("new-emp-name").value.trim();
-  const pin=document.getElementById("new-emp-pin").value.trim();
-  if(!name){showToast("Please enter a name.");return;}
-  if(pin&&(pin.length!==4||!/^\d+$/.test(pin))){showToast("PIN must be exactly 4 digits.");return;}
-  const res=await apiPost("add_employee",{name,pin:pin||null});
-  if(res.success){
-    EMPS.push(res.employee);
-    document.getElementById("new-emp-name").value="";
-    document.getElementById("new-emp-pin").value="";
-    document.getElementById("emp-list").innerHTML=renderEmpList();
-    showToast(name+" added to team!");
-  } else {
-    showToast("Error: "+res.error);
-  }
-}
-
-async function toggleActive(id,active){
-  const res=await apiPost("update_employee",{id,active});
-  if(res.success){
-    const emp=EMPS.find(e=>e.id===id);
-    if(emp)emp.active=active;
-    document.getElementById("emp-list").innerHTML=renderEmpList();
-    showToast("Employee "+(active?"activated":"deactivated")+".");
-  }
-}
-
-async function resetPin(id){
-  if(!confirm("Reset this employee's PIN? They will be asked to set a new one on next login."))return;
-  const res=await apiPost("update_employee",{id,reset_pin:true});
-  if(res.success){
-    const emp=EMPS.find(e=>e.id===id);
-    if(emp){emp.pin=null;emp.pin_set=false;}
-    document.getElementById("emp-list").innerHTML=renderEmpList();
-    showToast("PIN reset. Employee will set a new one on next login.");
-  }
-}
-
-async function removeEmployee(id){
-  const emp=EMPS.find(e=>e.id===id);
-  if(!confirm("Remove "+emp.name+" from the team? This cannot be undone."))return;
-  const res=await apiPost("remove_employee",{id});
-  if(res.success){
-    EMPS=EMPS.filter(e=>e.id!==id);
-    document.getElementById("emp-list").innerHTML=renderEmpList();
-    showToast(emp.name+" removed.");
-  }
-}
-
-async function updatePassword(role){
-  const p1=document.getElementById(role+"-pw1").value;
-  const p2=document.getElementById(role+"-pw2").value;
-  if(!p1){showToast("Enter a new password.");return;}
-  if(p1!==p2){showToast("Passwords don't match.");return;}
-  const res=await apiPost("update_password",{role,password:p1});
-  if(res.success){
-    SETTINGS[role+"_password"]=p1;
-    document.getElementById(role+"-pw1").value="";
-    document.getElementById(role+"-pw2").value="";
-    showToast(role.charAt(0).toUpperCase()+role.slice(1)+" password updated!");
-  }
-}
-
-async function saveSecret(val){
-  if(!val){showToast("Enter a secret key first.");return;}
-  const res=await apiPost("update_secret",{secret:val});
-  if(res.success){
-    showToast("Webhook secret saved! Update your GHL workflow URL with: &secret="+val);
-    const st=document.getElementById("secret-status");
-    if(st){st.className="ghl-status ghl-ok";st.innerHTML='<span class="dot dot-g"></span>Secret saved — make sure your GHL workflow URL includes &secret='+val;}
-  } else {
-    showToast("Error saving secret — try again.");
-  }
+    <div style="margin-bottom:1.5rem"><button class="btn btn-outline" onclick="switchTab('ghl')">&#8592; Back to Config</button></div>
+  </div>`;
 }
 
 function switchTab(tab){
-  ["dash","records","team","clients","hr-mgmt","audit","reports","ghl","settings"].forEach(t=>{
+  ["dash","ghl","instructions"].forEach(t=>{
     const pane=document.getElementById("pane-"+t);
     const btn=document.getElementById("tab-"+t);
     if(pane)pane.style.display=t===tab?"block":"none";
@@ -1655,187 +613,42 @@ function saveWH(val){
   GHL_WEBHOOK=val;
   localStorage.setItem("ghl_webhook",val);
   const st=document.getElementById("wh-status");
-  if(st){st.className="ghl-status ghl-warn";st.innerHTML='<span class="dot dot-y"></span>URL saved — click Send Test Payload to verify';}
+  if(st){st.className="ghl-status ghl-warn";st.innerHTML='<span class="dot dot-y"></span>URL saved &mdash; click Send Test Payload to verify';}
 }
 
 function testWH(){
-  const url=(document.getElementById("wh-url")?document.getElementById("wh-url").value:"")||GHL_WEBHOOK;
+  const url=document.getElementById("wh-url")?document.getElementById("wh-url").value:GHL_WEBHOOK;
   if(!url){alert("Enter a webhook URL first.");return;}
-  GHL_WEBHOOK=url;localStorage.setItem("ghl_webhook",url);
-  const payload={
-    timesheet_status:'Submitted',
-    employee:'Test Employee',
-    email:'test@genhead.com',
-    timesheet_period:PERIODS[pidx],
-    timesheet_total_hours:'8.0',
-    timesheet_submitted_at:new Date().toISOString(),
-    comment:'',
-    action_by:'Test Manager',
-    test:true
-  };
-  fetch(API+"?action=proxy_webhook",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,payload})})
-    .then(r=>r.json())
-    .then(res=>{
+  GHL_WEBHOOK=url;
+  const payload={employee:"Test Employee",period:PERIODS[pidx],totalHours:"8.0",billableHours:"5.0",nonBillableHours:"2.0",marketingHours:"1.0",submittedAt:new Date().toISOString(),test:true};
+  fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+    .then(()=>{
       const st=document.getElementById("wh-status");
-      if(res.success){
-        if(st){st.className="ghl-status ghl-ok";st.innerHTML='<span class="dot dot-g"></span>Test payload sent! Check Genhead workflow execution history.';}
-      } else {
-        if(st){st.className="ghl-status ghl-err";st.innerHTML='<span class="dot dot-r"></span>Error: '+res.error;}
-      }
+      if(st){st.className="ghl-status ghl-ok";st.innerHTML='<span class="dot dot-g"></span>Test payload sent! Check GHL workflow execution history to confirm.';}
     })
     .catch(()=>{
       const st=document.getElementById("wh-status");
-      if(st){st.className="ghl-status ghl-err";st.innerHTML='<span class="dot dot-r"></span>Could not reach server.';}
+      if(st){st.className="ghl-status ghl-err";st.innerHTML='<span class="dot dot-r"></span>Could not reach GHL &mdash; check the URL and try again.';}
     });
 }
 
 function exportMaster(){
-  let csv="Employee,Period,Total Hours,Pay Rate,Total Paycheck,Status\n";
-  EMPS.filter(e=>e.active).forEach(emp=>{
-    const d=gd(emp.id,pidx);
-    let h=0;d.entries.forEach(rows=>(rows||[]).forEach(e=>h+=pfl(e.hrs)));
-    const rt=getRate(emp.id);
-    csv+=`${emp.name},"${PERIODS[pidx]}",${h.toFixed(1)},${rt},${fm(h*rt)},${d.submitted?"Submitted":"Pending"}\n`;
+  const emps=EMPS.filter(e=>e.role==="employee");
+  let csv="Employee,Period,Total Hours,Billable Hrs,Non-Billable Hrs,Marketing Hrs,Pay Rate,Total Pay,Status\n";
+  emps.forEach(emp=>{
+    const d=gd(emp.id,pidx),h=d.entries.reduce((s,e)=>s+pfl(e.hrs),0),rt=pfl(d.rate);
+    const bd=calcBreakdown(d);
+    csv+=`${emp.name},"${PERIODS[pidx]}",${h.toFixed(1)},${bd.billable.h.toFixed(1)},${bd.nonbillable.h.toFixed(1)},${bd.marketing.h.toFixed(1)},${rt},${fm(h*rt)},${d.submitted?"Submitted":"Pending"}\n`;
   });
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
   a.download=`Genhead_Master_Payroll_${PERIODS[pidx].replace(/ /g,"_")}.csv`;a.click();
   showToast("Master payroll CSV exported.");
 }
 
-// Load submitted timesheet records from server
-async function loadRecords(){
-  const el=document.getElementById("records-content");
-  if(!el)return;
-  el.innerHTML='<p style="font-size:.82rem;color:var(--mid)">Loading...</p>';
-  try{
-    const res=await apiGet("load_timesheets");
-    if(!res.success||!res.records||res.records.length===0){
-      el.innerHTML='<p style="font-size:.82rem;color:var(--mid);padding:.5rem 0">No submitted timesheets yet.</p>';
-      return;
-    }
-    // Group by employee then period
-    const grouped={};
-    res.records.forEach(r=>{
-      const key=r.employee+"||"+r.period;
-      if(!grouped[key])grouped[key]={...r};
-      else grouped[key]=r; // keep latest submission
-    });
-    const DAYS_ORDER=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-
-    let html='';
-    Object.values(grouped).sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt)).forEach(rec=>{
-      // Fix epoch date bug — if submittedAt is null or 1969/1970 show N/A
-      let subDisplay='Not yet submitted';
-      if(rec.submittedAt){
-        const subDt=new Date(rec.submittedAt);
-        if(subDt.getFullYear()>2020){
-          subDisplay=subDt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"});
-        }
-      }
-      const payRate=rec.payRate||rec.pay_rate||0;
-      const totalPay=rec.totalPay||rec.total_pay||0;
-      const totalHours=rec.totalHours||rec.total_hours||0;
-
-      html+=`<div class="rec-wrap">
-        <div class="rec-hdr"><h3>${rec.employee}</h3><span style="font-size:.7rem;color:rgba(255,255,255,.5)">${totalHours} hrs &middot; Submitted ${subDisplay}</span></div>
-        <div class="rec-period"><div class="rec-period-title">${rec.period}</div>
-        <div class="rec-period-meta">Pay Rate: ${payRate?"$"+parseFloat(payRate).toFixed(2)+"/hr":"N/A"} &middot; Total Pay: ${totalPay?"$"+parseFloat(totalPay).toFixed(2):"N/A"} &middot; Status: <strong>${rec.status||'submitted'}</strong></div></div>`;
-
-      // Split entries into Week 1 (days 0-6) and Week 2 (days 7-13)
-      // Entries have day_index (MySQL) or day (JSON)
-      const week1=[],week2=[];
-      (rec.entries||[]).forEach(e=>{
-        const dayIdx=typeof e.day_index==='number'?e.day_index:typeof e.day==='number'?e.day:parseInt(e.day_index||e.day)||0;
-        if(dayIdx<7) week1.push({...e,dayIdx});
-        else week2.push({...e,dayIdx});
-      });
-
-      // Render a week section
-      function renderWeek(entries,weekNum){
-        if(entries.length===0)return'';
-        // Calculate week total hours and pay
-        let wkH=0;
-        entries.forEach(e=>{if(e.hrs||e.hours)wkH+=parseFloat(e.hrs||e.hours||0);});
-        const wkP=payRate?wkH*parseFloat(payRate):0;
-        let s=`<div style="background:var(--purple);padding:.42rem .9rem;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:.72rem;font-weight:500;color:rgba(255,255,255,.9);text-transform:uppercase;letter-spacing:.5px">Week ${weekNum}</span>
-          <span style="font-size:.7rem;color:rgba(255,255,255,.55)">${wkH.toFixed(1)} hrs${payRate?' &middot; $'+wkP.toFixed(2):''}</span>
-        </div>`;
-        // Group by day within the week
-        const byDayIdx={};
-        entries.forEach(e=>{
-          const di=e.dayIdx;
-          if(!byDayIdx[di])byDayIdx[di]=[];
-          byDayIdx[di].push(e);
-        });
-        // Sort by day index and render
-        Object.keys(byDayIdx).sort((a,b)=>a-b).forEach(di=>{
-          const dayEntries=byDayIdx[di];
-          const dayName=e=>e.dayName||e.day_name||DAYS_ORDER[parseInt(di)%7]||'';
-          const dn=dayName(dayEntries[0]);
-          s+=`<div class="rec-day"><div class="rec-day-nm">${dn}</div>
-            <div class="rec-entry rec-entry-hdr"><span>Company</span><span>Deliverable</span><span>Hours</span><span>Pay</span></div>`;
-          dayEntries.forEach(e=>{
-            const hrs=parseFloat(e.hrs||e.hours||0);
-            const clientName=e.client_name||e.co||'—';
-            const deliverable=e.deliverable||e.del||'—';
-            const pay=payRate&&hrs?(hrs*parseFloat(payRate)).toFixed(2):'—';
-            const billableFlag=e.billable===0||e.billable==='0'?' <span style="font-size:.65rem;color:var(--mid)">(non-billable)</span>':'';
-            s+=`<div class="rec-entry"><span>${clientName}${billableFlag}</span><span>${deliverable}</span><span>${hrs||0} hrs</span><span>${pay!=='—'?'$'+pay:'—'}</span></div>`;
-          });
-          s+=`</div>`;
-        });
-        return s;
-      }
-
-      html+=renderWeek(week1,1);
-      html+=renderWeek(week2,2);
-
-      // Footer with export and approval info
-      const approvedBy=rec.approved_by_name||rec.approvedByName||'';
-      const approvedAt=rec.approved_at||rec.approvedAt||'';
-      let approvalInfo='';
-      if(approvedBy&&approvedAt){
-        const appDt=new Date(approvedAt);
-        if(appDt.getFullYear()>2020){
-          approvalInfo=`<span style="font-size:.72rem;color:var(--teal)">&#10003; Approved by ${approvedBy} on ${appDt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span>`;
-        }
-      }
-      html+=`<div style="padding:.5rem 1rem;display:flex;align-items:center;justify-content:space-between">
-        ${approvalInfo}
-        <button class="btn btn-outline" style="font-size:.72rem;padding:.25rem .65rem" onclick="exportRecord('${rec.employee}','${rec.period}')">Export CSV</button>
-      </div>`;
-      html+=`</div>`;
-    });
-    el.innerHTML=html;
-  }catch(e){
-    el.innerHTML='<p style="font-size:.82rem;color:var(--danger)">Could not load records.</p>';
-  }
-}
-
-function exportRecord(employee,period){
-  apiGet("load_timesheets").then(res=>{
-    if(!res.success)return;
-    const rec=res.records.find(r=>r.employee===employee&&r.period===period);
-    if(!rec)return;
-    let csv="Employee,Period,Day,Company,Deliverable,Hours,PayRate,Pay\n";
-    (rec.entries||[]).forEach(e=>{
-      const pay=rec.payRate?(pfl(e.hrs)*parseFloat(rec.payRate)).toFixed(2):"";
-      csv+=`${rec.employee},"${rec.period}",${e.dayName},"${e.co||''}","${e.del||''}",${e.hrs||0},${rec.payRate||0},${pay}\n`;
-    });
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-    a.download=`${employee.replace(/ /g,"_")}_${period.replace(/ /g,"_")}.csv`;
-    a.click();
-  });
-}
-
-async function viewEmp(uid){
+function viewEmp(uid){
   const prev={...cur};
   cur={...cur,_vid:uid,_prev:prev};
   document.getElementById("tb-name").textContent=EMPS.find(e=>e.id===uid).name+" (viewing)";
-  // Load draft/submission data so serverId and serverStatus are available for approval actions
-  await loadDraftFromServer(uid,pidx);
   renderTS(uid);
 }
 function backDash(){
@@ -1844,652 +657,12 @@ function backDash(){
   renderApp();
 }
 
-// ── APPROVAL MODAL ───────────────────────────────────────────
-let modalAction=null,modalTsId=null;
-
-function showModal(action,tsId){
-  modalAction=action;
-  // Start with passed tsId — this is most reliable from dashboard buttons
-  let foundId=tsId&&tsId!=='null'&&tsId!==null?parseInt(tsId):null;
-  // Also check viewed employee store
-  const viewedUid=cur._vid&&cur._vid!==cur.id?cur._vid:null;
-  if(!foundId&&viewedUid){
-    const d=gd(viewedUid,pidx);
-    if(d.serverId)foundId=parseInt(d.serverId);
-  }
-  // Search all store keys as last resort
-  if(!foundId){
-    Object.keys(store).forEach(k=>{
-      if(store[k].serverId&&!foundId){
-        if(k.includes('_'+pidx))foundId=parseInt(store[k].serverId);
-      }
-    });
-  }
-  modalTsId=foundId||null;
-  console.log('showModal — action:',action,'modalTsId:',modalTsId,'tsId passed:',tsId);
-  const titles={approve:'Approve Timesheet',reject:'Reject Timesheet',return:'Return to Employee',flag:'Flag Discrepancy',override:'HR Override'};
-  const subtitles={
-    approve:'Add an optional note for the employee.',
-    reject:'Rejection reason is required. Employee will be notified.',
-    return:'Return reason is required. Employee can correct and resubmit.',
-    flag:'Describe the discrepancy or issue.',
-    override:'Describe the changes made. This will be logged to the audit trail.'
-  };
-  const btnLabels={approve:'Approve',reject:'Reject',return:'Return',flag:'Flag',override:'Apply Override'};
-  const btnColors={approve:'btn-primary',reject:'btn-danger',return:'btn-outline',flag:'btn-outline',override:'btn-purple'};
-  document.getElementById('modal-title').textContent=titles[action]||action;
-  document.getElementById('modal-subtitle').textContent=subtitles[action]||'';
-  document.getElementById('modal-comment').value='';
-  document.getElementById('modal-error').textContent='';
-  const btn=document.getElementById('modal-confirm-btn');
-  btn.textContent=btnLabels[action]||'Confirm';
-  btn.className='btn '+(btnColors[action]||'btn-primary');
-  document.getElementById('approval-modal').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('modal-comment').focus(),100);
-}
-
-function closeModal(){
-  document.getElementById('approval-modal').classList.add('hidden');
-  modalAction=null;modalTsId=null;
-}
-
-async function confirmModal(){
-  const comment=document.getElementById('modal-comment').value.trim();
-  const requiresComment=['reject','return','flag','override'];
-  if(requiresComment.includes(modalAction)&&!comment){
-    document.getElementById('modal-error').textContent='A comment is required for this action.';
-    return;
-  }
-  document.getElementById('modal-error').textContent='';
-  // Safety check — modalTsId must be set
-  if(!modalTsId){
-    document.getElementById('modal-error').textContent='Error: Could not find timesheet ID. Please close and try again.';
-    console.error('modalTsId is null — action:',modalAction);
-    return;
-  }
-  // approver is the currently logged in manager/HR
-  // cur.id may be 'manager' or 'hr' — use db_id if available, else role string
-  // Get approver ID — null is safe for FK (approved_by allows NULL), 0 is not
-  const approverId=cur.db_id?parseInt(cur.db_id):(cur.id&&cur.id!=='manager'&&cur.id!=='hr'?parseInt(cur.id.replace(/^e/,''))||null:null);
-
-  const actionMap={
-    approve:'approve_timesheet',
-    reject:'reject_timesheet',
-    return:'return_timesheet',
-    flag:'flag_discrepancy',
-    override:'hr_override'
-  };
-
-  const payloads={
-    approve:{timesheet_id:modalTsId,approver_id:approverId,approver_name:cur.name||cur.role,comment},
-    reject:{timesheet_id:modalTsId,approver_id:approverId,approver_name:cur.name||cur.role,comment},
-    return:{timesheet_id:modalTsId,approver_id:approverId,approver_name:cur.name||cur.role,comment},
-    flag:{timesheet_id:modalTsId,user_id:approverId,note:comment},
-    override:{timesheet_id:modalTsId,hr_id:approverId,comment}
-  };
-  // GHL payload — find employee by scanning store for matching serverId
-  let empName='', empEmail='';
-  // First try _vid
-  const ve=EMPS.find(e=>e.id===(cur._vid||''));
-  if(ve){empName=ve.name;empEmail=ve.email||'';}
-  // Then scan store for matching serverId
-  if(!empName){
-    for(const k of Object.keys(store)){
-      if(store[k].serverId&&parseInt(store[k].serverId)===parseInt(modalTsId)){
-        const uid=k.substring(0,k.lastIndexOf('_'));
-        const emp=EMPS.find(e=>e.id===uid);
-        if(emp){empName=emp.name;empEmail=emp.email||'';break;}
-      }
-    }
-  }
-  // Last resort — find from EMPS where manager_id matches current manager
-  if(!empName&&modalTsId){
-    const matchedEmp=EMPS.find(e=>e.active&&e.role==='employee'&&
-      Object.keys(store).some(k=>k.startsWith(e.id+'_')&&store[k].serverId===modalTsId));
-    if(matchedEmp){empName=matchedEmp.name;empEmail=matchedEmp.email||'';}
-  }
-  const ghlPayloads={
-    approve:{timesheet_status:'Approved',employee:empName,email:empEmail,timesheet_period:PERIODS[pidx],comment,action_by:cur.name||cur.role},
-    reject:{timesheet_status:'Rejected',employee:empName,email:empEmail,timesheet_period:PERIODS[pidx],comment,action_by:cur.name||cur.role},
-    return:{timesheet_status:'Returned',employee:empName,email:empEmail,timesheet_period:PERIODS[pidx],comment,action_by:cur.name||cur.role},
-    flag:{timesheet_status:'Flagged',employee:empName,email:empEmail,timesheet_period:PERIODS[pidx],comment,action_by:cur.name||cur.role},
-    override:{timesheet_status:'Override Applied',employee:empName,email:empEmail,timesheet_period:PERIODS[pidx],comment,action_by:cur.name||cur.role}
-  };
-
-  try{
-   const capturedAction = modalAction;
-   const capturedGhlPayload = ghlPayloads[capturedAction] || {timesheet_status: capturedAction};
-    const res=await apiPost(actionMap[capturedAction],payloads[capturedAction]);
-    if(res.success){
-      closeModal();
-      showToast(capturedAction==='approve'?'Timesheet approved!':
-        capturedAction==='reject'?'Timesheet rejected. Employee notified.':
-        capturedAction==='return'?'Returned to employee for correction.':
-        capturedAction==='flag'?'Discrepancy flagged.':'Override applied and logged.');
-      // Send to status webhook (approve/reject/return/flag/override)
-      const statusUrl=GHL_STATUS_WEBHOOK||GHL_WEBHOOK;
-      if(statusUrl){
-  console.log('GHL status payload:', JSON.stringify(capturedGhlPayload));
-  fetch(API+'?action=proxy_webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:statusUrl,payload:capturedGhlPayload})});
-}
-      // If viewing an employee timesheet, reload it — otherwise go back to dashboard
-      if(cur._vid){
-        await loadDraftFromServer(cur._vid,pidx);
-        renderTS(cur._vid);
-      } else {
-        // Came from dashboard — refresh dashboard
-        await renderDash();
-      }
-    } else {
-      document.getElementById('modal-error').textContent=res.error||'Action failed.';
-    }
-  }catch(e){
-    console.error('confirmModal error:', e, 'modalTsId:', modalTsId, 'modalAction:', modalAction);
-    document.getElementById('modal-error').textContent='Network error — try again. ('+e.message+')';
-  }
-}
-
-// ── DASHBOARD APPROVAL ACTIONS ────────────────────────────────
-async function quickApprove(tsId){showModal('approve',tsId);}
-async function quickReject(tsId){showModal('reject',tsId);}
-
-// ── CLIENTS TAB ──────────────────────────────────────────────
-async function loadClientsTab(){
-  // Pre-fill API settings
-  const apiKeyEl=document.getElementById('ghl-api-key');
-  const locEl=document.getElementById('ghl-location-id');
-  if(apiKeyEl&&SETTINGS.ghl_api_key) apiKeyEl.value=SETTINGS.ghl_api_key;
-  if(locEl&&SETTINGS.ghl_location_id) locEl.value=SETTINGS.ghl_location_id;
-  renderClientsList();
-}
-
-function renderClientsList(){
-  const el=document.getElementById('clients-list');
-  if(!el)return;
-  if(CLIENTS.length===0){
-    el.innerHTML='<p style="font-size:.82rem;color:var(--mid)">No clients yet. Sync from Genhead or add manually.</p>';
-    return;
-  }
-  const internal=CLIENTS.filter(c=>c.type==='internal');
-  const ghl=CLIENTS.filter(c=>c.type==='ghl_instance');
-  const mkt=CLIENTS.filter(c=>c.type==='marketing');
-  let html='';
-  if(internal.length) html+=renderClientGroup('Internal',internal,'#64748b');
-  if(ghl.length) html+=renderClientGroup('GHL Clients',ghl,'#03AD8F');
-  if(mkt.length) html+=renderClientGroup('Marketing Only',mkt,'#f59e0b');
-  el.innerHTML=html;
-}
-
-function renderClientGroup(title,clients,color){
-  let h=`<div style="font-size:.72rem;font-weight:600;color:${color};text-transform:uppercase;letter-spacing:.5px;padding:.5rem 0 .25rem">${title} (${clients.length})</div>`;
-  clients.forEach(c=>{
-    h+=`<div class="emp-list-item" style="grid-template-columns:1fr auto auto">
-      <div><div class="emp-list-name">${c.name}</div>
-      <div class="emp-list-pin">${c.type==='internal'?'Non-billable':'Billable'} &middot; ${c.type}</div></div>
-      <button class="toggle-active" onclick="toggleClient(${c.id},${!c.active})">${c.active?'Deactivate':'Activate'}</button>
-    </div>`;
-  });
-  return h;
-}
-
-async function saveApiSettings(){
-  const apiKey=document.getElementById('ghl-api-key').value.trim();
-  const locId=document.getElementById('ghl-location-id').value.trim();
-  const res=await apiPost('update_settings',{ghl_api_key:apiKey,ghl_location_id:locId});
-  if(res.success){
-    SETTINGS.ghl_api_key=apiKey;
-    SETTINGS.ghl_location_id=locId;
-    showToast('API settings saved!');
-  }
-}
-
-async function syncClients(){
-  const st=document.getElementById('sync-status');
-  const msg=document.getElementById('sync-msg');
-  if(st){st.style.display='flex';st.className='ghl-status ghl-warn';}
-  if(msg)msg.textContent='Syncing customers from Genhead...';
-  // Save API settings first
-  await saveApiSettings();
-  const res=await apiPost('sync_clients',{});
-  if(res.success){
-    if(st){st.className='ghl-status ghl-ok';}
-    if(msg)msg.textContent=`Synced ${res.synced} clients from Genhead!`;
-    // Reload clients
-    const cRes=await apiGet('load_clients');
-    if(cRes.success) CLIENTS=cRes.clients||[];
-    renderClientsList();
-    showToast(`${res.synced} clients synced from Genhead!`);
-  } else {
-    if(st){st.className='ghl-status ghl-err';}
-    if(msg)msg.textContent='Sync failed: '+(res.error||'Unknown error');
-    showToast('Sync failed — check API key and Location ID.');
-  }
-}
-
-async function addClientManually(){
-  const name=document.getElementById('new-client-name').value.trim();
-  const type=document.getElementById('new-client-type').value;
-  if(!name){showToast('Enter a client name.');return;}
-  const billable=type==='internal'?0:1;
-  const res=await apiPost('add_client',{name,type,billable});
-  if(res.success){
-    CLIENTS.push({id:res.id,name,type,billable,active:1});
-    document.getElementById('new-client-name').value='';
-    renderClientsList();
-    showToast(name+' added!');
-  }
-}
-
-async function toggleClient(id,active){
-  await apiPost('update_client',{id,active});
-  const c=CLIENTS.find(c=>c.id===id);
-  if(c)c.active=active?1:0;
-  renderClientsList();
-}
-
-// ── HR MANAGEMENT ────────────────────────────────────────────
-async function loadHRMgmt(){
-  const list=document.getElementById('hr-assign-list');
-  if(!list)return;
-  const employees=EMPS.filter(e=>e.active&&e.role==='employee');
-  const managers=EMPS.filter(e=>e.active&&e.role==='manager');
-  if(managers.length===0){
-    list.innerHTML='<p style="font-size:.82rem;color:var(--mid)">No managers added yet. Add a manager above first.</p>';
-    return;
-  }
-  let h='<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem;align-items:center;padding:.35rem .5rem;background:var(--navy);border-radius:6px;margin-bottom:.5rem">';
-  h+='<span style="font-size:.68rem;font-weight:600;color:rgba(255,255,255,.7);text-transform:uppercase">Employee</span>';
-  h+='<span style="font-size:.68rem;font-weight:600;color:rgba(255,255,255,.7);text-transform:uppercase">Assigned Manager</span>';
-  h+='<span></span></div>';
-  employees.forEach(emp=>{
-    const currentMgrId=emp.manager_id;
-    const mgrOptions=`<option value="">-- Unassigned (HR only) --</option>`+
-      managers.map(m=>`<option value="${m.db_id}" ${String(m.db_id)===String(currentMgrId)?'selected':''}>${m.name}</option>`).join('');
-    h+=`<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem;align-items:center;padding:.4rem .5rem;border-bottom:1px solid var(--border)">
-      <span style="font-size:.84rem;font-weight:500">${emp.name}</span>
-      <select class="ghl-input" onchange="assignManager('${emp.id}',this.value)" style="padding:.28rem .45rem;font-size:.78rem">${mgrOptions}</select>
-      <span style="font-size:.72rem;color:var(--mid)">${currentMgrId?'Assigned':'Unassigned'}</span>
-    </div>`;
-  });
-  list.innerHTML=h;
-}
-
-async function assignManager(empId,mgrDbId){
-  const res=await apiPost('assign_manager',{employee_id:empId,manager_id:mgrDbId||null});
-  if(res.success){
-    // Update local EMPS array
-    const emp=EMPS.find(e=>e.id===empId);
-    if(emp)emp.manager_id=mgrDbId?parseInt(mgrDbId):null;
-    showToast('Assignment updated!');
-  } else {
-    showToast('Error updating assignment.');
-  }
-}
-
-async function addManager(){
-  const name=document.getElementById('new-mgr-name').value.trim();
-  const email=document.getElementById('new-mgr-email').value.trim();
-  const password=document.getElementById('new-mgr-password').value.trim();
-  if(!name||!password){showToast('Name and password required.');return;}
-  const res=await apiPost('add_manager',{name,email,password});
-  if(res.success){
-    // Add to EMPS array
-    EMPS.push({id:res.id,db_id:parseInt(res.id.replace(/^e/,'')),name,email,role:'manager',active:true,pin_set:false});
-    document.getElementById('new-mgr-name').value='';
-    document.getElementById('new-mgr-email').value='';
-    document.getElementById('new-mgr-password').value='';
-    buildLoginGrid();
-    loadHRMgmt();
-    showToast(name+' added as Manager!');
-  } else {
-    showToast('Error: '+(res.error||'Could not add manager'));
-  }
-}
-
-// ── FEATURE 4: Manager edit with change tracking ─────────────
-async function saveManagerEdits(empUid, tsId){
-  const uid=empUid||cur._vid;
-  const d=gd(uid,pidx);
-  const emp=EMPS.find(e=>e.id===uid)||{name:'Employee'};
-  const rt=getRate(uid);
-  // Build flat entries
-  let allH=0;
-  const flatEntries=[];
-  d.entries.forEach((rows,dayIdx)=>{
-    (rows||[]).forEach((en,rowIdx)=>{
-      flatEntries.push({day:dayIdx,dayName:DAYS[dayIdx%7],co:en.co||'',del:en.del||'',hrs:en.hrs||'',billable:en.billable!==undefined?en.billable:1,rowIndex:rowIdx});
-      if(en.hrs)allH+=pfl(en.hrs);
-    });
-  });
-  // Save timesheet with updated entries
-  const payload={
-    employeeId:uid,
-    employee:emp.name,
-    email:emp.email||'',
-    period:PERIODS[pidx],
-    periodIndex:pidx,
-    totalHours:allH.toFixed(1),
-    totalPay:(allH*rt).toFixed(2),
-    payRate:rt,
-    submitted:d.submitted||false,
-    isDraft:!d.submitted,
-    entries:flatEntries,
-    editedByManager:true,
-    editorName:cur.name||cur.role,
-    editorId:cur.id
-  };
-  try{
-    const res=await apiPost('save_timesheet',payload);
-    if(res.success){
-      // Log the edit as a comment so employee sees it
-      if(tsId&&tsId!=='null'){
-        await apiPost('flag_discrepancy',{
-          timesheet_id:parseInt(tsId),
-          user_id:cur.id,
-          note:`Timesheet edited by ${cur.name||'Manager'} on ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}. Total hours updated to ${allH.toFixed(1)} hrs.`
-        });
-      }
-      // Notify via Genhead webhook
-      if(GHL_WEBHOOK){
-        fetch(API+'?action=proxy_webhook',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({url:GHL_STATUS_WEBHOOK||GHL_WEBHOOK,payload:{
-            timesheet_status:'Manager Edit',
-            employee:emp.name,
-            email:emp.email||'',
-            timesheet_period:PERIODS[pidx],
-            edited_by:cur.name||'Manager',
-            timesheet_total_hours:allH.toFixed(1)
-          }})
-        });
-      }
-      showToast('Changes saved — employee will be notified.');
-      // Reload to show updated state
-      await loadDraftFromServer(uid,pidx);
-      renderTS(uid);
-    } else {
-      showToast('Error saving changes.');
-    }
-  }catch(e){showToast('Network error — try again.');}
-}
-
-// ── FEATURE 5: Delegation ─────────────────────────────────────
-async function saveDelegation(){
-  const sel=document.getElementById('delegate-sel');
-  if(!sel)return;
-  const delegateId=sel.value||null;
-  const res=await apiPost('set_delegate',{manager_id:cur.id,delegate_id:delegateId});
-  if(res.success){
-    showToast(delegateId?'Approvals delegated successfully!':'Delegation removed.');
-  }
-}
-
-// ── FEATURE 6: Overtime flags ─────────────────────────────────
-async function loadOvertimeFlags(){
-  const el=document.getElementById('overtime-flags-list');
-  if(!el)return;
-  try{
-    const res=await apiGet('load_overtime');
-    if(res.success&&res.flags&&res.flags.length>0){
-      let h='';
-      res.flags.forEach(f=>{
-        h+=`<div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr auto;gap:.5rem;align-items:center;padding:.5rem .75rem;border-bottom:1px solid var(--border)">
-          <span style="font-size:.84rem;font-weight:500">${f.employee}</span>
-          <span style="font-size:.78rem;color:var(--mid)">${f.period}</span>
-          <span style="font-size:.78rem">Week ${f.week_number}: <strong>${f.hours_worked}hrs</strong></span>
-          <span class="overtime-badge">+${f.overtime_hours}hrs OT</span>
-          <div style="display:flex;gap:.35rem">
-            <button class="btn-approve" onclick="resolveOvertime(${f.id},'approved')">Approve</button>
-            <button class="btn-reject" onclick="resolveOvertime(${f.id},'disputed')">Dispute</button>
-          </div>
-        </div>`;
-      });
-      el.innerHTML=h;
-    } else {
-      el.innerHTML='<p style="font-size:.82rem;color:var(--mid);padding:.5rem">No overtime flags this period.</p>';
-    }
-  }catch(e){el.innerHTML='<p style="font-size:.82rem;color:var(--danger)">Could not load overtime flags.</p>';}
-}
-
-async function resolveOvertime(flagId,status){
-  const res=await apiPost('resolve_overtime',{id:flagId,status});
-  if(res.success){
-    showToast(status==='approved'?'Overtime approved.':'Overtime disputed.');
-    loadOvertimeFlags();
-  }
-}
-
-// ── FEATURE 7: HR AUDIT LOG ──────────────────────────────────
-let auditChartEmp=null, auditChartClient=null;
-
-async function loadAuditLog(){
-  const el=document.getElementById('audit-log-list');
-  const sel=document.getElementById('audit-period-sel');
-  if(!el)return;
-  // Populate period selector
-  if(sel&&sel.options.length===0){
-    PERIODS.forEach((p,i)=>{
-      const opt=document.createElement('option');
-      opt.value=i; opt.textContent=p;
-      if(i===pidx)opt.selected=true;
-      sel.appendChild(opt);
-    });
-  }
-  const periodIdx=sel?parseInt(sel.value):pidx;
-  el.innerHTML='<p style="font-size:.82rem;color:var(--mid);padding:1rem">Loading...</p>';
-  try{
-    const res=await fetch(`${API}?action=load_audit_period&period=${encodeURIComponent(PERIODS[periodIdx])}`);
-    const data=await res.json();
-    if(!data.success||!data.log||data.log.length===0){
-      el.innerHTML='<p style="font-size:.82rem;color:var(--mid);padding:1rem">No audit entries for this period.</p>';
-      return;
-    }
-    const actionColors={submitted:'#3b82f6',approved:'#10b981',rejected:'#ef4444',returned_to_employee:'#f59e0b',hr_override:'#8b5cf6',manager_edit:'#06b6d4',flagged_discrepancy:'#f97316',ghl_auto_add:'#64748b'};
-    const actionLabels={submitted:'Submitted',approved:'Approved',rejected:'Rejected',returned_to_employee:'Returned',hr_override:'HR Override',manager_edit:'Manager Edit',flagged_discrepancy:'Flagged',ghl_auto_add:'Auto-Added'};
-    let h=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 2fr;gap:.5rem;padding:.35rem .75rem;background:var(--navy);border-radius:0">
-      <span style="font-size:.65rem;font-weight:600;color:rgba(255,255,255,.7);text-transform:uppercase">Date/Time</span>
-      <span style="font-size:.65rem;font-weight:600;color:rgba(255,255,255,.7);text-transform:uppercase">Employee</span>
-      <span style="font-size:.65rem;font-weight:600;color:rgba(255,255,255,.7);text-transform:uppercase">Action</span>
-      <span style="font-size:.65rem;font-weight:600;color:rgba(255,255,255,.7);text-transform:uppercase">Details</span>
-    </div>`;
-    data.log.forEach((entry,i)=>{
-      const dt=new Date(entry.created_at);
-      const dtStr=dt.getFullYear()>2020?dt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
-      const color=actionColors[entry.action]||'#64748b';
-      const label=actionLabels[entry.action]||entry.action;
-      // Parse after_state for details
-      let details='';
-      try{
-        const after=entry.after_state?JSON.parse(entry.after_state):{};
-        if(after.reason)details='Reason: '+after.reason;
-        else if(after.total_hours)details='Hours: '+after.total_hours;
-        else if(after.comment)details=after.comment;
-        else if(after.modified_by)details='Modified by '+after.modified_by+(after.comment?' — '+after.comment:'');
-      }catch(e){}
-      h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 2fr;gap:.5rem;padding:.45rem .75rem;border-bottom:1px solid var(--border);background:${i%2===0?'var(--alt)':'var(--bg)'}">
-        <span style="font-size:.75rem;color:var(--mid)">${dtStr}</span>
-        <span style="font-size:.78rem">${entry.employee_name||entry.user_name||'—'}</span>
-        <span style="font-size:.72rem;font-weight:600;color:${color};text-transform:uppercase;letter-spacing:.3px">${label}</span>
-        <span style="font-size:.75rem;color:var(--mid)">${details}</span>
-      </div>`;
-    });
-    el.innerHTML=h;
-  }catch(e){el.innerHTML='<p style="font-size:.82rem;color:var(--danger);padding:1rem">Could not load audit log.</p>';}
-}
-
-function exportAuditLog(){
-  const sel=document.getElementById('audit-period-sel');
-  const periodIdx=sel?parseInt(sel.value):pidx;
-  window.open(`${API}?action=export_audit&period=${encodeURIComponent(PERIODS[periodIdx])}`, '_blank');
-}
-
-// ── FEATURE 8: HR REPORTS ─────────────────────────────────────
-async function loadReports(){
-  const sel=document.getElementById('report-period-sel');
-  if(sel&&sel.options.length===0){
-    PERIODS.forEach((p,i)=>{
-      const opt=document.createElement('option');
-      opt.value=i; opt.textContent=p;
-      if(i===pidx)opt.selected=true;
-      sel.appendChild(opt);
-    });
-  }
-  const periodIdx=sel?parseInt(sel.value):pidx;
-  const period=PERIODS[periodIdx];
-  try{
-    const res=await fetch(`${API}?action=load_report&period=${encodeURIComponent(period)}`);
-    const data=await res.json();
-    if(!data.success){return;}
-    const report=data.report;
-    // Summary cards
-    const summaryEl=document.getElementById('report-summary');
-    if(summaryEl){
-      const submitted=report.employees.filter(e=>e.status!=='draft').length;
-      const approved=report.employees.filter(e=>e.status==='approved').length;
-      const totalHours=report.employees.reduce((s,e)=>s+parseFloat(e.total_hours||0),0);
-      const totalPay=report.employees.reduce((s,e)=>s+parseFloat(e.total_pay||0),0);
-      summaryEl.innerHTML=`
-        <div class="mc"><div class="ml">Total Hours</div><div class="mv">${totalHours.toFixed(1)}</div><div class="ms">This period</div></div>
-        <div class="mc"><div class="ml">Total Payroll</div><div class="mv" style="color:var(--teal)">$${totalPay.toFixed(2)}</div><div class="ms">This period</div></div>
-        <div class="mc"><div class="ml">Submitted</div><div class="mv">${submitted}/${report.employees.length}</div><div class="ms">Employees</div></div>
-        <div class="mc"><div class="ml">Approved</div><div class="mv">${approved}/${report.employees.length}</div><div class="ms">Employees</div></div>`;
-    }
-    // Payroll table
-    const tableEl=document.getElementById('report-table');
-    if(tableEl){
-      let h=`<table class="rec-table" style="width:100%"><thead><tr>
-        <th>Employee</th><th>Pay Period</th><th>Total Hours</th><th>Pay Rate</th><th>Total Pay</th><th>Status</th>
-      </tr></thead><tbody>`;
-      report.employees.forEach(e=>{
-        const statusColors={draft:'#92400e',submitted:'#1d4ed8',approved:'#065f46',rejected:'#991b1b',returned:'#92400e'};
-        h+=`<tr>
-          <td><strong>${e.name}</strong></td>
-          <td>${period}</td>
-          <td>${parseFloat(e.total_hours||0).toFixed(1)} hrs</td>
-          <td>${e.rate?'$'+parseFloat(e.rate).toFixed(2)+'/hr':'—'}</td>
-          <td style="color:var(--teal);font-weight:600">${e.total_pay?'$'+parseFloat(e.total_pay).toFixed(2):'—'}</td>
-          <td><span style="font-size:.72rem;font-weight:600;color:${statusColors[e.status]||'#64748b'};text-transform:uppercase">${e.status||'draft'}</span></td>
-        </tr>`;
-      });
-      h+=`</tbody></table>`;
-      tableEl.innerHTML=h;
-    }
-    // Client hours table
-    const clientEl=document.getElementById('client-table');
-    if(clientEl&&report.clients&&report.clients.length>0){
-      let h=`<table class="rec-table" style="width:100%"><thead><tr>
-        <th>Client</th><th>Type</th><th>Billable Hours</th><th>Employees</th>
-      </tr></thead><tbody>`;
-      report.clients.forEach(c=>{
-        h+=`<tr>
-          <td><strong>${c.name}</strong></td>
-          <td style="font-size:.72rem;color:var(--mid)">${c.type}</td>
-          <td>${parseFloat(c.hours||0).toFixed(1)} hrs</td>
-          <td style="font-size:.78rem;color:var(--mid)">${c.employees||'—'}</td>
-        </tr>`;
-      });
-      h+=`</tbody></table>`;
-      clientEl.innerHTML=h;
-    } else if(clientEl){
-      clientEl.innerHTML='<p style="font-size:.82rem;color:var(--mid)">No billable client hours this period.</p>';
-    }
-    // Charts
-    renderEmpChart(report.employees);
-    renderClientChart(report.clients||[]);
-  }catch(e){console.error('Report load error:',e);}
-}
-
-function renderEmpChart(employees){
-  const canvas=document.getElementById('chart-emp');
-  if(!canvas)return;
-  if(auditChartEmp){auditChartEmp.destroy();auditChartEmp=null;}
-  const labels=employees.map(e=>e.name.split(' ')[0]);
-  const data=employees.map(e=>parseFloat(e.total_hours||0));
-  auditChartEmp=new Chart(canvas,{
-    type:'bar',
-    data:{labels,datasets:[{label:'Hours',data,backgroundColor:'rgba(53,29,114,.75)',borderRadius:4}]},
-    options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'}},x:{grid:{display:false}}}}
-  });
-}
-
-function renderClientChart(clients){
-  const canvas=document.getElementById('chart-client');
-  if(!canvas)return;
-  if(auditChartClient){auditChartClient.destroy();auditChartClient=null;}
-  const billable=clients.filter(c=>c.type!=='internal');
-  if(!billable.length){canvas.style.display='none';return;}
-  canvas.style.display='block';
-  const colors=['#03AD8F','#351D72','#08153A','#f59e0b','#3b82f6','#ef4444','#8b5cf6','#06b6d4','#10b981','#f97316'];
-  auditChartClient=new Chart(canvas,{
-    type:'doughnut',
-    data:{
-      labels:billable.map(c=>c.name),
-      datasets:[{data:billable.map(c=>parseFloat(c.hours||0)),backgroundColor:colors,borderWidth:2,borderColor:'#fff'}]
-    },
-    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:8}}}}
-  });
-}
-
-function exportPayrollCSV(){
-  const sel=document.getElementById('report-period-sel');
-  const periodIdx=sel?parseInt(sel.value):pidx;
-  window.open(`${API}?action=export_payroll&period=${encodeURIComponent(PERIODS[periodIdx])}`, '_blank');
-}
-
-function exportClientCSV(){
-  const sel=document.getElementById('report-period-sel');
-  const periodIdx=sel?parseInt(sel.value):pidx;
-  window.open(`${API}?action=export_clients&period=${encodeURIComponent(PERIODS[periodIdx])}`, '_blank');
-}
-
 function showToast(msg){
   const t=document.getElementById("toast");
   document.getElementById("toast-msg").textContent=msg;
   t.classList.add("show");
   setTimeout(()=>t.classList.remove("show"),3500);
 }
-
-// ── Init ─────────────────────────────────────────────
-async function init(){
-  await loadEmployees();
-  // Check for GHL SSO parameters passed in URL
-  const urlParams=new URLSearchParams(window.location.search);
-  const ssoEmail=urlParams.get('email');
-  if(ssoEmail){
-    await attemptSSOLogin(ssoEmail);
-    return;
-  }
-  show("s-login");
-}
-
-async function attemptSSOLogin(email){
-  const emailLower=email.toLowerCase();
-  // Check manager role first
-  const mgr=EMPS.find(e=>e.role==='manager'&&e.email&&e.email.toLowerCase()===emailLower);
-  if(mgr){
-    showLoginTransition(mgr.name);
-    await completeLogin({...mgr,role:'manager',sso:true});
-    return;
-  }
-  // Check HR role
-  const hr=EMPS.find(e=>e.role==='hr'&&e.email&&e.email.toLowerCase()===emailLower);
-  if(hr){
-    showLoginTransition(hr.name);
-    await completeLogin({...hr,role:'hr',sso:true});
-    return;
-  }
-  // Then check employee
-  const emp=EMPS.find(e=>e.role==='employee'&&e.email&&e.email.toLowerCase()===emailLower);
-  if(emp){
-    showLoginTransition(emp.name);
-    await completeLogin({...emp,sso:true});
-    return;
-  }
-  // Not found — show login screen
-  show("s-login");
-  showToast('GHL user not found in timesheet system. Contact your manager.');
-}
-
-init();
 </script>
 </body>
 </html>
