@@ -18,11 +18,13 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .screen{display:none}.screen.active{display:block}
 
 /* LOGIN */
-#s-login{background:var(--navy);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem 1rem}
+#s-login{background:var(--navy);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem 1rem;background-image:radial-gradient(ellipse at 60% 20%,rgba(3,173,143,.08) 0%,transparent 60%),radial-gradient(ellipse at 20% 80%,rgba(53,29,114,.15) 0%,transparent 55%)}
 #s-login.active{display:flex}
-.login-brand{font-size:2.4rem;font-weight:600;color:#fff;letter-spacing:-1px;margin-bottom:.2rem}
+.login-logo-wrap{display:flex;align-items:center;gap:.65rem;margin-bottom:.3rem}
+.login-logo-mark{width:38px;height:38px;background:linear-gradient(135deg,var(--teal),#02c4a2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;letter-spacing:-1px;flex-shrink:0}
+.login-brand{font-size:2rem;font-weight:700;color:#fff;letter-spacing:-1px;margin-bottom:0}
 .login-brand span{color:var(--teal)}
-.login-sub{font-size:.72rem;color:rgba(255,255,255,.35);letter-spacing:2px;text-transform:uppercase;margin-bottom:2rem}
+.login-sub{font-size:.7rem;color:rgba(255,255,255,.3);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:2rem}
 .login-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:1.75rem;width:100%;max-width:400px}
 .login-card h2{color:#fff;font-size:1rem;font-weight:500;margin-bottom:1.25rem}
 .emp-grid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin-bottom:1.25rem}
@@ -47,12 +49,16 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 
 /* APP SHELL */
 #s-app.active{display:flex;flex-direction:column;min-height:100vh}
-.topbar{background:var(--navy);padding:.7rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.brand{font-size:1.05rem;font-weight:600;color:#fff;letter-spacing:-.5px}
+.topbar{background:var(--navy);padding:.75rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.brand{font-size:1.05rem;font-weight:700;color:#fff;letter-spacing:-.5px}
 .brand span{color:var(--teal)}
 .topbar-right{display:flex;align-items:center;gap:.75rem}
 .topbar-user{font-size:.78rem;color:rgba(255,255,255,.5)}
 .topbar-user strong{color:#fff}
+.badge-role{font-size:.68rem;padding:.18rem .6rem;background:rgba(3,173,143,.2);border:1px solid rgba(3,173,143,.35);border-radius:20px;color:var(--teal);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.badge-role.mgr{background:rgba(53,29,114,.25);border-color:rgba(167,139,250,.4);color:#a78bfa}
+.badge-role.hr{background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.4);color:var(--gold)}
+.badge-role.admin{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.35);color:#f87171}
 .btn-sm{padding:.32rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer;border:1px solid rgba(255,255,255,.18);background:transparent;color:rgba(255,255,255,.55);font-family:'DM Sans',sans-serif;transition:all .15s}
 .btn-sm:hover{border-color:rgba(255,255,255,.5);color:#fff}
 
@@ -213,7 +219,10 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 
 <!-- LOGIN -->
 <div id="s-login" class="screen active">
-  <div class="login-brand">gen<span>head</span></div>
+  <div class="login-logo-wrap">
+    <div class="login-logo-mark">G</div>
+    <div class="login-brand">gen<span>head</span></div>
+  </div>
   <div class="login-sub">Timesheet Portal &middot; 2026</div>
 
   <!-- MAIN LOGIN FORM -->
@@ -323,9 +332,10 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 <!-- APP -->
 <div id="s-app" class="screen">
   <div class="topbar">
-    <div class="brand">gen<span>head</span></div>
+    <div class="brand">gen<span>head</span> <span style="font-size:.72rem;font-weight:400;color:rgba(255,255,255,.35);letter-spacing:.5px;margin-left:.25rem">Timesheet</span></div>
     <div class="topbar-right">
-      <div class="topbar-user">Logged in as <strong id="tb-name"></strong></div>
+      <span class="badge-role" id="tb-role-badge"></span>
+      <div class="topbar-user"><strong id="tb-name"></strong></div>
       <button class="btn-sm" onclick="logout()">Log out</button>
     </div>
   </div>
@@ -403,7 +413,7 @@ function btSelect(dayIdx, ei, currentVal, readonly){
   return `<select class="btype-sel ${btCss(currentVal)}" onchange="upBT(${dayIdx},${ei},this.value);this.className='btype-sel '+btCss(this.value)">${opts}</select>`;
 }
 
-function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");}
+function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");window.scrollTo({top:0,behavior:"instant"});}
 
 // ── PIN AUTH STATE ─────────────────────────────────────────────────────────
 let _pinUser=null, _pinMode='enter'; // modes: 'enter','setup'
@@ -644,6 +654,10 @@ function submitResetPin(){
 
 function doLogin(u){
   cur=u;document.getElementById("tb-name").textContent=u.name;
+  const badge=document.getElementById("tb-role-badge");
+  const roleMap={employee:"Employee",manager:"Manager",hr:"HR",admin:"Admin"};
+  badge.textContent=roleMap[u.role]||u.role;
+  badge.className="badge-role"+(u.role==="manager"?" mgr":u.role==="hr"?" hr":u.role==="admin"?" admin":"");
   const sel=document.getElementById("period-sel");
   sel.innerHTML=PERIODS.map((p,i)=>`<option value="${i}">${p}</option>`).join("");
   pidx=0;sel.value=0;show("s-app");renderApp();
