@@ -227,71 +227,8 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 
   <!-- MAIN LOGIN FORM -->
   <div class="login-card" id="login-card-select">
-    <form autocomplete="off" onsubmit="return false;">
-    <!-- honeypot: browser targets these instead of our real fields -->
-    <input type="text" name="username" style="display:none" tabindex="-1" aria-hidden="true">
-    <input type="password" name="password" style="display:none" tabindex="-1" aria-hidden="true">
-    <h2>Sign in to your account</h2>
-
-    <div class="lf-group">
-      <label class="lf-label">Name</label>
-      <input type="search" class="lf-input" id="lf-name-text" list="lf-name-list"
-        placeholder="Type or select your name…"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        name="ts-user-search" role="combobox"
-        onfocus="if(EMPS&&!EMPS.find(e=>e.name.toLowerCase()===this.value.toLowerCase()))this.value=''"
-        oninput="setTimeout(lfNameTextChange,50)" onchange="setTimeout(lfNameTextChange,50)" onblur="setTimeout(lfNameTextChange,100)" style="cursor:pointer">
-      <datalist id="lf-name-list"></datalist>
-      <select id="lf-name" style="display:none" autocomplete="off"></select>
-    </div>
-
-    <div class="lf-group" id="lf-level-group">
-      <label class="lf-label">Access Level</label>
-      <select class="lf-select" id="lf-level" onchange="lfLevelChange()" autocomplete="off">
-        <option value="">— Select access level —</option>
-      </select>
-      <div id="lf-level-display" style="display:none;width:100%;background:rgba(255,255,255,.08);border:1.5px solid rgba(3,173,143,.4);border-radius:10px;color:#fff;padding:.65rem .85rem;font-size:.9rem;"></div>
-    </div>
-
-    <div class="lf-group" id="lf-pin-group" style="display:none">
-      <label class="lf-label" id="lf-pin-label">PIN</label>
-      <div style="display:flex;gap:.5rem;justify-content:center;margin-top:.4rem">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin0" oninput="pinNext(0)" onkeydown="pinKeydown(event,0)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin1" oninput="pinNext(1)" onkeydown="pinKeydown(event,1)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin2" oninput="pinNext(2)" onkeydown="pinKeydown(event,2)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin3" oninput="pinNext(3)" onkeydown="pinKeydown(event,3)">
-      </div>
-    </div>
-
-    <div class="lf-group" id="lf-pw-group" style="display:none">
-      <label class="lf-label" id="lf-pw-label">Password</label>
-      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')lfSubmit()">
-    </div>
-    <div class="lf-group" id="lf-pw-confirm-group" style="display:none">
-      <label class="lf-label">Confirm Password</label>
-      <input type="password" class="lf-input" id="lf-password-confirm" placeholder="Re-enter your password" onkeydown="if(event.key==='Enter')lfSubmit()">
-    </div>
-
-    <div id="lf-pin-confirm" style="display:none">
-      <div class="lf-group">
-        <label class="lf-label">Confirm PIN</label>
-        <div style="display:flex;gap:.5rem;justify-content:center;margin-top:.4rem">
-          <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin4" oninput="pinNext(4)" onkeydown="pinKeydown(event,4)">
-          <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin5" oninput="pinNext(5)" onkeydown="pinKeydown(event,5)">
-          <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin6" oninput="pinNext(6)" onkeydown="pinKeydown(event,6)">
-          <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin7" oninput="pinNext(7)" onkeydown="pinKeydown(event,7)">
-        </div>
-      </div>
-    </div>
-
-    <div id="lf-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin:.25rem 0"></div>
-
-    <button class="btn btn-primary" style="width:100%;margin-top:.25rem" id="lf-submit" onclick="lfSubmit()" disabled>Sign In</button>
-
-    <div style="text-align:center;margin-top:.85rem">
-      <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none" onclick="showForgotPin()">Forgot PIN?</span>
-    </div>
-    </form>
+    <!-- login form injected by JS after load to prevent browser autofill -->
+    <div id="lf-mount"></div>
   </div>
 
   <!-- FORGOT PIN -->
@@ -433,15 +370,75 @@ let _resetToken=null, _resetUid=null;
 
 // ── BUILD LOGIN FORM (called after EMPS loaded from DB) ───────────────────
 function buildLoginForm(){
-  const dl=document.getElementById("lf-name-list");
-  dl.innerHTML='';
   const sorted=[...EMPS].sort((a,b)=>{
     const ra=a.role==="employee"?0:1, rb=b.role==="employee"?0:1;
     return ra!==rb ? ra-rb : a.name.localeCompare(b.name);
   });
-  sorted.forEach(e=>{
-    const o=document.createElement("option");
-    o.value=e.name; o.dataset.id=e.id; dl.appendChild(o);
+  const opts=sorted.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+  // Inject entire form via JS so browser never sees it during initial parse
+  document.getElementById('lf-mount').innerHTML=`
+    <h2>Sign in to your account</h2>
+    <div class="lf-group">
+      <label class="lf-label">Name</label>
+      <select class="lf-select" id="lf-name" autocomplete="off">
+        <option value="">— Select your name —</option>
+        ${opts}
+      </select>
+    </div>
+    <div class="lf-group" id="lf-level-group">
+      <label class="lf-label">Access Level</label>
+      <select class="lf-select" id="lf-level" autocomplete="off">
+        <option value="">— Select access level —</option>
+      </select>
+      <div id="lf-level-display" style="display:none;width:100%;background:rgba(255,255,255,.08);border:1.5px solid rgba(3,173,143,.4);border-radius:10px;color:#fff;padding:.65rem .85rem;font-size:.9rem;"></div>
+    </div>
+    <div class="lf-group" id="lf-pin-group" style="display:none">
+      <label class="lf-label" id="lf-pin-label">PIN</label>
+      <div style="display:flex;gap:.5rem;justify-content:center;margin-top:.4rem">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit" id="pin0" autocomplete="off">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit" id="pin1" autocomplete="off">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit" id="pin2" autocomplete="off">
+        <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit" id="pin3" autocomplete="off">
+      </div>
+    </div>
+    <div class="lf-group" id="lf-pw-group" style="display:none">
+      <label class="lf-label" id="lf-pw-label">Password</label>
+      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="new-password">
+    </div>
+    <div class="lf-group" id="lf-pw-confirm-group" style="display:none">
+      <label class="lf-label">Confirm Password</label>
+      <input type="password" class="lf-input" id="lf-password-confirm" placeholder="Re-enter your password" autocomplete="new-password">
+    </div>
+    <div id="lf-pin-confirm" style="display:none">
+      <div class="lf-group">
+        <label class="lf-label">Confirm PIN</label>
+        <div style="display:flex;gap:.5rem;justify-content:center;margin-top:.4rem">
+          <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit" id="pin4" autocomplete="off">
+          <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit" id="pin5" autocomplete="off">
+          <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit" id="pin6" autocomplete="off">
+          <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit" id="pin7" autocomplete="off">
+        </div>
+      </div>
+    </div>
+    <div id="lf-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin:.25rem 0"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:.25rem" id="lf-submit" disabled>Sign In</button>
+    <div style="text-align:center;margin-top:.85rem">
+      <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none">Forgot PIN?</span>
+    </div>`;
+  // Wire up events after injection
+  document.getElementById('lf-name').addEventListener('change', lfNameChange);
+  document.getElementById('lf-level').addEventListener('change', lfLevelChange);
+  document.getElementById('lf-submit').addEventListener('click', lfSubmit);
+  document.getElementById('lf-forgot').addEventListener('click', showForgotPin);
+  document.getElementById('lf-password').addEventListener('keydown', e=>{ if(e.key==='Enter') lfSubmit(); });
+  document.getElementById('lf-password-confirm').addEventListener('keydown', e=>{ if(e.key==='Enter') lfSubmit(); });
+  [0,1,2,3].forEach(i=>{
+    document.getElementById('pin'+i).addEventListener('input', ()=>pinNext(i));
+    document.getElementById('pin'+i).addEventListener('keydown', e=>pinKeydown(e,i));
+  });
+  [4,5,6,7].forEach(i=>{
+    document.getElementById('pin'+i).addEventListener('input', ()=>pinNext(i));
+    document.getElementById('pin'+i).addEventListener('keydown', e=>pinKeydown(e,i));
   });
 }
 
