@@ -1,22 +1,44 @@
-name: Deploy to staging
+name: Deploy to Staging
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Pull latest and deploy via cPanel API
-        run: |
-          # Step 1: pull latest from GitHub into cPanel's repo
-          curl -sk \
-            -H "Authorization: cpanel ${{ secrets.CPANEL_USERNAME }}:${{ secrets.CPANEL_TOKEN }}" \
-            "https://sxb1plzcpnl506143.prod.sxb1.secureserver.net:2083/execute/VersionControl/update?repository_root=%2Fhome%2Frouqwneqwsgg%2Fpublic_html%2Fstagging.timesheet.genhead.com%2Ftimesheet"
 
-          # Step 2: run .cpanel.yml deploy tasks
-          curl -sk \
-            -H "Authorization: cpanel ${{ secrets.CPANEL_USERNAME }}:${{ secrets.CPANEL_TOKEN }}" \
-            "https://sxb1plzcpnl506143.prod.sxb1.secureserver.net:2083/execute/VersionControlDeployment/create?repository_root=%2Fhome%2Frouqwneqwsgg%2Fpublic_html%2Fstagging.timesheet.genhead.com%2Ftimesheet"
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        env:
+          CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$CPANEL_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "$CPANEL_PORT" "$CPANEL_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy to cPanel via rsync
+        env:
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+          CPANEL_DEPLOY_PATH: ${{ secrets.CPANEL_DEPLOY_PATH }}
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.cpanel.yml' \
+            --exclude='.gitignore' \
+            --exclude='db.php' \
+            --exclude='chrome-extension/' \
+            ./ "${CPANEL_USER}@${CPANEL_HOST}:${CPANEL_DEPLOY_PATH}/"
