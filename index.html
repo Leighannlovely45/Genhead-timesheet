@@ -231,14 +231,14 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 
     <div class="lf-group">
       <label class="lf-label">Name</label>
-      <select class="lf-select" id="lf-name" onchange="lfNameChange()">
+      <select class="lf-select" id="lf-name" onchange="lfNameChange()" autocomplete="off">
         <option value="">— Select your name —</option>
       </select>
     </div>
 
     <div class="lf-group">
       <label class="lf-label">Access Level</label>
-      <select class="lf-select" id="lf-level" onchange="lfLevelChange()">
+      <select class="lf-select" id="lf-level" onchange="lfLevelChange()" autocomplete="off">
         <option value="">— Select access level —</option>
       </select>
     </div>
@@ -447,7 +447,7 @@ function lfNameChange(){
   document.getElementById("lf-error").textContent="";
   document.getElementById("lf-submit").disabled=true;
   if(!uid) return;
-  const u=EMPS.find(e=>e.id===uid);
+  const u=EMPS.find(e=>String(e.id)===String(uid));
   if(!u) return;
   // Build level options based on role
   const levels=[];
@@ -474,7 +474,7 @@ function lfLevelChange(){
   clearPinInputs();
   if(!level) return;
   const uid=document.getElementById("lf-name").value;
-  const u=uid ? EMPS.find(e=>e.id===uid) : null;
+  const u=uid ? EMPS.find(e=>String(e.id)===String(uid)) : null;
   if(level==="employee"){
     document.getElementById("lf-pin-group").style.display="";
     document.getElementById("lf-pin-label").textContent="PIN";
