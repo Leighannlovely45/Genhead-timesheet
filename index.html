@@ -562,15 +562,15 @@ function lfSubmit(){
         document.getElementById("lf-error").textContent="PINs don't match — try again.";
         clearPinInputs();document.getElementById("pin0").focus();return;
       }
-      api({action:"set_pin",uid,pin}).then(r=>{
-        if(r.ok) doLogin(u);
+      fetch(`api.php?action=set_pin&id=${encodeURIComponent(uid)}&pin=${encodeURIComponent(pin)}`).then(r=>r.json()).then(r=>{
+        if(r.ok||r.success) doLogin(u);
         else document.getElementById("lf-error").textContent=r.error||"Error setting PIN.";
-      });
+      }).catch(()=>document.getElementById("lf-error").textContent="Error — try again.");
     } else {
-      api({action:"verify_pin",uid,pin}).then(r=>{
-        if(r.ok) doLogin(u);
+      fetch(`api.php?action=verify_pin&id=${encodeURIComponent(uid)}&pin=${encodeURIComponent(pin)}`).then(r=>r.json()).then(r=>{
+        if(r.ok||r.success) doLogin(u);
         else{document.getElementById("lf-error").textContent="Incorrect PIN.";clearPinInputs();document.getElementById("pin0").focus();}
-      });
+      }).catch(()=>document.getElementById("lf-error").textContent="Error — try again.");
     }
   } else {
     const pw=document.getElementById("lf-password").value;

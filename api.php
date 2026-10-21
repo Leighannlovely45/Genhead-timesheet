@@ -37,6 +37,40 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── VERIFY PIN VIA GET (avoids WAF blocking POST) ──────────────────────
+    if ($action === 'verify_pin') {
+        $db  = getDB();
+        $id  = preg_replace('/^e/', '', $_GET['id'] ?? '');
+        $pin = trim($_GET['pin'] ?? '');
+        if (!$id || strlen($pin) !== 4 || !ctype_digit($pin)) {
+            echo json_encode(['success' => false, 'ok' => false, 'error' => 'Invalid PIN format']); exit;
+        }
+        $stmt = $db->prepare("SELECT pin, pin_set FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) { echo json_encode(['success' => false, 'ok' => false, 'error' => 'User not found']); exit; }
+        if (!$row['pin_set']) { echo json_encode(['success' => false, 'ok' => false, 'needs_setup' => true]); exit; }
+        $valid = ($row['pin'] === $pin);
+        echo json_encode(['success' => $valid, 'ok' => $valid]);
+        exit;
+    }
+
+    // ── SET PIN VIA GET (avoids WAF blocking POST) ──────────────────────────
+    if ($action === 'set_pin') {
+        $db  = getDB();
+        $id  = preg_replace('/^e/', '', $_GET['id'] ?? '');
+        $pin = trim($_GET['pin'] ?? '');
+        if (!$id || strlen($pin) !== 4 || !ctype_digit($pin)) {
+            echo json_encode(['success' => false, 'ok' => false, 'error' => 'PIN must be 4 digits']); exit;
+        }
+        $stmt = $db->prepare("SELECT id FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $stmt->execute([$id]);
+        if (!$stmt->fetch()) { echo json_encode(['success' => false, 'ok' => false, 'error' => 'User not found']); exit; }
+        $db->prepare("UPDATE users SET pin = ?, pin_set = 1 WHERE id = ?")->execute([$pin, $id]);
+        echo json_encode(['success' => true, 'ok' => true]);
+        exit;
+    }
+
     // ── SET PASSWORD VIA GET (avoids WAF blocking POST) ─────────────────────
     if ($action === 'set_password') {
         $db = getDB();
