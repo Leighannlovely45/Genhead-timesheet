@@ -232,9 +232,12 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 
     <div class="lf-group">
       <label class="lf-label">Name</label>
-      <select class="lf-select" id="lf-name" onchange="lfNameChange()" autocomplete="off">
-        <option value="">— Select your name —</option>
-      </select>
+      <input type="text" class="lf-input" id="lf-name-text" list="lf-name-list"
+        placeholder="Type or select your name…"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        oninput="lfNameTextChange()" style="cursor:pointer">
+      <datalist id="lf-name-list"></datalist>
+      <select id="lf-name" style="display:none" autocomplete="off"></select>
     </div>
 
     <div class="lf-group" id="lf-level-group">
@@ -425,23 +428,29 @@ let _resetToken=null, _resetUid=null;
 
 // ── BUILD LOGIN FORM (called after EMPS loaded from DB) ───────────────────
 function buildLoginForm(){
-  const nameEl=document.getElementById("lf-name");
-  nameEl.innerHTML='<option value="">— Select your name —</option>';
-  // Sort: employees first (alphabetical), then manager/hr/admin
+  const dl=document.getElementById("lf-name-list");
+  dl.innerHTML='';
   const sorted=[...EMPS].sort((a,b)=>{
     const ra=a.role==="employee"?0:1, rb=b.role==="employee"?0:1;
     return ra!==rb ? ra-rb : a.name.localeCompare(b.name);
   });
   sorted.forEach(e=>{
     const o=document.createElement("option");
-    o.value=e.id; o.textContent=e.name; nameEl.appendChild(o);
+    o.value=e.name; o.dataset.id=e.id; dl.appendChild(o);
   });
 }
 
-function lfNameChange(){
-  const nameEl=document.getElementById("lf-name");
+function lfNameTextChange(){
+  const val=document.getElementById("lf-name-text").value.trim();
+  const u=EMPS.find(e=>e.name===val);
+  // Mirror into hidden select so rest of code still works
+  const sel=document.getElementById("lf-name");
+  if(u){ sel.value=u.id; lfNameChangeById(u); }
+  else { sel.value=""; resetLevelField(); }
+}
+
+function resetLevelField(){
   const levelEl=document.getElementById("lf-level");
-  const uid=nameEl.value;
   levelEl.innerHTML='<option value="">— Select access level —</option>';
   levelEl.style.display="";
   document.getElementById("lf-level-display").style.display="none";
@@ -451,10 +460,11 @@ function lfNameChange(){
   document.getElementById("lf-forgot").style.display="none";
   document.getElementById("lf-error").textContent="";
   document.getElementById("lf-submit").disabled=true;
-  if(!uid) return;
-  const u=EMPS.find(e=>String(e.id)===String(uid));
-  if(!u) return;
-  // Build level options based on role
+}
+
+function lfNameChangeById(u){
+  resetLevelField();
+  const levelEl=document.getElementById("lf-level");
   const levels=[];
   if(u.role==="employee") levels.push({val:"employee",label:"Employee"});
   if(u.role==="manager") levels.push({val:"manager",label:"Manager"});
@@ -464,7 +474,6 @@ function lfNameChange(){
     const o=document.createElement("option");
     o.value=l.val; o.textContent=l.label; levelEl.appendChild(o);
   });
-  // Auto-select if only one option — hide dropdown, show locked label
   if(levels.length===1){
     levelEl.style.display="none";
     const disp=document.getElementById("lf-level-display");
@@ -476,6 +485,13 @@ function lfNameChange(){
     levelEl.style.display="";
     document.getElementById("lf-level-display").style.display="none";
   }
+}
+
+function lfNameChange(){
+  const uid=document.getElementById("lf-name").value;
+  if(!uid){ resetLevelField(); return; }
+  const u=EMPS.find(e=>String(e.id)===String(uid));
+  if(u) lfNameChangeById(u); else resetLevelField();
 }
 
 function lfLevelChange(){
