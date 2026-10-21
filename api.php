@@ -612,6 +612,71 @@ if ($method === 'POST') {
         exit;
     }
 
+    // ── VERIFY PIN ──────────────────────────────────────────────────────────
+    if ($action === 'verify_pin') {
+        $db  = getDB();
+        $id  = preg_replace('/^e/', '', $body['id'] ?? '');
+        $pin = trim($body['pin'] ?? '');
+        $stmt = $db->prepare("SELECT pin, pin_set FROM users WHERE id = ? LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        if (!$row['pin_set']) { echo json_encode(['success' => false, 'needs_setup' => true]); exit; }
+        if ($row['pin'] !== $pin) { echo json_encode(['success' => false, 'error' => 'Incorrect PIN']); exit; }
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    // ── FORGOT PIN — send reset email ────────────────────────────────────────
+    if ($action === 'forgot_pin') {
+        $db    = getDB();
+        $email = trim($body['email'] ?? '');
+        if (!$email) { echo json_encode(['success' => false, 'error' => 'Email required']); exit; }
+        $stmt = $db->prepare("SELECT id, name FROM users WHERE email = ? AND status = 'active' LIMIT 1");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+        // Always return success to prevent email enumeration
+        if ($user) {
+            $token     = bin2hex(random_bytes(20));
+            $expires   = date('Y-m-d H:i:s', strtotime('+1 hour'));
+            // Store token in settings table as a keyed JSON blob
+            $key       = 'pin_reset_' . $user['id'];
+            $val       = json_encode(['token' => $token, 'expires' => $expires]);
+            $db->prepare("INSERT INTO settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=?")->execute([$key, $val, $val]);
+            $resetUrl  = 'https://timesheet.genhead.com/index.html?reset_token=' . $token . '&uid=' . $user['id'];
+            $subject   = 'Genhead Timesheet — Reset Your PIN';
+            $message   = "Hi {$user['name']},\n\nYou requested a PIN reset for the Genhead Timesheet Portal.\n\nClick the link below to set a new PIN (expires in 1 hour):\n\n{$resetUrl}\n\nIf you did not request this, you can ignore this email.\n\n— Genhead Team";
+            $headers   = "From: noreply@genhead.com\r\nReply-To: support@genhead.com";
+            mail($email, $subject, $message, $headers);
+        }
+        echo json_encode(['success' => true, 'message' => 'If that email is in our system, a reset link has been sent.']);
+        exit;
+    }
+
+    // ── RESET PIN via token ──────────────────────────────────────────────────
+    if ($action === 'reset_pin') {
+        $db    = getDB();
+        $uid   = (int)($body['uid']   ?? 0);
+        $token = trim($body['token']  ?? '');
+        $pin   = trim($body['pin']    ?? '');
+        if (!$uid || !$token || strlen($pin) !== 4 || !ctype_digit($pin)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid request']); exit;
+        }
+        $key  = 'pin_reset_' . $uid;
+        $stmt = $db->prepare("SELECT value FROM settings WHERE key_name = ? LIMIT 1");
+        $stmt->execute([$key]);
+        $row  = $stmt->fetch();
+        if (!$row) { echo json_encode(['success' => false, 'error' => 'Reset link is invalid or expired']); exit; }
+        $data = json_decode($row['value'], true);
+        if (!$data || $data['token'] !== $token || strtotime($data['expires']) < time()) {
+            echo json_encode(['success' => false, 'error' => 'Reset link is invalid or has expired']); exit;
+        }
+        $db->prepare("UPDATE users SET pin = ?, pin_set = 1 WHERE id = ?")->execute([$pin, $uid]);
+        $db->prepare("DELETE FROM settings WHERE key_name = ?")->execute([$key]);
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
     // ── SAVE TIMESHEET ──────────────────────────────────────────────────────
     if ($action === 'save_timesheet') {
         $rawId = $body['employeeId'] ?? '';

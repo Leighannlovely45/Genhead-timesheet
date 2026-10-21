@@ -33,6 +33,8 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .emp-btn.hr{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.25);color:var(--gold)}
 .emp-btn.hr:hover{background:rgba(245,158,11,.2);border-color:var(--gold)}
 .login-note{font-size:.7rem;color:rgba(255,255,255,.28);text-align:center;line-height:1.6}
+.pin-digit{width:48px;height:56px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:1.5rem;text-align:center;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s}
+.pin-digit:focus{border-color:var(--teal);background:rgba(3,173,143,.1)}
 
 /* APP SHELL */
 #s-app.active{display:flex;flex-direction:column;min-height:100vh}
@@ -204,10 +206,68 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 <div id="s-login" class="screen active">
   <div class="login-brand">gen<span>head</span></div>
   <div class="login-sub">Timesheet Portal &middot; 2026</div>
-  <div class="login-card">
+  <div class="login-card" id="login-card-select">
     <h2>Select your profile to continue</h2>
     <div class="emp-grid" id="emp-grid"></div>
     <div class="login-note">Each employee sees only their own timesheet.<br>Manager &amp; HR have full payroll access.</div>
+  </div>
+
+  <!-- PIN ENTRY / FIRST TIME SETUP -->
+  <div class="login-card" id="login-card-pin" style="display:none">
+    <div id="pin-back" style="font-size:.78rem;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:.75rem" onclick="showLoginSelect()">&#8592; Back</div>
+    <h2 id="pin-title">Enter your PIN</h2>
+    <p id="pin-sub" style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem"></p>
+    <div style="display:flex;gap:.5rem;justify-content:center;margin-bottom:1rem">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin0" oninput="pinNext(0)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin1" oninput="pinNext(1)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin2" oninput="pinNext(2)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin3" oninput="pinNext(3)">
+    </div>
+    <div id="pin-confirm-row" style="display:none">
+      <p style="font-size:.8rem;color:rgba(255,255,255,.5);margin:.5rem 0 .5rem;text-align:center">Confirm your PIN</p>
+      <div style="display:flex;gap:.5rem;justify-content:center;margin-bottom:1rem">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin4" oninput="pinNext(4)">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin5" oninput="pinNext(5)">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin6" oninput="pinNext(6)">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin7" oninput="pinNext(7)">
+      </div>
+    </div>
+    <div id="pin-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin-bottom:.5rem"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="submitPin()" id="pin-submit-btn">Continue</button>
+    <div style="text-align:center;margin-top:.75rem">
+      <span id="forgot-link" style="font-size:.75rem;color:rgba(255,255,255,.4);cursor:pointer;text-decoration:underline" onclick="showForgotPin()">Forgot PIN?</span>
+    </div>
+  </div>
+
+  <!-- FORGOT PIN -->
+  <div class="login-card" id="login-card-forgot" style="display:none">
+    <div style="font-size:.78rem;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:.75rem" onclick="showLoginSelect()">&#8592; Back</div>
+    <h2>Reset your PIN</h2>
+    <p style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Enter your Genhead email and we'll send you a reset link.</p>
+    <input type="email" id="forgot-email" placeholder="you@genhead.com" style="width:100%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:.65rem .85rem;font-size:.9rem;margin-bottom:.75rem;outline:none">
+    <div id="forgot-msg" style="font-size:.78rem;min-height:1.2em;margin-bottom:.5rem;text-align:center"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="sendForgotPin()">Send Reset Link</button>
+  </div>
+
+  <!-- RESET PIN (from email link) -->
+  <div class="login-card" id="login-card-reset" style="display:none">
+    <h2>Set a new PIN</h2>
+    <p style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Choose a 4-digit PIN you'll use to log in.</p>
+    <div style="display:flex;gap:.5rem;justify-content:center;margin-bottom:.75rem">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin0" oninput="rpinNext(0)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin1" oninput="rpinNext(1)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin2" oninput="rpinNext(2)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin3" oninput="rpinNext(3)">
+    </div>
+    <p style="font-size:.8rem;color:rgba(255,255,255,.5);margin:.5rem 0 .5rem;text-align:center">Confirm PIN</p>
+    <div style="display:flex;gap:.5rem;justify-content:center;margin-bottom:.75rem">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin4" oninput="rpinNext(4)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin5" oninput="rpinNext(5)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin6" oninput="rpinNext(6)">
+      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin7" oninput="rpinNext(7)">
+    </div>
+    <div id="rpin-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin-bottom:.5rem"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="submitResetPin()">Set PIN &amp; Log In</button>
   </div>
 </div>
 
@@ -300,15 +360,192 @@ EMPS.forEach(e=>{
 });
 
 function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");}
+
+// ── PIN AUTH STATE ─────────────────────────────────────────────────────────
+let _pinUser=null, _pinMode='enter'; // modes: 'enter','setup','reset'
+let _resetToken=null, _resetUid=null;
+
+function showLoginSelect(){
+  document.getElementById("login-card-select").style.display="";
+  document.getElementById("login-card-pin").style.display="none";
+  document.getElementById("login-card-forgot").style.display="none";
+  document.getElementById("login-card-reset").style.display="none";
+}
+
 function login(u){
+  if(u.role==="manager"||u.role==="hr"){
+    // Manager/HR use password, but keep same PIN card for password entry
+    _pinUser=u;_pinMode='enter';
+    document.getElementById("pin-title").textContent="Enter your password";
+    document.getElementById("pin-sub").textContent=u.name;
+    document.getElementById("pin-confirm-row").style.display="none";
+    document.getElementById("forgot-link").style.display="none";
+    document.getElementById("pin-error").textContent="";
+    clearPinInputs();
+    document.getElementById("login-card-select").style.display="none";
+    document.getElementById("login-card-pin").style.display="";
+    // For manager/HR use a text password field instead of PIN digits
+    showMgrPasswordPrompt(u);
+    return;
+  }
+  _pinUser=u;
+  document.getElementById("pin-sub").textContent=u.name;
+  document.getElementById("pin-confirm-row").style.display="none";
+  document.getElementById("forgot-link").style.display="inline";
+  document.getElementById("pin-error").textContent="";
+  clearPinInputs();
+  document.getElementById("login-card-select").style.display="none";
+  document.getElementById("login-card-pin").style.display="";
+  // Check if user needs PIN setup
+  api({action:"verify_pin",uid:u.id,pin:"__check__"}).then(r=>{
+    if(r.needs_setup){
+      _pinMode='setup';
+      document.getElementById("pin-title").textContent="Create your PIN";
+      document.getElementById("pin-sub").textContent="Choose a 4-digit PIN to secure your account";
+      document.getElementById("pin-confirm-row").style.display="";
+    } else {
+      _pinMode='enter';
+      document.getElementById("pin-title").textContent="Enter your PIN";
+      document.getElementById("pin-sub").textContent=u.name;
+    }
+  }).catch(()=>{
+    _pinMode='enter';
+    document.getElementById("pin-title").textContent="Enter your PIN";
+  });
+  setTimeout(()=>document.getElementById("pin0").focus(),100);
+}
+
+function showMgrPasswordPrompt(u){
+  // Replace PIN card content with a simple password field for managers
+  document.getElementById("login-card-pin").innerHTML=`
+    <div style="font-size:.78rem;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:.75rem" onclick="showLoginSelect()">&#8592; Back</div>
+    <h2>${u.name}</h2>
+    <p style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Enter your password to continue</p>
+    <input type="password" id="mgr-pw" placeholder="Password" style="width:100%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:.65rem .85rem;font-size:.9rem;margin-bottom:.75rem;outline:none" onkeydown="if(event.key==='Enter')submitMgrPw()">
+    <div id="mgr-pw-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin-bottom:.5rem"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="submitMgrPw()">Log In</button>
+  `;
+  setTimeout(()=>document.getElementById("mgr-pw").focus(),100);
+}
+
+function submitMgrPw(){
+  const pw=document.getElementById("mgr-pw").value;
+  if(!pw){document.getElementById("mgr-pw-error").textContent="Please enter your password.";return;}
+  api({action:"verify_password",role:_pinUser.role,password:pw}).then(r=>{
+    if(r.ok) doLogin(_pinUser);
+    else{document.getElementById("mgr-pw-error").textContent="Incorrect password.";}
+  }).catch(()=>{document.getElementById("mgr-pw-error").textContent="Error — try again.";});
+}
+
+function clearPinInputs(){
+  for(let i=0;i<8;i++){const el=document.getElementById("pin"+i);if(el)el.value="";}
+}
+
+function pinNext(idx){
+  const el=document.getElementById("pin"+idx);
+  if(!el)return;
+  // Only allow digits
+  el.value=el.value.replace(/\D/g,"").slice(-1);
+  if(el.value&&idx<3) document.getElementById("pin"+(idx+1)).focus();
+  if(el.value&&idx>=4&&idx<7) document.getElementById("pin"+(idx+1)).focus();
+  // Auto-submit when last digit entered
+  const maxIdx=(_pinMode==='setup')?7:3;
+  if(idx===maxIdx&&el.value) submitPin();
+}
+
+function submitPin(){
+  const digits=[0,1,2,3].map(i=>document.getElementById("pin"+i).value);
+  if(digits.some(d=>!d)){document.getElementById("pin-error").textContent="Please enter all 4 digits.";return;}
+  const pin=digits.join("");
+  if(_pinMode==='setup'){
+    const conf=[4,5,6,7].map(i=>document.getElementById("pin"+i).value);
+    if(conf.some(d=>!d)){document.getElementById("pin-error").textContent="Please confirm your PIN.";return;}
+    if(pin!==conf.join("")){
+      document.getElementById("pin-error").textContent="PINs don't match — try again.";
+      clearPinInputs();document.getElementById("pin0").focus();return;
+    }
+    api({action:"set_pin",uid:_pinUser.id,pin}).then(r=>{
+      if(r.ok) doLogin(_pinUser);
+      else document.getElementById("pin-error").textContent=r.error||"Error setting PIN.";
+    });
+  } else {
+    api({action:"verify_pin",uid:_pinUser.id,pin}).then(r=>{
+      if(r.ok) doLogin(_pinUser);
+      else{
+        document.getElementById("pin-error").textContent="Incorrect PIN.";
+        clearPinInputs();document.getElementById("pin0").focus();
+      }
+    });
+  }
+}
+
+function showForgotPin(){
+  document.getElementById("login-card-pin").style.display="none";
+  document.getElementById("login-card-forgot").style.display="";
+  document.getElementById("forgot-msg").textContent="";
+  document.getElementById("forgot-email").value="";
+  setTimeout(()=>document.getElementById("forgot-email").focus(),100);
+}
+
+function sendForgotPin(){
+  const email=document.getElementById("forgot-email").value.trim();
+  if(!email){document.getElementById("forgot-msg").style.color="#f87171";document.getElementById("forgot-msg").textContent="Please enter your email.";return;}
+  api({action:"forgot_pin",email}).then(()=>{
+    document.getElementById("forgot-msg").style.color="#4ade80";
+    document.getElementById("forgot-msg").textContent="If that email is on file, a reset link is on its way!";
+  }).catch(()=>{
+    document.getElementById("forgot-msg").style.color="#4ade80";
+    document.getElementById("forgot-msg").textContent="If that email is on file, a reset link is on its way!";
+  });
+}
+
+function rpinNext(idx){
+  const el=document.getElementById("rpin"+idx);
+  if(!el)return;
+  el.value=el.value.replace(/\D/g,"").slice(-1);
+  if(el.value&&idx<3) document.getElementById("rpin"+(idx+1)).focus();
+  if(el.value&&idx>=4&&idx<7) document.getElementById("rpin"+(idx+1)).focus();
+  if(idx===7&&el.value) submitResetPin();
+}
+
+function submitResetPin(){
+  const pin=[0,1,2,3].map(i=>document.getElementById("rpin"+i).value).join("");
+  const conf=[4,5,6,7].map(i=>document.getElementById("rpin"+i).value).join("");
+  if(pin.length<4||conf.length<4){document.getElementById("rpin-error").textContent="Enter all digits.";return;}
+  if(pin!==conf){document.getElementById("rpin-error").textContent="PINs don't match.";return;}
+  api({action:"reset_pin",uid:_resetUid,token:_resetToken,pin}).then(r=>{
+    if(r.ok){
+      // Clean URL and log user in
+      window.history.replaceState({},"",window.location.pathname);
+      const u=EMPS.find(e=>e.id==_resetUid);
+      if(u) doLogin(u); else showLoginSelect();
+    } else {
+      document.getElementById("rpin-error").textContent=r.error||"Reset failed. Link may have expired.";
+    }
+  });
+}
+
+function doLogin(u){
   cur=u;document.getElementById("tb-name").textContent=u.name;
   const sel=document.getElementById("period-sel");
   sel.innerHTML=PERIODS.map((p,i)=>`<option value="${i}">${p}</option>`).join("");
   pidx=0;sel.value=0;show("s-app");renderApp();
 }
-function logout(){cur=null;show("s-login");}
+
+function logout(){cur=null;showLoginSelect();show("s-login");}
 function changePeriod(){pidx=parseInt(document.getElementById("period-sel").value);renderApp();}
 function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr")?renderDash():renderTS(cur._vid||cur.id);}
+
+// ── CHECK FOR RESET TOKEN IN URL ──────────────────────────────────────────
+(function(){
+  const params=new URLSearchParams(window.location.search);
+  const tok=params.get("reset_token"),uid=params.get("uid");
+  if(tok&&uid){
+    _resetToken=tok;_resetUid=uid;
+    document.getElementById("login-card-select").style.display="none";
+    document.getElementById("login-card-reset").style.display="";
+  }
+})();
 
 // ── TIMESHEET VIEW ─────────────────────────────────────────────────────────
 function renderTS(uid){
