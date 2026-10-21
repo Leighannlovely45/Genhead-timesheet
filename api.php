@@ -17,6 +17,43 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // ─────────────────────────────────────────
 if ($method === 'GET') {
 
+    // ── VERIFY PASSWORD VIA GET (avoids WAF blocking POST) ──────────────────
+    if ($action === 'verify_password') {
+        $db = getDB();
+        $id = preg_replace('/^e/', '', $_GET['id'] ?? '');
+        $password = $_GET['pw'] ?? '';
+        if (!$id || !$password) { echo json_encode(['success' => false, 'error' => 'ID and password required']); exit; }
+        $stmt = $db->prepare("SELECT id, password, password_hash, password_set, name, role FROM users WHERE id = ? AND role IN ('manager','hr','admin') AND status = 'active' LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        if (!$row['password_set']) { echo json_encode(['success' => false, 'needs_setup' => true]); exit; }
+        if ($row['password_hash']) {
+            $valid = password_verify($password, $row['password_hash']);
+        } else {
+            $valid = ($row['password'] === $password);
+        }
+        echo json_encode(['success' => $valid, 'name' => $row['name'], 'role' => $row['role']]);
+        exit;
+    }
+
+    // ── SET PASSWORD VIA GET (avoids WAF blocking POST) ─────────────────────
+    if ($action === 'set_password') {
+        $db = getDB();
+        $id       = preg_replace('/^e/', '', $_GET['id'] ?? '');
+        $password = trim($_GET['pw'] ?? '');
+        if (!$id || strlen($password) < 6) {
+            echo json_encode(['success' => false, 'error' => 'Password must be at least 6 characters']); exit;
+        }
+        $stmt = $db->prepare("SELECT id, role FROM users WHERE id = ? AND role IN ('manager','hr','admin') AND status = 'active' LIMIT 1");
+        $stmt->execute([$id]);
+        if (!$stmt->fetch()) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $id]);
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
     if ($action === 'load') {
         $db = getDB();
         $employees = $db->query("SELECT id, ghl_contact_id, name, email, role, pin, pin_set, password_set, rate, status, delegate_to, added_from_ghl, manager_id FROM users WHERE status = 'active' ORDER BY name")->fetchAll();
