@@ -9,8 +9,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger cPanel Git pull and deploy
+      - name: Pull latest and deploy via cPanel API
         run: |
-          curl -s -o /dev/null -w "%{http_code}" \
+          # Step 1: pull latest from GitHub into cPanel's repo
+          curl -sk \
             -H "Authorization: cpanel ${{ secrets.CPANEL_USERNAME }}:${{ secrets.CPANEL_TOKEN }}" \
             "https://sxb1plzcpnl506143.prod.sxb1.secureserver.net:2083/execute/VersionControl/update?repository_root=%2Fhome%2Frouqwneqwsgg%2Fpublic_html%2Fstagging.timesheet.genhead.com%2Ftimesheet"
+
+          # Step 2: run .cpanel.yml deploy tasks
+          curl -sk \
+            -H "Authorization: cpanel ${{ secrets.CPANEL_USERNAME }}:${{ secrets.CPANEL_TOKEN }}" \
+            "https://sxb1plzcpnl506143.prod.sxb1.secureserver.net:2083/execute/VersionControlDeployment/create?repository_root=%2Fhome%2Frouqwneqwsgg%2Fpublic_html%2Fstagging.timesheet.genhead.com%2Ftimesheet"
