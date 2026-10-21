@@ -371,6 +371,7 @@ function api(body){
 }
 
 let GHL_WEBHOOK=localStorage.getItem("ghl_webhook")||"";
+let GHL_INVITE_WEBHOOK="";
 let cur=null,pidx=0;
 const store={};
 
@@ -662,10 +663,16 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr")?rend
     // Detect employee vs non-employee after EMPS load below to show correct reset form
   }
 
-  // Load employees from DB
-  api({action:"load"}).then(data=>{
-    if(data.employees){
-      EMPS=data.employees.map(e=>({
+  // Load employees from DB (load is a GET action)
+  fetch(API_BASE+"?action=load").then(r=>r.json()).then(data=>{
+    // Pull settings
+    const s=data.settings||data.data?.settings||{};
+    if(s.ghl_webhook_url) GHL_WEBHOOK=s.ghl_webhook_url;
+    if(s.ghl_invite_webhook_url) GHL_INVITE_WEBHOOK=s.ghl_invite_webhook_url;
+
+    if(data.employees||data.data?.employees){
+      const empList=data.employees||data.data?.employees;
+      EMPS=empList.map(e=>({
         ...e,
         id:String(e.id),
         password_set:!!e.password_set,
@@ -962,11 +969,21 @@ function renderDash(){
     <div class="ghl-panel">
       <div class="ghl-header"><h3>Go High Level Webhook Configuration</h3><span class="ghl-badge">GHL Workflow</span></div>
       <div class="ghl-body">
-        <div class="ghl-field"><label>GHL Webhook URL</label><input class="ghl-input" id="wh-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${GHL_WEBHOOK}" onchange="saveWH(this.value)"></div>
+        <div class="ghl-field"><label>Timesheet Submission Webhook URL</label><input class="ghl-input" id="wh-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${GHL_WEBHOOK}" onchange="saveWH(this.value)"></div>
         <div id="wh-status" class="ghl-status ghl-warn"><span class="dot dot-y"></span>${GHL_WEBHOOK?"Webhook saved — not yet tested":"Enter your GHL webhook URL above"}</div>
         <div style="display:flex;gap:.65rem;margin-top:.85rem">
           <button class="btn btn-primary" onclick="testWH()">Send Test Payload</button>
           <button class="btn btn-outline" onclick="switchTab('instructions')">View Setup Guide</button>
+        </div>
+
+        <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
+          <label style="font-weight:600">New Employee Invite Webhook URL</label>
+          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">When a GHL tag adds someone to the timesheet system, this webhook fires back to GHL so you can send them a welcome email with their login link and PIN setup instructions.</p>
+          <input class="ghl-input" id="wh-invite-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${GHL_INVITE_WEBHOOK}" onchange="saveInviteWH(this.value)">
+        </div>
+        <div id="wh-invite-status" class="ghl-status ${GHL_INVITE_WEBHOOK?'ghl-ok':'ghl-warn'}" style="margin-top:.45rem">
+          <span class="dot ${GHL_INVITE_WEBHOOK?'dot-g':'dot-y'}"></span>
+          ${GHL_INVITE_WEBHOOK?"Invite webhook active — new employees will be notified automatically":"Paste your invite webhook URL to enable automatic welcome emails"}
         </div>
       </div>
     </div>
@@ -1098,6 +1115,21 @@ function saveWH(val){
   localStorage.setItem("ghl_webhook",val);
   const st=document.getElementById("wh-status");
   if(st){st.className="ghl-status ghl-warn";st.innerHTML='<span class="dot dot-y"></span>URL saved &mdash; click Send Test Payload to verify';}
+}
+
+function saveInviteWH(val){
+  GHL_INVITE_WEBHOOK=val;
+  api({action:"update_settings",ghl_invite_webhook_url:val}).then(()=>{
+    const st=document.getElementById("wh-invite-status");
+    if(!st) return;
+    if(val){
+      st.className="ghl-status ghl-ok";
+      st.innerHTML='<span class="dot dot-g"></span>Invite webhook saved — new employees added from GHL will receive a welcome email automatically.';
+    } else {
+      st.className="ghl-status ghl-warn";
+      st.innerHTML='<span class="dot dot-y"></span>Invite webhook cleared.';
+    }
+  });
 }
 
 function testWH(){

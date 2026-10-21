@@ -545,16 +545,56 @@ if ($method === 'POST') {
             echo json_encode(['success' => false, 'error' => 'Name required', 'received' => $body]);
             exit;
         }
+        // Also grab ghl_contact_id if present
+        $ghlContactId = '';
+        foreach (['id','contact_id','contactId','ghl_contact_id'] as $k) {
+            if (!empty($body[$k])) { $ghlContactId = trim($body[$k]); break; }
+        }
+
         $stmt = $db->prepare("SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1");
         $stmt->execute([$name]);
-        if ($stmt->fetch()) {
-            echo json_encode(['success' => true, 'message' => 'Employee already exists']);
+        $existing = $stmt->fetch();
+        if ($existing) {
+            // Update ghl_contact_id if we now have it
+            if ($ghlContactId) {
+                $db->prepare("UPDATE users SET ghl_contact_id = ? WHERE id = ?")->execute([$ghlContactId, $existing['id']]);
+            }
+            echo json_encode(['success' => true, 'message' => 'Employee already exists', 'id' => 'e' . $existing['id']]);
             exit;
         }
-        $stmt = $db->prepare("INSERT INTO users (name, email, role, added_from_ghl) VALUES (?, ?, 'employee', 1)");
-        $stmt->execute([$name, $email]);
+        $stmt = $db->prepare("INSERT INTO users (name, email, role, ghl_contact_id, added_from_ghl) VALUES (?, ?, 'employee', ?, 1)");
+        $stmt->execute([$name, $email, $ghlContactId ?: null]);
         $newId = $db->lastInsertId();
         logAudit(null, $newId, 'ghl_auto_add', null, ['name' => $name, 'email' => $email]);
+
+        // ── SEND INVITE WEBHOOK BACK TO GHL ─────────────────────────────────
+        // Fires a GHL workflow webhook so GHL can email the employee their
+        // login link + prompt them to set their PIN on first sign-in.
+        if ($email) {
+            $inviteUrl = getSetting('ghl_invite_webhook_url');
+            if ($inviteUrl) {
+                $loginUrl = 'https://timesheet.genhead.com/';
+                $payload  = [
+                    'employee_name'  => $name,
+                    'employee_email' => $email,
+                    'employee_id'    => 'e' . $newId,
+                    'login_url'      => $loginUrl,
+                    'action'         => 'new_employee_invite',
+                ];
+                $ch = curl_init($inviteUrl);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => json_encode($payload),
+                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 10,
+                    CURLOPT_SSL_VERIFYPEER => true,
+                ]);
+                curl_exec($ch);
+                curl_close($ch);
+            }
+        }
+
         echo json_encode(['success' => true, 'message' => 'Employee added', 'id' => 'e' . $newId]);
         exit;
     }
@@ -996,7 +1036,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier'];
         foreach ($allowed as $key) { if (isset($body[$key])) setSetting($key, $body[$key]); }
         echo json_encode(['success' => true]);
         exit;
