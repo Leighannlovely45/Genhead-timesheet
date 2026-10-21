@@ -942,7 +942,7 @@ function getTabsForRole(role){
     tabs.push({id:"reports",label:"Reports"});
   }
   if(role==="admin") tabs.push({id:"clients",label:"Clients"});
-  if(role==="manager"||role==="admin") tabs.push({id:"ghl",label:"GHL Setup"});
+  if(role==="admin") tabs.push({id:"ghl",label:"GHL Setup"});
   if(role==="hr"||role==="admin") tabs.push({id:"settings",label:"Settings"});
   return tabs;
 }
