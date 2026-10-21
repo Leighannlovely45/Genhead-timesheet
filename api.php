@@ -19,7 +19,7 @@ if ($method === 'GET') {
 
     if ($action === 'load') {
         $db = getDB();
-        $employees = $db->query("SELECT id, ghl_contact_id, name, email, role, pin, pin_set, rate, status, delegate_to, added_from_ghl, manager_id FROM users WHERE status = 'active' ORDER BY name")->fetchAll();
+        $employees = $db->query("SELECT id, ghl_contact_id, name, email, role, pin, pin_set, password_set, rate, status, delegate_to, added_from_ghl, manager_id FROM users WHERE status = 'active' ORDER BY name")->fetchAll();
         $settings = [];
         foreach ($db->query("SELECT `key`, `value` FROM settings")->fetchAll() as $row) {
             $settings[$row['key']] = $row['value'];
@@ -34,6 +34,7 @@ if ($method === 'GET') {
                 'role'           => $e['role'],
                 'pin'            => $e['pin'],
                 'pin_set'        => (bool)$e['pin_set'],
+                'password_set'   => (bool)$e['password_set'],
                 'rate'           => $e['rate'],
                 'active'         => $e['status'] === 'active',
                 'added_from_ghl' => (bool)$e['added_from_ghl'],
@@ -486,12 +487,35 @@ if ($method === 'POST') {
         $id = preg_replace('/^e/', '', $body['id'] ?? '');
         $password = $body['password'] ?? '';
         if (!$id || !$password) { echo json_encode(['success' => false, 'error' => 'ID and password required']); exit; }
-        $stmt = $db->prepare("SELECT id, password, name, role FROM users WHERE id = ? AND role IN ('manager','hr') LIMIT 1");
+        $stmt = $db->prepare("SELECT id, password, password_hash, password_set, name, role FROM users WHERE id = ? AND role IN ('manager','hr','admin') AND status = 'active' LIMIT 1");
         $stmt->execute([$id]);
         $row = $stmt->fetch();
         if (!$row) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
-        $valid = $row['password'] === $password;
+        // Not set up yet — prompt first-time setup
+        if (!$row['password_set']) { echo json_encode(['success' => false, 'needs_setup' => true]); exit; }
+        // Verify against hash (fall back to plaintext for legacy rows during migration)
+        if ($row['password_hash']) {
+            $valid = password_verify($password, $row['password_hash']);
+        } else {
+            $valid = ($row['password'] === $password);
+        }
         echo json_encode(['success' => $valid, 'name' => $row['name'], 'role' => $row['role']]);
+        exit;
+    }
+
+    // ── SET PASSWORD (first-time or reset for manager/hr/admin) ────────────────
+    if ($action === 'set_password') {
+        $id       = preg_replace('/^e/', '', $body['id'] ?? '');
+        $password = trim($body['password'] ?? '');
+        if (!$id || strlen($password) < 6) {
+            echo json_encode(['success' => false, 'error' => 'Password must be at least 6 characters']); exit;
+        }
+        $stmt = $db->prepare("SELECT id, role FROM users WHERE id = ? AND role IN ('manager','hr','admin') AND status = 'active' LIMIT 1");
+        $stmt->execute([$id]);
+        if (!$stmt->fetch()) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $id]);
+        echo json_encode(['success' => true]);
         exit;
     }
 
@@ -563,9 +587,11 @@ if ($method === 'POST') {
         $name     = trim($body['name']     ?? '');
         $email    = trim($body['email']    ?? '');
         $password = trim($body['password'] ?? '');
-        if (!$name || !$password) { echo json_encode(['success'=>false,'error'=>'Name and password required']); exit; }
-        $stmt = $db->prepare("INSERT INTO users (name, email, role, password, status) VALUES (?, ?, 'manager', ?, 'active')");
-        $stmt->execute([$name, $email, $password]);
+        $role     = in_array($body['role'] ?? '', ['manager','hr','admin']) ? $body['role'] : 'manager';
+        if (!$name) { echo json_encode(['success'=>false,'error'=>'Name required']); exit; }
+        $hash = $password ? password_hash($password, PASSWORD_DEFAULT) : null;
+        $stmt = $db->prepare("INSERT INTO users (name, email, role, password_hash, password_set, status) VALUES (?, ?, ?, ?, ?, 'active')");
+        $stmt->execute([$name, $email, $role, $hash, $password ? 1 : 0]);
         $newId = $db->lastInsertId();
         echo json_encode(['success'=>true,'id'=>'e'.$newId,'name'=>$name]);
         exit;
@@ -584,7 +610,10 @@ if ($method === 'POST') {
         if (isset($body['pin']))         { $fields[] = 'pin = ?';         $params[] = $body['pin'];
                                            $fields[] = 'pin_set = 1'; }
         if (isset($body['manager_id']))  { $fields[] = 'manager_id = ?';  $params[] = $body['manager_id'] ?: null; }
-        if (isset($body['password']))    { $fields[] = 'password = ?';    $params[] = $body['password']; }
+        if (isset($body['password']))    {
+            $fields[] = 'password_hash = ?'; $params[] = password_hash($body['password'], PASSWORD_DEFAULT);
+            $fields[] = 'password_set = 1';
+        }
         if (empty($fields)) { echo json_encode(['success' => false, 'error' => 'Nothing to update']); exit; }
         $params[] = $id;
         $db->prepare("UPDATE users SET ".implode(', ',$fields)." WHERE id = ?")->execute($params);
@@ -627,41 +656,41 @@ if ($method === 'POST') {
         exit;
     }
 
-    // ── FORGOT PIN — send reset email ────────────────────────────────────────
+    // ── FORGOT PIN / PASSWORD — send reset email (all roles) ────────────────
     if ($action === 'forgot_pin') {
         $db    = getDB();
         $email = trim($body['email'] ?? '');
         if (!$email) { echo json_encode(['success' => false, 'error' => 'Email required']); exit; }
-        $stmt = $db->prepare("SELECT id, name FROM users WHERE email = ? AND status = 'active' LIMIT 1");
+        $stmt = $db->prepare("SELECT id, name, role FROM users WHERE email = ? AND status = 'active' LIMIT 1");
         $stmt->execute([$email]);
         $user = $stmt->fetch();
         // Always return success to prevent email enumeration
         if ($user) {
-            $token     = bin2hex(random_bytes(20));
-            $expires   = date('Y-m-d H:i:s', strtotime('+1 hour'));
-            // Store token in settings table as a keyed JSON blob
-            $key       = 'pin_reset_' . $user['id'];
-            $val       = json_encode(['token' => $token, 'expires' => $expires]);
+            $token    = bin2hex(random_bytes(20));
+            $expires  = date('Y-m-d H:i:s', strtotime('+1 hour'));
+            $key      = 'pin_reset_' . $user['id'];
+            $val      = json_encode(['token' => $token, 'expires' => $expires]);
             $db->prepare("INSERT INTO settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=?")->execute([$key, $val, $val]);
-            $resetUrl  = 'https://timesheet.genhead.com/index.html?reset_token=' . $token . '&uid=' . $user['id'];
-            $subject   = 'Genhead Timesheet — Reset Your PIN';
-            $message   = "Hi {$user['name']},\n\nYou requested a PIN reset for the Genhead Timesheet Portal.\n\nClick the link below to set a new PIN (expires in 1 hour):\n\n{$resetUrl}\n\nIf you did not request this, you can ignore this email.\n\n— Genhead Team";
-            $headers   = "From: noreply@genhead.com\r\nReply-To: support@genhead.com";
+            $resetUrl = 'https://timesheet.genhead.com/index.html?reset_token=' . $token . '&uid=' . $user['id'];
+            $isPin    = $user['role'] === 'employee';
+            $subject  = 'Genhead Timesheet — Reset Your ' . ($isPin ? 'PIN' : 'Password');
+            $thing    = $isPin ? 'PIN' : 'password';
+            $message  = "Hi {$user['name']},\n\nYou requested a {$thing} reset for the Genhead Timesheet Portal.\n\nClick the link below to set a new {$thing} (expires in 1 hour):\n\n{$resetUrl}\n\nIf you did not request this, you can ignore this email.\n\n— Genhead Team";
+            $headers  = "From: noreply@genhead.com\r\nReply-To: support@genhead.com";
             mail($email, $subject, $message, $headers);
         }
         echo json_encode(['success' => true, 'message' => 'If that email is in our system, a reset link has been sent.']);
         exit;
     }
 
-    // ── RESET PIN via token ──────────────────────────────────────────────────
+    // ── RESET PIN / PASSWORD via token (all roles) ───────────────────────────
     if ($action === 'reset_pin') {
         $db    = getDB();
         $uid   = (int)($body['uid']   ?? 0);
         $token = trim($body['token']  ?? '');
-        $pin   = trim($body['pin']    ?? '');
-        if (!$uid || !$token || strlen($pin) !== 4 || !ctype_digit($pin)) {
-            echo json_encode(['success' => false, 'error' => 'Invalid request']); exit;
-        }
+        $pin   = trim($body['pin']    ?? '');   // 4-digit PIN for employees
+        $pass  = trim($body['password'] ?? ''); // new password for mgr/hr/admin
+        if (!$uid || !$token) { echo json_encode(['success' => false, 'error' => 'Invalid request']); exit; }
         $key  = 'pin_reset_' . $uid;
         $stmt = $db->prepare("SELECT value FROM settings WHERE key_name = ? LIMIT 1");
         $stmt->execute([$key]);
@@ -671,9 +700,25 @@ if ($method === 'POST') {
         if (!$data || $data['token'] !== $token || strtotime($data['expires']) < time()) {
             echo json_encode(['success' => false, 'error' => 'Reset link is invalid or has expired']); exit;
         }
-        $db->prepare("UPDATE users SET pin = ?, pin_set = 1 WHERE id = ?")->execute([$pin, $uid]);
+        // Determine role to set appropriate field
+        $uStmt = $db->prepare("SELECT role FROM users WHERE id = ? LIMIT 1");
+        $uStmt->execute([$uid]);
+        $uRow = $uStmt->fetch();
+        if (!$uRow) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        if ($uRow['role'] === 'employee') {
+            if (strlen($pin) !== 4 || !ctype_digit($pin)) {
+                echo json_encode(['success' => false, 'error' => 'PIN must be 4 digits']); exit;
+            }
+            $db->prepare("UPDATE users SET pin = ?, pin_set = 1 WHERE id = ?")->execute([$pin, $uid]);
+        } else {
+            if (strlen($pass) < 6) {
+                echo json_encode(['success' => false, 'error' => 'Password must be at least 6 characters']); exit;
+            }
+            $hash = password_hash($pass, PASSWORD_DEFAULT);
+            $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $uid]);
+        }
         $db->prepare("DELETE FROM settings WHERE key_name = ?")->execute([$key]);
-        echo json_encode(['success' => true]);
+        echo json_encode(['success' => true, 'role' => $uRow['role']]);
         exit;
     }
 
