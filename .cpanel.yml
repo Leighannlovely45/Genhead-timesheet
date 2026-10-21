@@ -1,0 +1,9 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/rouqwneqwsgg/public_html/stagging.timesheet.genhead.com/timesheet/
+    - /bin/cp -R api.php $DEPLOYPATH
+    - /bin/cp -R index.html $DEPLOYPATH
+    - /bin/cp -R hours-admin.html $DEPLOYPATH
+    - /bin/cp -R client-hours-portal.html $DEPLOYPATH
+    - /bin/cp -R client_hours_api_block.php $DEPLOYPATH
