@@ -227,6 +227,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 
   <!-- MAIN LOGIN FORM -->
   <div class="login-card" id="login-card-select">
+    <form autocomplete="off" onsubmit="return false;">
     <h2>Sign in to your account</h2>
 
     <div class="lf-group">
@@ -256,7 +257,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 
     <div class="lf-group" id="lf-pw-group" style="display:none">
       <label class="lf-label" id="lf-pw-label">Password</label>
-      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" onkeydown="if(event.key==='Enter')lfSubmit()">
+      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" onkeydown="if(event.key==='Enter')lfSubmit()">
     </div>
     <div class="lf-group" id="lf-pw-confirm-group" style="display:none">
       <label class="lf-label">Confirm Password</label>
@@ -282,6 +283,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
     <div style="text-align:center;margin-top:.85rem">
       <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none" onclick="showForgotPin()">Forgot PIN?</span>
     </div>
+    </form>
   </div>
 
   <!-- FORGOT PIN -->
