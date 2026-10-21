@@ -35,6 +35,15 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .login-note{font-size:.7rem;color:rgba(255,255,255,.28);text-align:center;line-height:1.6}
 .pin-digit{width:48px;height:56px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;font-size:1.5rem;text-align:center;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s}
 .pin-digit:focus{border-color:var(--teal);background:rgba(3,173,143,.1)}
+/* LOGIN FORM */
+.lf-group{margin-bottom:1rem}
+.lf-label{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.45);margin-bottom:.45rem;font-weight:500}
+.lf-select,.lf-input{width:100%;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.15);border-radius:10px;color:#fff;padding:.65rem .85rem;font-size:.9rem;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s,background .15s;appearance:none;-webkit-appearance:none;cursor:pointer}
+.lf-select:focus,.lf-input:focus{border-color:var(--teal);background:rgba(3,173,143,.08)}
+.lf-select option{background:#1a2a4a;color:#fff}
+.lf-input::placeholder{color:rgba(255,255,255,.25)}
+.lf-select-wrap{position:relative}
+.lf-select-wrap::after{content:'▾';position:absolute;right:.85rem;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.4);pointer-events:none;font-size:.9rem}
 
 /* APP SHELL */
 #s-app.active{display:flex;flex-direction:column;min-height:100vh}
@@ -206,36 +215,58 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 <div id="s-login" class="screen active">
   <div class="login-brand">gen<span>head</span></div>
   <div class="login-sub">Timesheet Portal &middot; 2026</div>
-  <div class="login-card" id="login-card-select">
-    <h2>Select your profile to continue</h2>
-    <div class="emp-grid" id="emp-grid"></div>
-    <div class="login-note">Each employee sees only their own timesheet.<br>Manager &amp; HR have full payroll access.</div>
-  </div>
 
-  <!-- PIN ENTRY / FIRST TIME SETUP -->
-  <div class="login-card" id="login-card-pin" style="display:none">
-    <div id="pin-back" style="font-size:.78rem;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:.75rem" onclick="showLoginSelect()">&#8592; Back</div>
-    <h2 id="pin-title">Enter your PIN</h2>
-    <p id="pin-sub" style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem"></p>
-    <div style="display:flex;gap:.5rem;justify-content:center;margin-bottom:1rem">
-      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin0" oninput="pinNext(0)">
-      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin1" oninput="pinNext(1)">
-      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin2" oninput="pinNext(2)">
-      <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin3" oninput="pinNext(3)">
+  <!-- MAIN LOGIN FORM -->
+  <div class="login-card" id="login-card-select">
+    <h2>Sign in to your account</h2>
+
+    <div class="lf-group">
+      <label class="lf-label">Name</label>
+      <select class="lf-select" id="lf-name" onchange="lfNameChange()">
+        <option value="">— Select your name —</option>
+      </select>
     </div>
-    <div id="pin-confirm-row" style="display:none">
-      <p style="font-size:.8rem;color:rgba(255,255,255,.5);margin:.5rem 0 .5rem;text-align:center">Confirm your PIN</p>
-      <div style="display:flex;gap:.5rem;justify-content:center;margin-bottom:1rem">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin4" oninput="pinNext(4)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin5" oninput="pinNext(5)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin6" oninput="pinNext(6)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin7" oninput="pinNext(7)">
+
+    <div class="lf-group">
+      <label class="lf-label">Access Level</label>
+      <select class="lf-select" id="lf-level" onchange="lfLevelChange()">
+        <option value="">— Select access level —</option>
+      </select>
+    </div>
+
+    <div class="lf-group" id="lf-pin-group" style="display:none">
+      <label class="lf-label" id="lf-pin-label">PIN</label>
+      <div style="display:flex;gap:.5rem;justify-content:center;margin-top:.4rem">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin0" oninput="pinNext(0)" onkeydown="pinKeydown(event,0)">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin1" oninput="pinNext(1)" onkeydown="pinKeydown(event,1)">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin2" oninput="pinNext(2)" onkeydown="pinKeydown(event,2)">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin3" oninput="pinNext(3)" onkeydown="pinKeydown(event,3)">
       </div>
     </div>
-    <div id="pin-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin-bottom:.5rem"></div>
-    <button class="btn btn-primary" style="width:100%" onclick="submitPin()" id="pin-submit-btn">Continue</button>
-    <div style="text-align:center;margin-top:.75rem">
-      <span id="forgot-link" style="font-size:.75rem;color:rgba(255,255,255,.4);cursor:pointer;text-decoration:underline" onclick="showForgotPin()">Forgot PIN?</span>
+
+    <div class="lf-group" id="lf-pw-group" style="display:none">
+      <label class="lf-label" id="lf-pw-label">Password</label>
+      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" onkeydown="if(event.key==='Enter')lfSubmit()">
+    </div>
+
+    <div id="lf-pin-confirm" style="display:none">
+      <div class="lf-group">
+        <label class="lf-label">Confirm PIN</label>
+        <div style="display:flex;gap:.5rem;justify-content:center;margin-top:.4rem">
+          <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin4" oninput="pinNext(4)" onkeydown="pinKeydown(event,4)">
+          <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin5" oninput="pinNext(5)" onkeydown="pinKeydown(event,5)">
+          <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin6" oninput="pinNext(6)" onkeydown="pinKeydown(event,6)">
+          <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="pin7" oninput="pinNext(7)" onkeydown="pinKeydown(event,7)">
+        </div>
+      </div>
+    </div>
+
+    <div id="lf-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin:.25rem 0"></div>
+
+    <button class="btn btn-primary" style="width:100%;margin-top:.25rem" id="lf-submit" onclick="lfSubmit()" disabled>Sign In</button>
+
+    <div style="text-align:center;margin-top:.85rem">
+      <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none" onclick="showForgotPin()">Forgot PIN?</span>
     </div>
   </div>
 
@@ -244,7 +275,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
     <div style="font-size:.78rem;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:.75rem" onclick="showLoginSelect()">&#8592; Back</div>
     <h2>Reset your PIN</h2>
     <p style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Enter your Genhead email and we'll send you a reset link.</p>
-    <input type="email" id="forgot-email" placeholder="you@genhead.com" style="width:100%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:.65rem .85rem;font-size:.9rem;margin-bottom:.75rem;outline:none">
+    <input type="email" id="forgot-email" placeholder="you@genhead.com" class="lf-input" style="margin-bottom:.75rem">
     <div id="forgot-msg" style="font-size:.78rem;min-height:1.2em;margin-bottom:.5rem;text-align:center"></div>
     <button class="btn btn-primary" style="width:100%" onclick="sendForgotPin()">Send Reset Link</button>
   </div>
@@ -351,90 +382,131 @@ function btSelect(dayIdx, ei, currentVal, readonly){
   return `<select class="btype-sel ${btCss(currentVal)}" onchange="upBT(${dayIdx},${ei},this.value);this.className='btype-sel '+btCss(this.value)">${opts}</select>`;
 }
 
-// ── BUILD LOGIN GRID ───────────────────────────────────────────────────────
-const grid=document.getElementById("emp-grid");
-EMPS.forEach(e=>{
-  const b=document.createElement("button");
-  b.className="emp-btn"+(e.role==="manager"?" mgr":e.role==="hr"?" hr":"");
-  b.textContent=e.name;b.onclick=()=>login(e);grid.appendChild(b);
-});
-
 function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");}
 
 // ── PIN AUTH STATE ─────────────────────────────────────────────────────────
-let _pinUser=null, _pinMode='enter'; // modes: 'enter','setup','reset'
+let _pinUser=null, _pinMode='enter'; // modes: 'enter','setup'
 let _resetToken=null, _resetUid=null;
+
+// ── BUILD LOGIN FORM ───────────────────────────────────────────────────────
+(function buildLoginForm(){
+  const nameEl=document.getElementById("lf-name");
+  EMPS.forEach(e=>{
+    const o=document.createElement("option");
+    o.value=e.id; o.textContent=e.name; nameEl.appendChild(o);
+  });
+})();
+
+function lfNameChange(){
+  const nameEl=document.getElementById("lf-name");
+  const levelEl=document.getElementById("lf-level");
+  const uid=nameEl.value;
+  levelEl.innerHTML='<option value="">— Select access level —</option>';
+  document.getElementById("lf-pin-group").style.display="none";
+  document.getElementById("lf-pw-group").style.display="none";
+  document.getElementById("lf-pin-confirm").style.display="none";
+  document.getElementById("lf-forgot").style.display="none";
+  document.getElementById("lf-error").textContent="";
+  document.getElementById("lf-submit").disabled=true;
+  if(!uid) return;
+  const u=EMPS.find(e=>e.id===uid);
+  if(!u) return;
+  // Build level options based on role
+  const levels=[];
+  if(u.role==="employee") levels.push({val:"employee",label:"Employee"});
+  if(u.role==="manager") levels.push({val:"manager",label:"Manager"});
+  if(u.role==="hr") levels.push({val:"hr",label:"HR"});
+  if(u.role==="admin") levels.push({val:"admin",label:"Admin"});
+  levels.forEach(l=>{
+    const o=document.createElement("option");
+    o.value=l.val; o.textContent=l.label; levelEl.appendChild(o);
+  });
+  // Auto-select if only one option
+  if(levels.length===1){ levelEl.value=levels[0].val; lfLevelChange(); }
+}
+
+function lfLevelChange(){
+  const level=document.getElementById("lf-level").value;
+  document.getElementById("lf-pin-group").style.display="none";
+  document.getElementById("lf-pw-group").style.display="none";
+  document.getElementById("lf-pin-confirm").style.display="none";
+  document.getElementById("lf-forgot").style.display="none";
+  document.getElementById("lf-error").textContent="";
+  document.getElementById("lf-submit").disabled=true;
+  clearPinInputs();
+  if(!level) return;
+  if(level==="employee"){
+    const uid=document.getElementById("lf-name").value;
+    document.getElementById("lf-pin-group").style.display="";
+    document.getElementById("lf-pin-label").textContent="PIN";
+    document.getElementById("lf-forgot").style.display="inline";
+    document.getElementById("lf-submit").disabled=false;
+    // Check if first-time setup needed
+    if(uid){
+      api({action:"verify_pin",uid,pin:"__check__"}).then(r=>{
+        if(r.needs_setup){
+          _pinMode='setup';
+          document.getElementById("lf-pin-label").textContent="Create a 4-digit PIN";
+          document.getElementById("lf-pin-confirm").style.display="";
+          document.getElementById("lf-forgot").style.display="none";
+        } else {
+          _pinMode='enter';
+        }
+      }).catch(()=>{ _pinMode='enter'; });
+    }
+    setTimeout(()=>document.getElementById("pin0").focus(),100);
+  } else {
+    // Manager / HR / Admin — password field
+    document.getElementById("lf-pw-group").style.display="";
+    document.getElementById("lf-pw-label").textContent="Password";
+    document.getElementById("lf-submit").disabled=false;
+    setTimeout(()=>document.getElementById("lf-password").focus(),100);
+  }
+}
+
+function lfSubmit(){
+  const uid=document.getElementById("lf-name").value;
+  const level=document.getElementById("lf-level").value;
+  document.getElementById("lf-error").textContent="";
+  if(!uid||!level){document.getElementById("lf-error").textContent="Please select your name and access level.";return;}
+  const u=EMPS.find(e=>e.id===uid);
+  if(!u) return;
+  _pinUser=u;
+  if(level==="employee"){
+    const digits=[0,1,2,3].map(i=>document.getElementById("pin"+i).value);
+    if(digits.some(d=>!d)){document.getElementById("lf-error").textContent="Please enter all 4 digits.";return;}
+    const pin=digits.join("");
+    if(_pinMode==='setup'){
+      const conf=[4,5,6,7].map(i=>document.getElementById("pin"+i).value);
+      if(conf.some(d=>!d)){document.getElementById("lf-error").textContent="Please confirm your PIN.";return;}
+      if(pin!==conf.join("")){
+        document.getElementById("lf-error").textContent="PINs don't match — try again.";
+        clearPinInputs();document.getElementById("pin0").focus();return;
+      }
+      api({action:"set_pin",uid,pin}).then(r=>{
+        if(r.ok) doLogin(u);
+        else document.getElementById("lf-error").textContent=r.error||"Error setting PIN.";
+      });
+    } else {
+      api({action:"verify_pin",uid,pin}).then(r=>{
+        if(r.ok) doLogin(u);
+        else{document.getElementById("lf-error").textContent="Incorrect PIN.";clearPinInputs();document.getElementById("pin0").focus();}
+      });
+    }
+  } else {
+    const pw=document.getElementById("lf-password").value;
+    if(!pw){document.getElementById("lf-error").textContent="Please enter your password.";return;}
+    api({action:"verify_password",role:level,password:pw}).then(r=>{
+      if(r.ok) doLogin(u);
+      else document.getElementById("lf-error").textContent="Incorrect password.";
+    }).catch(()=>document.getElementById("lf-error").textContent="Error — try again.");
+  }
+}
 
 function showLoginSelect(){
   document.getElementById("login-card-select").style.display="";
-  document.getElementById("login-card-pin").style.display="none";
   document.getElementById("login-card-forgot").style.display="none";
   document.getElementById("login-card-reset").style.display="none";
-}
-
-function login(u){
-  if(u.role==="manager"||u.role==="hr"){
-    // Manager/HR use password, but keep same PIN card for password entry
-    _pinUser=u;_pinMode='enter';
-    document.getElementById("pin-title").textContent="Enter your password";
-    document.getElementById("pin-sub").textContent=u.name;
-    document.getElementById("pin-confirm-row").style.display="none";
-    document.getElementById("forgot-link").style.display="none";
-    document.getElementById("pin-error").textContent="";
-    clearPinInputs();
-    document.getElementById("login-card-select").style.display="none";
-    document.getElementById("login-card-pin").style.display="";
-    // For manager/HR use a text password field instead of PIN digits
-    showMgrPasswordPrompt(u);
-    return;
-  }
-  _pinUser=u;
-  document.getElementById("pin-sub").textContent=u.name;
-  document.getElementById("pin-confirm-row").style.display="none";
-  document.getElementById("forgot-link").style.display="inline";
-  document.getElementById("pin-error").textContent="";
-  clearPinInputs();
-  document.getElementById("login-card-select").style.display="none";
-  document.getElementById("login-card-pin").style.display="";
-  // Check if user needs PIN setup
-  api({action:"verify_pin",uid:u.id,pin:"__check__"}).then(r=>{
-    if(r.needs_setup){
-      _pinMode='setup';
-      document.getElementById("pin-title").textContent="Create your PIN";
-      document.getElementById("pin-sub").textContent="Choose a 4-digit PIN to secure your account";
-      document.getElementById("pin-confirm-row").style.display="";
-    } else {
-      _pinMode='enter';
-      document.getElementById("pin-title").textContent="Enter your PIN";
-      document.getElementById("pin-sub").textContent=u.name;
-    }
-  }).catch(()=>{
-    _pinMode='enter';
-    document.getElementById("pin-title").textContent="Enter your PIN";
-  });
-  setTimeout(()=>document.getElementById("pin0").focus(),100);
-}
-
-function showMgrPasswordPrompt(u){
-  // Replace PIN card content with a simple password field for managers
-  document.getElementById("login-card-pin").innerHTML=`
-    <div style="font-size:.78rem;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:.75rem" onclick="showLoginSelect()">&#8592; Back</div>
-    <h2>${u.name}</h2>
-    <p style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Enter your password to continue</p>
-    <input type="password" id="mgr-pw" placeholder="Password" style="width:100%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:.65rem .85rem;font-size:.9rem;margin-bottom:.75rem;outline:none" onkeydown="if(event.key==='Enter')submitMgrPw()">
-    <div id="mgr-pw-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin-bottom:.5rem"></div>
-    <button class="btn btn-primary" style="width:100%" onclick="submitMgrPw()">Log In</button>
-  `;
-  setTimeout(()=>document.getElementById("mgr-pw").focus(),100);
-}
-
-function submitMgrPw(){
-  const pw=document.getElementById("mgr-pw").value;
-  if(!pw){document.getElementById("mgr-pw-error").textContent="Please enter your password.";return;}
-  api({action:"verify_password",role:_pinUser.role,password:pw}).then(r=>{
-    if(r.ok) doLogin(_pinUser);
-    else{document.getElementById("mgr-pw-error").textContent="Incorrect password.";}
-  }).catch(()=>{document.getElementById("mgr-pw-error").textContent="Error — try again.";});
 }
 
 function clearPinInputs(){
@@ -444,43 +516,21 @@ function clearPinInputs(){
 function pinNext(idx){
   const el=document.getElementById("pin"+idx);
   if(!el)return;
-  // Only allow digits
   el.value=el.value.replace(/\D/g,"").slice(-1);
   if(el.value&&idx<3) document.getElementById("pin"+(idx+1)).focus();
   if(el.value&&idx>=4&&idx<7) document.getElementById("pin"+(idx+1)).focus();
-  // Auto-submit when last digit entered
   const maxIdx=(_pinMode==='setup')?7:3;
-  if(idx===maxIdx&&el.value) submitPin();
+  if(idx===maxIdx&&el.value) lfSubmit();
 }
 
-function submitPin(){
-  const digits=[0,1,2,3].map(i=>document.getElementById("pin"+i).value);
-  if(digits.some(d=>!d)){document.getElementById("pin-error").textContent="Please enter all 4 digits.";return;}
-  const pin=digits.join("");
-  if(_pinMode==='setup'){
-    const conf=[4,5,6,7].map(i=>document.getElementById("pin"+i).value);
-    if(conf.some(d=>!d)){document.getElementById("pin-error").textContent="Please confirm your PIN.";return;}
-    if(pin!==conf.join("")){
-      document.getElementById("pin-error").textContent="PINs don't match — try again.";
-      clearPinInputs();document.getElementById("pin0").focus();return;
-    }
-    api({action:"set_pin",uid:_pinUser.id,pin}).then(r=>{
-      if(r.ok) doLogin(_pinUser);
-      else document.getElementById("pin-error").textContent=r.error||"Error setting PIN.";
-    });
-  } else {
-    api({action:"verify_pin",uid:_pinUser.id,pin}).then(r=>{
-      if(r.ok) doLogin(_pinUser);
-      else{
-        document.getElementById("pin-error").textContent="Incorrect PIN.";
-        clearPinInputs();document.getElementById("pin0").focus();
-      }
-    });
+function pinKeydown(event,idx){
+  if(event.key==="Backspace"&&!document.getElementById("pin"+idx).value&&idx>0){
+    document.getElementById("pin"+(idx-1)).focus();
   }
 }
 
 function showForgotPin(){
-  document.getElementById("login-card-pin").style.display="none";
+  document.getElementById("login-card-select").style.display="none";
   document.getElementById("login-card-forgot").style.display="";
   document.getElementById("forgot-msg").textContent="";
   document.getElementById("forgot-email").value="";
