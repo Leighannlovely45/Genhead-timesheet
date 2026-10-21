@@ -567,33 +567,7 @@ if ($method === 'POST') {
         $newId = $db->lastInsertId();
         logAudit(null, $newId, 'ghl_auto_add', null, ['name' => $name, 'email' => $email]);
 
-        // ── SEND INVITE WEBHOOK BACK TO GHL ─────────────────────────────────
-        // Fires a GHL workflow webhook so GHL can email the employee their
-        // login link + prompt them to set their PIN on first sign-in.
-        if ($email) {
-            $inviteUrl = getSetting('ghl_invite_webhook_url');
-            if ($inviteUrl) {
-                $loginUrl = 'https://timesheet.genhead.com/';
-                $payload  = [
-                    'employee_name'  => $name,
-                    'employee_email' => $email,
-                    'employee_id'    => 'e' . $newId,
-                    'login_url'      => $loginUrl,
-                    'action'         => 'new_employee_invite',
-                ];
-                $ch = curl_init($inviteUrl);
-                curl_setopt_array($ch, [
-                    CURLOPT_POST           => true,
-                    CURLOPT_POSTFIELDS     => json_encode($payload),
-                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_TIMEOUT        => 10,
-                    CURLOPT_SSL_VERIFYPEER => true,
-                ]);
-                curl_exec($ch);
-                curl_close($ch);
-            }
-        }
+        sendInviteWebhook($name, $email, 'employee', $newId);
 
         echo json_encode(['success' => true, 'message' => 'Employee added', 'id' => 'e' . $newId]);
         exit;
@@ -608,6 +582,7 @@ if ($method === 'POST') {
         $stmt = $db->prepare("INSERT INTO users (name, email, pin, pin_set, role) VALUES (?, ?, ?, ?, 'employee')");
         $stmt->execute([$name, $email, $pin ?: null, $pin ? 1 : 0]);
         $newId = $db->lastInsertId();
+        sendInviteWebhook($name, $email, 'employee', $newId);
         echo json_encode(['success' => true, 'employee' => ['id' => 'e'.$newId, 'name' => $name, 'email' => $email, 'pin_set' => (bool)$pin]]);
         exit;
     }
@@ -633,6 +608,7 @@ if ($method === 'POST') {
         $stmt = $db->prepare("INSERT INTO users (name, email, role, password_hash, password_set, status) VALUES (?, ?, ?, ?, ?, 'active')");
         $stmt->execute([$name, $email, $role, $hash, $password ? 1 : 0]);
         $newId = $db->lastInsertId();
+        sendInviteWebhook($name, $email, $role, $newId);
         echo json_encode(['success'=>true,'id'=>'e'.$newId,'name'=>$name]);
         exit;
     }
@@ -1103,6 +1079,37 @@ function checkOvertime($db, $tsId, $userId, $entries) {
                ->execute([$tsId,$userId,$wk+1,$weekHours,$overtime]);
         }
     }
+}
+
+// ── SEND INVITE WEBHOOK ──────────────────────────────────────────────────
+// Fires after any new user is added. Sends name/email/role/login_url
+// to the configured GHL invite workflow so it can email the welcome message.
+function sendInviteWebhook($name, $email, $role, $newId) {
+    if (!$email) return;
+    $inviteUrl = getSetting('ghl_invite_webhook_url');
+    if (!$inviteUrl) return;
+    $loginUrl = 'https://timesheet.genhead.com/';
+    $payload  = [
+        'employee_name'  => $name,
+        'employee_email' => $email,
+        'employee_id'    => 'e' . $newId,
+        'role'           => $role,
+        'login_url'      => $loginUrl,
+        'action'         => 'new_user_invite',
+        // Tell the GHL workflow what kind of credential to prompt for
+        'credential_type' => ($role === 'employee') ? 'pin' : 'password',
+    ];
+    $ch = curl_init($inviteUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
 }
 
 http_response_code(400);
