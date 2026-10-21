@@ -514,6 +514,7 @@ function renderDash(){
   body.innerHTML=`
   <div class="tab-bar">
     <button class="tab active" id="tab-dash" onclick="switchTab('dash')">Dashboard</button>
+    <button class="tab" id="tab-clientreport" onclick="switchTab('clientreport')">Client Report</button>
     <button class="tab" id="tab-ghl" onclick="switchTab('ghl')">GHL Setup</button>
     <button class="tab" id="tab-instructions" onclick="switchTab('instructions')">Setup Guide</button>
   </div>
@@ -552,6 +553,15 @@ function renderDash(){
         </tr></tfoot>
       </table>
     </div>
+  </div>
+
+  <!-- CLIENT REPORT PANE -->
+  <div id="pane-clientreport" style="display:none">
+    <div class="dash-top">
+      <div><h2>Client Hours Report</h2><p id="cr-period-label"></p></div>
+      <button class="btn btn-outline" onclick="exportClientReport()">&#11015; Export CSV</button>
+    </div>
+    <div id="cr-content"><div style="color:var(--mid);padding:2rem;text-align:center">Loading...</div></div>
   </div>
 
   <div id="pane-ghl" style="display:none">
@@ -601,12 +611,92 @@ function renderDash(){
 }
 
 function switchTab(tab){
-  ["dash","ghl","instructions"].forEach(t=>{
+  ["dash","clientreport","ghl","instructions"].forEach(t=>{
     const pane=document.getElementById("pane-"+t);
     const btn=document.getElementById("tab-"+t);
     if(pane)pane.style.display=t===tab?"block":"none";
     if(btn)btn.className="tab"+(t===tab?" active":"");
   });
+  if(tab==="clientreport") loadClientReport();
+}
+
+async function loadClientReport(){
+  const period=PERIODS[pidx];
+  const lbl=document.getElementById("cr-period-label");
+  if(lbl) lbl.textContent=period+" · Confidential";
+  const el=document.getElementById("cr-content");
+  if(!el) return;
+  el.innerHTML='<div style="color:var(--mid);padding:2rem;text-align:center"><span class="spinner" style="display:inline-block;width:20px;height:20px;border:2px solid #e2e8f0;border-top-color:#03AD8F;border-radius:50%;animation:spin .75s linear infinite"></span></div>';
+  try{
+    const r=await fetch(`${API_BASE}?action=load_report&period=${encodeURIComponent(period)}`);
+    const data=await r.json();
+    if(!data.success){el.innerHTML='<div style="color:red;padding:1rem">Failed to load report.</div>';return;}
+    const clients=data.report.clients||[];
+    if(!clients.length){el.innerHTML='<div style="color:var(--mid);padding:2rem;text-align:center">No client hours logged this period.</div>';return;}
+
+    let tB=0,tNB=0,tMK=0,tAll=0;
+    const rows=clients.map(c=>{
+      const b=parseFloat(c.billable_hours||0),nb=parseFloat(c.nonbillable_hours||0),mk=parseFloat(c.marketing_hours||0),tot=parseFloat(c.total_hours||0);
+      tB+=b;tNB+=nb;tMK+=mk;tAll+=tot;
+      return `<tr>
+        <td><strong>${c.name}</strong></td>
+        <td><span style="font-size:.7rem;color:var(--mid);text-transform:uppercase">${c.type||''}</span></td>
+        <td style="font-weight:600;color:var(--dark);font-family:'DM Mono',monospace">${tot.toFixed(1)}</td>
+        <td style="color:#166534;font-weight:600;font-family:'DM Mono',monospace">${b.toFixed(1)}</td>
+        <td style="color:#854d0e;font-weight:600;font-family:'DM Mono',monospace">${nb.toFixed(1)}</td>
+        <td style="color:#3730a3;font-weight:600;font-family:'DM Mono',monospace">${mk.toFixed(1)}</td>
+        <td style="font-size:.72rem;color:var(--mid)">${c.employees||'—'}</td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML=`
+      <div class="metrics" style="margin-bottom:1rem">
+        <div class="mc accent"><div class="ml">Total Hours</div><div class="mv">${tAll.toFixed(1)}</div><div class="ms">All clients</div></div>
+        <div class="mc" style="border-left:3px solid #10b981"><div class="ml">Billable</div><div class="mv" style="color:#166534">${tB.toFixed(1)}</div><div class="ms">hrs</div></div>
+        <div class="mc" style="border-left:3px solid #f59e0b"><div class="ml">Non-Billable</div><div class="mv" style="color:#854d0e">${tNB.toFixed(1)}</div><div class="ms">hrs</div></div>
+        <div class="mc" style="border-left:3px solid #6366f1"><div class="ml">Marketing</div><div class="mv" style="color:#3730a3">${tMK.toFixed(1)}</div><div class="ms">hrs</div></div>
+      </div>
+      <div class="billing-tbl">
+        <table>
+          <thead><tr>
+            <th>Client</th><th>Type</th><th>Total Hrs</th>
+            <th style="color:#86efac">Billable</th>
+            <th style="color:#fde047">Non-Billable</th>
+            <th style="color:#a5b4fc">Marketing</th>
+            <th>Team Members</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr>
+            <td colspan="2">TOTAL</td>
+            <td style="font-family:'DM Mono',monospace">${tAll.toFixed(1)}</td>
+            <td style="color:#166534;font-family:'DM Mono',monospace">${tB.toFixed(1)}</td>
+            <td style="color:#854d0e;font-family:'DM Mono',monospace">${tNB.toFixed(1)}</td>
+            <td style="color:#3730a3;font-family:'DM Mono',monospace">${tMK.toFixed(1)}</td>
+            <td></td>
+          </tr></tfoot>
+        </table>
+      </div>`;
+  }catch(e){
+    el.innerHTML='<div style="color:red;padding:1rem">Error loading report: '+e.message+'</div>';
+  }
+}
+
+async function exportClientReport(){
+  const period=PERIODS[pidx];
+  try{
+    const r=await fetch(`${API_BASE}?action=load_report&period=${encodeURIComponent(period)}`);
+    const data=await r.json();
+    if(!data.success) return;
+    const clients=data.report.clients||[];
+    let csv="Client,Type,Total Hours,Billable Hours,Non-Billable Hours,Marketing Hours,Team Members\n";
+    clients.forEach(c=>{
+      csv+=`"${c.name}","${c.type||''}",${parseFloat(c.total_hours||0).toFixed(1)},${parseFloat(c.billable_hours||0).toFixed(1)},${parseFloat(c.nonbillable_hours||0).toFixed(1)},${parseFloat(c.marketing_hours||0).toFixed(1)},"${c.employees||''}"\n`;
+    });
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download=`client_report_${period.replace(/\s/g,'_')}.csv`;
+    a.click();
+  }catch(e){ alert('Export failed: '+e.message); }
 }
 
 function saveWH(val){

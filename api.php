@@ -137,14 +137,18 @@ if ($method === 'GET') {
             WHERE u.status = 'active' AND u.role = 'employee' ORDER BY u.name");
         $empStmt->execute([$period]);
         $employees = $empStmt->fetchAll();
-        $clientStmt = $db->prepare("SELECT c.name, c.type, SUM(te.hours) as hours,
+        $clientStmt = $db->prepare("SELECT c.name, c.type,
+            SUM(te.hours) as total_hours,
+            SUM(CASE WHEN COALESCE(te.billing_type,'billable') = 'billable'    THEN te.hours ELSE 0 END) as billable_hours,
+            SUM(CASE WHEN COALESCE(te.billing_type,'billable') = 'nonbillable' THEN te.hours ELSE 0 END) as nonbillable_hours,
+            SUM(CASE WHEN COALESCE(te.billing_type,'billable') = 'marketing'   THEN te.hours ELSE 0 END) as marketing_hours,
             GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') as employees
             FROM timesheet_entries te
             JOIN timesheets t ON te.timesheet_id = t.id
             JOIN clients c ON te.client_id = c.id
             JOIN users u ON t.user_id = u.id
-            WHERE t.period = ? AND te.billable = 1 AND c.type != 'internal'
-            GROUP BY c.id ORDER BY hours DESC");
+            WHERE t.period = ? AND c.type != 'internal'
+            GROUP BY c.id ORDER BY total_hours DESC");
         $clientStmt->execute([$period]);
         $clients = $clientStmt->fetchAll();
         echo json_encode(['success' => true, 'report' => ['employees' => $employees, 'clients' => $clients]]);
