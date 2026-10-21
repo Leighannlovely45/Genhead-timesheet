@@ -235,7 +235,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
       <input type="text" class="lf-input" id="lf-name-text" list="lf-name-list"
         placeholder="Type or select your name…"
         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        oninput="lfNameTextChange()" style="cursor:pointer">
+        oninput="setTimeout(lfNameTextChange,50)" onchange="setTimeout(lfNameTextChange,50)" onblur="setTimeout(lfNameTextChange,100)" style="cursor:pointer">
       <datalist id="lf-name-list"></datalist>
       <select id="lf-name" style="display:none" autocomplete="off"></select>
     </div>
@@ -442,7 +442,7 @@ function buildLoginForm(){
 
 function lfNameTextChange(){
   const val=document.getElementById("lf-name-text").value.trim();
-  const u=EMPS.find(e=>e.name===val);
+  const u=EMPS.find(e=>e.name.toLowerCase()===val.toLowerCase());
   // Mirror into hidden select so rest of code still works
   const sel=document.getElementById("lf-name");
   if(u){ sel.value=u.id; lfNameChangeById(u); }
