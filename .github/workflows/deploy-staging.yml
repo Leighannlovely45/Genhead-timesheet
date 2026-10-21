@@ -11,22 +11,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Upload to staging via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: sxb1plzcpnl506143.prod.sxb1.secureserver.net
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          server-dir: /
-          exclude: |
-            **/.git*
-            **/.git*/**
-            .github/**
-            chrome-extension/**
-            README.md
-            db.example.php
-            db.php
-            *.log
-            error_log
-            request_log.txt
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p 22 sxb1plzcpnl506143.prod.sxb1.secureserver.net >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload to staging via SFTP
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p 22 -o StrictHostKeyChecking=no" \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='chrome-extension' \
+            --exclude='README.md' \
+            --exclude='db.php' \
+            --exclude='db.example.php' \
+            --exclude='*.log' \
+            --exclude='error_log' \
+            --exclude='request_log.txt' \
+            ./ rouqwneqwsgg@sxb1plzcpnl506143.prod.sxb1.secureserver.net:/home/rouqwneqwsgg/public_html/stagging.timesheet.genhead.com/timesheet/
