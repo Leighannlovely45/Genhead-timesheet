@@ -442,15 +442,6 @@ function buildLoginForm(){
   });
 }
 
-function lfNameTextChange(){
-  const val=document.getElementById("lf-name-text").value.trim();
-  const u=EMPS.find(e=>e.name.toLowerCase()===val.toLowerCase());
-  // Mirror into hidden select so rest of code still works
-  const sel=document.getElementById("lf-name");
-  if(u){ sel.value=u.id; lfNameChangeById(u); }
-  else { sel.value=""; resetLevelField(); }
-}
-
 function resetLevelField(){
   const levelEl=document.getElementById("lf-level");
   levelEl.innerHTML='<option value="">— Select access level —</option>';
@@ -626,8 +617,9 @@ function pinNext(idx){
 }
 
 function pinKeydown(event,idx){
-  if(event.key==="Backspace"&&!document.getElementById("pin"+idx).value&&idx>0){
-    document.getElementById("pin"+(idx-1)).focus();
+  if(event.key==="Backspace"&&!document.getElementById("pin"+idx).value){
+    // Don't jump from first confirm digit (4) back into main pin (3)
+    if(idx>0&&idx!==4) document.getElementById("pin"+(idx-1)).focus();
   }
 }
 
@@ -646,8 +638,8 @@ function sendForgotPin(){
     document.getElementById("forgot-msg").style.color="#4ade80";
     document.getElementById("forgot-msg").textContent="If that email is on file, a reset link is on its way!";
   }).catch(()=>{
-    document.getElementById("forgot-msg").style.color="#4ade80";
-    document.getElementById("forgot-msg").textContent="If that email is on file, a reset link is on its way!";
+    document.getElementById("forgot-msg").style.color="#f87171";
+    document.getElementById("forgot-msg").textContent="Something went wrong — please try again.";
   });
 }
 
@@ -699,7 +691,7 @@ function doLogin(u){
 
 function logout(){cur=null;showLoginSelect();show("s-login");}
 function changePeriod(){pidx=parseInt(document.getElementById("period-sel").value);renderApp();}
-function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr")?renderDash():renderTS(cur._vid||cur.id);}
+function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.role==="admin")?renderDash():renderTS(cur._vid||cur.id);}
 
 // ── INITIAL PAGE LOAD — fetch employees from DB ───────────────────────────
 (function initPage(){
