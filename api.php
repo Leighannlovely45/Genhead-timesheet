@@ -816,6 +816,26 @@ if ($method === 'POST') {
         if ($submitted) {
             checkOvertime($db, $tsId, $dbId, $entries);
             logAudit($tsId, $dbId, 'submitted', null, ['total_hours'=>$totalHours,'period'=>$period]);
+            // Notify manager that employee submitted
+            $empRow = $db->prepare("SELECT name, email, manager_id FROM users WHERE id = ?");
+            $empRow->execute([$dbId]);
+            $empData = $empRow->fetch();
+            if ($empData && $empData['manager_id']) {
+                $mgrRow = $db->prepare("SELECT name, email FROM users WHERE id = ?");
+                $mgrRow->execute([$empData['manager_id']]);
+                $mgrData = $mgrRow->fetch();
+                if ($mgrData) {
+                    fireNotificationWebhook($db, 'timecard_submitted', [
+                        'employee_name'    => $empData['name'],
+                        'employee_email'   => $empData['email'],
+                        'manager_name'     => $mgrData['name'],
+                        'manager_email'    => $mgrData['email'],
+                        'period'           => $period,
+                        'total_hours'      => $totalHours,
+                        'review_url'       => 'https://timesheet.genhead.com/',
+                    ]);
+                }
+            }
         }
         echo json_encode(['success' => true, 'timesheet_id' => $tsId]);
         exit;
@@ -834,6 +854,20 @@ if ($method === 'POST') {
         $db->prepare("UPDATE timesheets SET status='approved', approved_by=?, approved_at=NOW() WHERE id=?")->execute([$approverId,$tsId]);
         if ($comment) $db->prepare("INSERT INTO timesheet_comments (timesheet_id,user_id,type,comment) VALUES (?,COALESCE(?,1),'approval',?)")->execute([$tsId,$approverId,$comment]);
         logAudit($tsId, $approverId ?? 1, 'approved', $before, ['status'=>'approved','approved_by'=>$approverName]);
+        // Notify employee their timecard was approved
+        $empRow2 = $db->prepare("SELECT u.name, u.email FROM users u JOIN timesheets t ON t.user_id = u.id WHERE t.id = ?");
+        $empRow2->execute([$tsId]);
+        $empData2 = $empRow2->fetch();
+        if ($empData2) {
+            fireNotificationWebhook($db, 'timecard_approved', [
+                'employee_name'  => $empData2['name'],
+                'employee_email' => $empData2['email'],
+                'approver_name'  => $approverName,
+                'period'         => $before['period'] ?? '',
+                'total_hours'    => $before['total_hours'] ?? '',
+                'login_url'      => 'https://timesheet.genhead.com/',
+            ]);
+        }
         echo json_encode(['success' => true]);
         exit;
     }
@@ -851,6 +885,20 @@ if ($method === 'POST') {
         $db->prepare("UPDATE timesheets SET status='rejected', approved_by=? WHERE id=?")->execute([$approverId,$tsId]);
         $db->prepare("INSERT INTO timesheet_comments (timesheet_id,user_id,type,comment) VALUES (?,COALESCE(?,1),'rejection',?)")->execute([$tsId,$approverId,$comment]);
         logAudit($tsId, $approverId ?? 1, 'rejected', $before, ['status'=>'rejected','reason'=>$comment,'by'=>$approverName]);
+        // Notify employee their timecard was rejected
+        $empRow3 = $db->prepare("SELECT u.name, u.email FROM users u JOIN timesheets t ON t.user_id = u.id WHERE t.id = ?");
+        $empRow3->execute([$tsId]);
+        $empData3 = $empRow3->fetch();
+        if ($empData3) {
+            fireNotificationWebhook($db, 'timecard_rejected', [
+                'employee_name'  => $empData3['name'],
+                'employee_email' => $empData3['email'],
+                'approver_name'  => $approverName,
+                'period'         => $before['period'] ?? '',
+                'reason'         => $comment,
+                'login_url'      => 'https://timesheet.genhead.com/',
+            ]);
+        }
         echo json_encode(['success' => true]);
         exit;
     }
@@ -1012,7 +1060,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier'];
         foreach ($allowed as $key) { if (isset($body[$key])) setSetting($key, $body[$key]); }
         echo json_encode(['success' => true]);
         exit;
@@ -1079,6 +1127,28 @@ function checkOvertime($db, $tsId, $userId, $entries) {
                ->execute([$tsId,$userId,$wk+1,$weekHours,$overtime]);
         }
     }
+}
+
+// ── FIRE NOTIFICATION WEBHOOK ────────────────────────────────────────────
+// Generic notification dispatcher. Sends all timecard events to one GHL
+// webhook URL; GHL branches on the 'event' field.
+// Events: timecard_submitted | timecard_approved | timecard_rejected
+function fireNotificationWebhook($db, $event, $payload) {
+    $url = getSetting('ghl_notify_webhook_url');
+    if (!$url) return;
+    $payload['event']     = $event;
+    $payload['timestamp'] = date('c');
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($payload),
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
 }
 
 // ── SEND INVITE WEBHOOK ──────────────────────────────────────────────────
