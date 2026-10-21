@@ -228,13 +228,18 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
   <!-- MAIN LOGIN FORM -->
   <div class="login-card" id="login-card-select">
     <form autocomplete="off" onsubmit="return false;">
+    <!-- honeypot: browser targets these instead of our real fields -->
+    <input type="text" name="username" style="display:none" tabindex="-1" aria-hidden="true">
+    <input type="password" name="password" style="display:none" tabindex="-1" aria-hidden="true">
     <h2>Sign in to your account</h2>
 
     <div class="lf-group">
       <label class="lf-label">Name</label>
-      <input type="text" class="lf-input" id="lf-name-text" list="lf-name-list"
+      <input type="search" class="lf-input" id="lf-name-text" list="lf-name-list"
         placeholder="Type or select your name…"
         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        name="ts-user-search" role="combobox"
+        onfocus="if(EMPS&&!EMPS.find(e=>e.name.toLowerCase()===this.value.toLowerCase()))this.value=''"
         oninput="setTimeout(lfNameTextChange,50)" onchange="setTimeout(lfNameTextChange,50)" onblur="setTimeout(lfNameTextChange,100)" style="cursor:pointer">
       <datalist id="lf-name-list"></datalist>
       <select id="lf-name" style="display:none" autocomplete="off"></select>
