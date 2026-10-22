@@ -1444,9 +1444,9 @@ if ($method === 'POST') {
             fireNotificationWebhook($db, 'timecard_approved', [
                 'employee_name'  => $empData2['name'],
                 'employee_email' => $empData2['email'],
-                'approver_name'  => $approverName,
+                'manager_name'   => $approverName,
                 'period'         => $before['period'] ?? '',
-                'total_hours'    => $before['total_hours'] ?? '',
+                'hours'          => $before['total_hours'] ?? '',
                 'login_url'      => 'https://timesheet.genhead.com/',
             ]);
         }
@@ -1475,9 +1475,9 @@ if ($method === 'POST') {
             fireNotificationWebhook($db, 'timecard_rejected', [
                 'employee_name'  => $empData3['name'],
                 'employee_email' => $empData3['email'],
-                'approver_name'  => $approverName,
+                'manager_name'   => $approverName,
                 'period'         => $before['period'] ?? '',
-                'reason'         => $comment,
+                'note'           => $comment,
                 'login_url'      => 'https://timesheet.genhead.com/',
             ]);
         }
@@ -1498,6 +1498,20 @@ if ($method === 'POST') {
         $db->prepare("UPDATE timesheets SET status='returned' WHERE id=?")->execute([$tsId]);
         $db->prepare("INSERT INTO timesheet_comments (timesheet_id,user_id,type,comment) VALUES (?,COALESCE(?,1),'rejection',?)")->execute([$tsId,$approverId,$comment]);
         logAudit($tsId, $approverId ?? 1, 'returned_to_employee', $before, ['status'=>'returned','reason'=>$comment,'by'=>$approverName]);
+        // Notify employee their timecard was returned for edits
+        $empRow4 = $db->prepare("SELECT u.name, u.email FROM users u JOIN timesheets t ON t.user_id = u.id WHERE t.id = ?");
+        $empRow4->execute([$tsId]);
+        $empData4 = $empRow4->fetch();
+        if ($empData4) {
+            fireNotificationWebhook($db, 'timecard_returned', [
+                'employee_name'  => $empData4['name'],
+                'employee_email' => $empData4['email'],
+                'manager_name'   => $approverName,
+                'period'         => $before['period'] ?? '',
+                'note'           => $comment,
+                'login_url'      => 'https://timesheet.genhead.com/',
+            ]);
+        }
         echo json_encode(['success' => true]);
         exit;
     }
