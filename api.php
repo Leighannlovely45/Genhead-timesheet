@@ -204,6 +204,70 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── LOAD PROJECTS ────────────────────────────────────────────────────────
+    if ($action === 'load_projects') {
+        $db     = getDB();
+        $status = $_GET['status'] ?? '';
+        $sql    = "SELECT p.*, u.name AS creator_name,
+                   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS task_count,
+                   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.stage = 'done') AS done_count
+                   FROM projects p LEFT JOIN users u ON u.id = p.created_by";
+        $params = [];
+        if ($status) { $sql .= " WHERE p.status = ?"; $params[] = $status; }
+        else          { $sql .= " WHERE p.status != 'archived'"; }
+        $sql .= " ORDER BY p.updated_at DESC";
+        $rows = $db->prepare($sql);
+        $rows->execute($params);
+        echo json_encode(['success' => true, 'projects' => $rows->fetchAll()]);
+        exit;
+    }
+
+    // ── LOAD TASKS (for a project or all) ────────────────────────────────────
+    if ($action === 'load_tasks') {
+        $db         = getDB();
+        $projectId  = (int)($_GET['project_id'] ?? 0);
+        $assignedTo = (int)($_GET['assigned_to'] ?? 0);
+        $stage      = $_GET['stage'] ?? '';
+        $sql = "SELECT t.*, p.name AS project_name, p.client_name, p.billing_type AS project_billing_type
+                FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE 1=1";
+        $params = [];
+        if ($projectId)  { $sql .= " AND t.project_id = ?";  $params[] = $projectId; }
+        if ($assignedTo) { $sql .= " AND t.assigned_to = ?"; $params[] = $assignedTo; }
+        if ($stage)      { $sql .= " AND t.stage = ?";       $params[] = $stage; }
+        $sql .= " ORDER BY FIELD(t.stage,'inprogress','inreview','todo','backlog','done'), t.priority DESC, t.due_date ASC";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        echo json_encode(['success' => true, 'tasks' => $stmt->fetchAll()]);
+        exit;
+    }
+
+    // ── LOAD MY TASKS (for the logged-in user by numeric DB id) ──────────────
+    if ($action === 'load_my_tasks') {
+        $db  = getDB();
+        $uid = (int)($_GET['uid'] ?? 0);
+        if (!$uid) { echo json_encode(['success' => false, 'error' => 'uid required']); exit; }
+        $stmt = $db->prepare(
+            "SELECT t.*, p.name AS project_name, p.client_name
+             FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
+             WHERE t.assigned_to = ? AND t.stage != 'done'
+             ORDER BY t.due_date ASC, FIELD(t.priority,'high','medium','low')"
+        );
+        $stmt->execute([$uid]);
+        echo json_encode(['success' => true, 'tasks' => $stmt->fetchAll()]);
+        exit;
+    }
+
+    // ── LOAD TASK COMMENTS ────────────────────────────────────────────────────
+    if ($action === 'load_task_comments') {
+        $db     = getDB();
+        $taskId = (int)($_GET['task_id'] ?? 0);
+        if (!$taskId) { echo json_encode(['success' => false, 'error' => 'task_id required']); exit; }
+        $stmt = $db->prepare("SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC");
+        $stmt->execute([$taskId]);
+        echo json_encode(['success' => true, 'comments' => $stmt->fetchAll()]);
+        exit;
+    }
+
     if ($action === 'load') {
         $db = getDB();
         $employees = $db->query("SELECT id, ghl_contact_id, name, email, role, pin, pin_set, password_set, rate, status, delegate_to, added_from_ghl, manager_id FROM users WHERE status = 'active' ORDER BY name")->fetchAll();
@@ -553,6 +617,116 @@ if ($method === 'POST') {
     $body = json_decode($rawBody, true);
     if (!is_array($body)) $body = !empty($_POST) ? $_POST : [];
     $db = getDB();
+
+    // ── ADD PROJECT ──────────────────────────────────────────────────────────
+    if ($action === 'add_project') {
+        $name        = trim($body['name']         ?? '');
+        $clientId    = (int)($body['client_id']   ?? 0)  ?: null;
+        $clientName  = trim($body['client_name']  ?? '') ?: null;
+        $status      = in_array($body['status'] ?? '', ['active','on_hold','completed']) ? $body['status'] : 'active';
+        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : 'billable';
+        $dueDate     = !empty($body['due_date'])  ? $body['due_date'] : null;
+        $description = trim($body['description']  ?? '') ?: null;
+        $createdBy   = (int)($body['created_by']  ?? 0);
+        if (!$name || !$createdBy) { echo json_encode(['success'=>false,'error'=>'name and created_by required']); exit; }
+        $db->prepare("INSERT INTO projects (name,client_id,client_name,status,billing_type,due_date,description,created_by)
+                      VALUES (?,?,?,?,?,?,?,?)")
+           ->execute([$name,$clientId,$clientName,$status,$billingType,$dueDate,$description,$createdBy]);
+        echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
+        exit;
+    }
+
+    // ── UPDATE PROJECT ────────────────────────────────────────────────────────
+    if ($action === 'update_project') {
+        $id     = (int)($body['id'] ?? 0);
+        if (!$id) { echo json_encode(['success'=>false,'error'=>'id required']); exit; }
+        $fields=[]; $params=[];
+        if (isset($body['name']))         { $fields[]='name = ?';         $params[]=trim($body['name']); }
+        if (isset($body['status']))       { $fields[]='status = ?';       $params[]=$body['status']; }
+        if (isset($body['billing_type'])) { $fields[]='billing_type = ?'; $params[]=$body['billing_type']; }
+        if (isset($body['due_date']))     { $fields[]='due_date = ?';     $params[]=$body['due_date']?:null; }
+        if (isset($body['description']))  { $fields[]='description = ?';  $params[]=$body['description']?:null; }
+        if (isset($body['client_name']))  { $fields[]='client_name = ?';  $params[]=$body['client_name']?:null; }
+        if (!$fields) { echo json_encode(['success'=>false,'error'=>'nothing to update']); exit; }
+        $params[]=$id;
+        $db->prepare("UPDATE projects SET ".implode(',',$fields)." WHERE id=?")->execute($params);
+        echo json_encode(['success'=>true]);
+        exit;
+    }
+
+    // ── ADD TASK ──────────────────────────────────────────────────────────────
+    if ($action === 'add_task') {
+        $projectId   = (int)($body['project_id']  ?? 0);
+        $title       = trim($body['title']         ?? '');
+        $description = trim($body['description']   ?? '') ?: null;
+        $assignedTo  = (int)($body['assigned_to']  ?? 0)  ?: null;
+        $assignedName= trim($body['assigned_name'] ?? '') ?: null;
+        $priority    = in_array($body['priority'] ?? '', ['low','medium','high']) ? $body['priority'] : 'medium';
+        $stage       = in_array($body['stage'] ?? '', ['backlog','todo','inprogress','inreview','done']) ? $body['stage'] : 'backlog';
+        $dueDate     = !empty($body['due_date'])   ? $body['due_date'] : null;
+        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : null;
+        $createdBy   = (int)($body['created_by']   ?? 0);
+        if (!$projectId || !$title || !$createdBy) { echo json_encode(['success'=>false,'error'=>'project_id, title, created_by required']); exit; }
+        $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,due_date,billing_type,created_by)
+                      VALUES (?,?,?,?,?,?,?,?,?,?)")
+           ->execute([$projectId,$title,$description,$assignedTo,$assignedName,$priority,$stage,$dueDate,$billingType,$createdBy]);
+        $newId=(int)$db->lastInsertId();
+        // Log activity
+        $actorName=trim($body['actor_name']??'System');
+        $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
+           ->execute([$newId,$createdBy,$actorName,"Created task and added to ".ucfirst($stage)]);
+        echo json_encode(['success'=>true,'id'=>$newId]);
+        exit;
+    }
+
+    // ── UPDATE TASK (stage move, reassign, edit) ──────────────────────────────
+    if ($action === 'update_task') {
+        $id        = (int)($body['id']         ?? 0);
+        $actorId   = (int)($body['actor_id']   ?? 0);
+        $actorName = trim($body['actor_name']  ?? 'System');
+        if (!$id) { echo json_encode(['success'=>false,'error'=>'id required']); exit; }
+        $fields=[]; $params=[];
+        $stageLabels=['backlog'=>'Backlog','todo'=>'To Do','inprogress'=>'In Progress','inreview'=>'In Review','done'=>'Done'];
+        if (isset($body['stage']) && array_key_exists($body['stage'], $stageLabels)) {
+            $fields[]='stage = ?'; $params[]=$body['stage'];
+        }
+        if (isset($body['title']))        { $fields[]='title = ?';        $params[]=trim($body['title']); }
+        if (isset($body['description']))  { $fields[]='description = ?';  $params[]=$body['description']?:null; }
+        if (isset($body['priority']))     { $fields[]='priority = ?';     $params[]=$body['priority']; }
+        if (isset($body['due_date']))     { $fields[]='due_date = ?';     $params[]=$body['due_date']?:null; }
+        if (isset($body['assigned_to']))  {
+            $fields[]='assigned_to = ?';   $params[]=(int)$body['assigned_to']?:null;
+            $fields[]='assigned_name = ?'; $params[]=trim($body['assigned_name']??'')?:null;
+        }
+        if ($fields) {
+            $params[]=$id;
+            $db->prepare("UPDATE tasks SET ".implode(',',$fields)." WHERE id=?")->execute($params);
+        }
+        // Log activity if stage changed
+        if (isset($body['stage'])) {
+            $label=$stageLabels[$body['stage']]??$body['stage'];
+            $comment=isset($body['comment'])&&trim($body['comment'])
+                ? "Moved to $label — ".trim($body['comment'])
+                : "Moved to $label";
+            $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
+               ->execute([$id,$actorId,$actorName,$comment]);
+        }
+        echo json_encode(['success'=>true]);
+        exit;
+    }
+
+    // ── ADD TASK COMMENT ─────────────────────────────────────────────────────
+    if ($action === 'add_task_comment') {
+        $taskId   = (int)($body['task_id']  ?? 0);
+        $userId   = (int)($body['user_id']  ?? 0);
+        $userName = trim($body['user_name'] ?? '');
+        $comment  = trim($body['comment']   ?? '');
+        if (!$taskId || !$userId || !$comment) { echo json_encode(['success'=>false,'error'=>'task_id, user_id, comment required']); exit; }
+        $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,0)")
+           ->execute([$taskId,$userId,$userName,$comment]);
+        echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
+        exit;
+    }
 
     // ── SET CLIENT HOURS BANK ──────────────────────────────────────────────
     if ($action === 'set_client_hours') {

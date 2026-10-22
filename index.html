@@ -183,6 +183,44 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .master-tbl tbody tr:hover{background:var(--alt)}
 .master-tbl tbody td{padding:.58rem .95rem;color:var(--dark)}
 
+/* PROJECT BOARD */
+.pm-board{display:grid;grid-template-columns:repeat(5,1fr);gap:.65rem;align-items:start;overflow-x:auto;padding-bottom:.5rem}
+@media(max-width:900px){.pm-board{grid-template-columns:repeat(3,minmax(180px,1fr));}}
+@media(max-width:600px){.pm-board{grid-template-columns:repeat(2,minmax(160px,1fr));}}
+.pm-col{background:var(--hover);border-radius:10px;padding:.6rem;min-height:160px}
+.pm-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.55rem;padding:.1rem .1rem .35rem;border-bottom:2px solid var(--border)}
+.pm-col-label{font-size:.75rem;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.04em}
+.pm-col-count{font-size:.72rem;color:var(--mid);background:var(--bg);border-radius:20px;padding:.1rem .45rem;border:1px solid var(--border)}
+.pm-cards{display:flex;flex-direction:column;gap:.5rem}
+.pm-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.65rem .7rem;cursor:pointer;position:relative;transition:box-shadow .15s,border-color .15s}
+.pm-card:hover{border-color:var(--teal);box-shadow:0 2px 8px rgba(3,173,143,.12)}
+.pm-card:hover .pm-move-btn{opacity:1}
+.pm-card-proj{font-size:.68rem;color:var(--mid);margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pm-card-title{font-size:.82rem;font-weight:500;color:var(--dark);line-height:1.35;margin-bottom:.45rem}
+.pm-card-meta{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
+.pm-pri-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pm-avatar{width:22px;height:22px;border-radius:50%;background:var(--teal);color:#fff;font-size:.62rem;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pm-move-btn{position:absolute;top:.5rem;right:.5rem;opacity:0;background:var(--navy);color:#fff;border:none;border-radius:5px;font-size:.68rem;padding:.2rem .45rem;cursor:pointer;transition:opacity .15s}
+.pm-detail-grid{display:flex;flex-direction:column;gap:.75rem}
+.pm-detail-section{background:var(--hover);border-radius:10px;padding:.65rem}
+.pm-activity{padding:.4rem 0;border-bottom:1px solid var(--border);opacity:.7}
+.pm-comment{padding:.4rem 0;border-bottom:1px solid var(--border)}
+.pm-cmt-who{font-size:.75rem;font-weight:600;color:var(--navy)}
+.pm-cmt-time{font-size:.7rem;color:var(--mid)}
+.pm-cmt-text{font-size:.82rem;color:var(--dark);margin-top:.15rem}
+.pm-stage-btn{padding:.55rem .5rem;border:1px solid var(--border);border-radius:7px;background:var(--hover);color:var(--dark);font-size:.8rem;cursor:pointer;text-align:left;transition:all .15s}
+.pm-stage-btn:hover:not(:disabled){border-color:var(--teal);background:rgba(3,173,143,.08)}
+.pm-stage-btn:disabled{opacity:.45;cursor:not-allowed}
+.pm-stage-current{border-color:var(--border);background:var(--hover);color:var(--mid)}
+.pm-stage-suggested{border-color:var(--teal)!important;background:rgba(3,173,143,.12)!important;color:var(--teal)!important;font-weight:600}
+.btype-tag{display:inline-block;font-size:.65rem;font-weight:600;padding:.1rem .38rem;border-radius:4px;border:1px solid transparent}
+.btype-tag.bt-billable{background:#f0fdf4;border-color:#86efac;color:#166534}
+.btype-tag.bt-nonbillable{background:#fef9c3;border-color:#fde047;color:#854d0e}
+.btype-tag.bt-marketing{background:#f0f4ff;border-color:#a5b4fc;color:#3730a3}
+.pm-lbl{display:block;font-size:.78rem;font-weight:600;color:var(--dark);margin-bottom:.25rem;margin-top:.65rem}
+.pm-inp{width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box;font-family:'DM Sans',sans-serif}
+.pm-inp:focus{outline:none;border-color:var(--teal)}
+
 /* GHL */
 .ghl-panel{background:var(--bg);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:.9rem}
 .ghl-header{background:var(--navy);padding:.62rem 1rem;display:flex;align-items:center;justify-content:space-between}
@@ -316,7 +354,8 @@ function btCss(key){   const t=BILLING_TYPES.find(b=>b.key===key); return t?t.cs
 const PERIODS=["Apr 27 - May 10","May 11 - May 24","May 25 - Jun 07","Jun 08 - Jun 21","Jun 22 - Jul 05","Jul 06 - Jul 19","Jul 20 - Aug 02","Aug 03 - Aug 16","Aug 17 - Aug 30","Aug 31 - Sep 13","Sep 14 - Sep 27","Sep 28 - Oct 11","Oct 12 - Oct 25","Oct 26 - Nov 08","Nov 09 - Nov 22","Nov 23 - Dec 06","Dec 07 - Dec 20","Dec 21 - Jan 03"];
 const PSTARTS=[[2026,3,27],[2026,4,11],[2026,4,25],[2026,5,8],[2026,5,22],[2026,6,6],[2026,6,20],[2026,7,3],[2026,7,17],[2026,7,31],[2026,8,14],[2026,8,28],[2026,9,12],[2026,9,26],[2026,10,9],[2026,10,23],[2026,11,7],[2026,11,21]];
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-let EMPS=[]; // populated from DB on load
+let EMPS=[];    // populated from DB on load
+let CLIENTS=[]; // populated from DB on load
 
 // ── API HELPER ─────────────────────────────────────────────────────────────
 const API_BASE="api.php";
@@ -712,6 +751,11 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
     // Detect employee vs non-employee after EMPS load below to show correct reset form
   }
 
+  // Load clients for company dropdown (background, non-blocking)
+  fetch(API_BASE+"?action=load_clients").then(r=>r.json()).then(d=>{
+    if(d.success&&d.clients) CLIENTS=d.clients;
+  }).catch(()=>{});
+
   // Load employees from DB (load is a GET action)
   fetch(API_BASE+"?action=load").then(r=>r.json()).then(data=>{
     // Pull settings
@@ -768,7 +812,12 @@ function renderTS(uid){
   const isViewing=!!cur._vid && cur._vid!==cur.id;
   const body=document.getElementById("app-body");
 
-  let h=`<div class="emp-info">
+  // Build client datalist once for company autocomplete
+  const clientDatalist=(!isViewing&&CLIENTS.length)
+    ?`<datalist id="cl-clients">${CLIENTS.map(c=>`<option value="${c.name.replace(/"/g,'&quot;')}"></option>`).join('')}</datalist>`
+    :'';
+
+  let h=`${clientDatalist}<div class="emp-info">
     <div><div class="emp-name">${emp.name}</div><div class="emp-period">${PERIODS[pidx]} &middot; Bi-Weekly Timesheet</div></div>
     <div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" onchange="upRate(this.value)"${isViewing?" readonly":""}></div>
     <div style="text-align:right">${d.submitted?'<span class="badge b-sub">&#10003; Submitted</span>':'<span class="badge b-pend">Pending</span>'}</div>
@@ -789,7 +838,7 @@ function renderTS(uid){
         const btVal=en.bt||BT_DEFAULT;
         const ro=isViewing?" readonly":"";
         h+=`<div class="entry-row">
-          <input type="text" placeholder="Company" value="${en.co}" onchange="upE(${dayIdx},${ei},'co',this.value)"${ro}>
+          <input type="text" placeholder="Company" value="${en.co}" list="${(!isViewing&&CLIENTS.length)?'cl-clients':''}" onchange="upE(${dayIdx},${ei},'co',this.value)"${ro}>
           <input type="text" placeholder="Deliverable" value="${en.del}" onchange="upE(${dayIdx},${ei},'del',this.value)"${ro}>
           ${btSelect(dayIdx, ei, btVal, isViewing)}
           <input type="number" placeholder="0" value="${en.hrs}" min="0" max="24" step="0.5" onchange="upE(${dayIdx},${ei},'hrs',this.value)"${ro}>
@@ -950,6 +999,7 @@ function getTabsForRole(role){
     tabs.push({id:"reports",label:"Reports"});
   }
   if(role==="admin") tabs.push({id:"clients",label:"Clients"});
+  if(role==="manager"||role==="hr"||role==="admin") tabs.push({id:"projects",label:"Projects"});
   if(role==="admin") tabs.push({id:"ghl",label:"GHL Setup"});
   if(role==="hr"||role==="admin") tabs.push({id:"settings",label:"Settings"});
   return tabs;
@@ -1184,6 +1234,11 @@ function renderDash(){
     </div>
   </div>
 
+  <!-- PROJECTS PANE -->
+  <div id="pane-projects" style="display:none">
+    <div id="projects-root"></div>
+  </div>
+
   <!-- SETTINGS PANE -->
   <div id="pane-settings" style="display:none">
     <div class="dash-top"><div><h2>Settings</h2><p>App configuration</p></div></div>
@@ -1323,7 +1378,7 @@ function renderDash(){
 }
 
 function switchTab(tab){
-  const allTabs=["dash","records","team","hrm","auditlog","reports","clients","ghl","instructions","settings"];
+  const allTabs=["dash","records","team","hrm","auditlog","reports","clients","projects","ghl","instructions","settings"];
   allTabs.forEach(t=>{
     const pane=document.getElementById("pane-"+t);
     const btn=document.getElementById("tab-"+t);
@@ -1336,6 +1391,7 @@ function switchTab(tab){
   if(tab==="hrm"){populatePeriodSelects();renderHRM();}
   if(tab==="auditlog"){populatePeriodSelects();renderAuditLog();}
   if(tab==="clients") renderClients();
+  if(tab==="projects") renderProjects();
   if(tab==="settings") renderSettings();
 }
 
@@ -1826,6 +1882,478 @@ async function syncClientsFromGHL(){
     if(r.success){showToast(`Synced ${r.synced} clients from GHL.`);renderClients();}
     else alert(r.error||"Sync failed. Check GHL API key in Settings.");
   }catch(e){alert("Error: "+e.message);}
+}
+
+// ── PROJECTS ──────────────────────────────────────────────────────────────
+// State for the projects tab
+let _pm = {
+  view: 'board',        // 'board' | 'detail' | 'mytasks'
+  projects: [],
+  tasks: [],
+  activeProject: null,  // project object when in 'detail' view
+  activeTask: null,     // task object when comment panel is open
+  comments: [],
+  loading: false
+};
+
+const STAGES=[
+  {key:'backlog',   label:'Backlog'},
+  {key:'todo',      label:'To Do'},
+  {key:'inprogress',label:'In Progress'},
+  {key:'inreview',  label:'In Review'},
+  {key:'done',      label:'Done'}
+];
+
+function pmRoot(){return document.getElementById('projects-root');}
+
+async function renderProjects(){
+  const root=pmRoot();
+  if(!root)return;
+  root.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>';
+  _pm.loading=true;
+  try{
+    const [pRes, tRes]= await Promise.all([
+      fetch(`api.php?action=load_projects`).then(r=>r.json()),
+      fetch(`api.php?action=load_tasks`).then(r=>r.json())
+    ]);
+    _pm.projects = pRes.projects||[];
+    _pm.tasks    = tRes.tasks||[];
+    _pm.loading  = false;
+    _pm.view='board';
+    _pm.activeProject=null;
+    _renderPMBoard();
+  }catch(e){
+    root.innerHTML=`<div style="padding:2rem;text-align:center;color:#f87171">Failed to load projects: ${e.message}</div>`;
+  }
+}
+
+function _renderPMBoard(){
+  const root=pmRoot();
+  const role=cur.role;
+  const canManage=(role==='admin'||role==='manager'||role==='hr');
+  let h=`
+  <div class="dash-top">
+    <div><h2>Projects</h2><p>Track work across all active projects</p></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks()">My Tasks</button>
+      ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
+    </div>
+  </div>
+  <div class="pm-board">`;
+
+  STAGES.forEach(s=>{
+    const stageTasks=_pm.tasks.filter(t=>t.stage===s.key);
+    h+=`<div class="pm-col">
+      <div class="pm-col-header">
+        <span class="pm-col-label">${s.label}</span>
+        <span class="pm-col-count">${stageTasks.length}</span>
+      </div>
+      <div class="pm-cards" id="pm-col-${s.key}">`;
+    stageTasks.forEach(t=>{
+      h+=_pmTaskCard(t,s);
+    });
+    h+=`</div></div>`;
+  });
+  h+=`</div>`;
+
+  // Add Project modal (hidden)
+  h+=_pmProjectModalHTML();
+  // Add Task modal (hidden)
+  h+=_pmTaskModalHTML();
+  // Move modal (hidden)
+  h+=_pmMoveModalHTML();
+
+  root.innerHTML=h;
+}
+
+function _pmTaskCard(t,s){
+  const proj=_pm.projects.find(p=>p.id===t.project_id)||{name:''};
+  const initials=t.assigned_name?t.assigned_name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2):'—';
+  const dueColor=t.due_date&&new Date(t.due_date)<new Date()?'color:#f87171':'color:var(--mid)';
+  const dueTxt=t.due_date?t.due_date.slice(5):''; // MM-DD
+  const btCls=t.billing_type?`btype-tag bt-${t.billing_type}`:'btype-tag bt-billable';
+  const btLabel=t.billing_type?(BILLING_TYPES.find(b=>b.key===t.billing_type)||{label:t.billing_type}).label:'Billable';
+  const priColor=t.priority==='high'?'#f87171':t.priority==='medium'?'#fb923c':'#4ade80';
+  return `<div class="pm-card" onclick="_pmOpenTask(${t.id})">
+    <div class="pm-card-proj">${escHtml(proj.name)}</div>
+    <div class="pm-card-title">${escHtml(t.title)}</div>
+    <div class="pm-card-meta">
+      <span class="pm-pri-dot" style="background:${priColor}" title="${t.priority} priority"></span>
+      <span class="${btCls}">${btLabel}</span>
+      <span style="flex:1"></span>
+      ${dueTxt?`<span style="font-size:.7rem;${dueColor}">${dueTxt}</span>`:''}
+      <span class="pm-avatar" title="${escHtml(t.assigned_name||'Unassigned')}">${initials}</span>
+    </div>
+    <button class="pm-move-btn" onclick="event.stopPropagation();_pmMoveModal(${t.id},'${s.key}')">→ Move</button>
+  </div>`;
+}
+
+function _pmMyTasks(){
+  _pm.view='mytasks';
+  const root=pmRoot();
+  const myTasks=_pm.tasks.filter(t=>t.assigned_to==cur.id && t.stage!=='done');
+  let h=`
+  <div class="dash-top">
+    <div><h2>My Tasks</h2><p>Tasks assigned to you, excluding Done</p></div>
+    <div><button class="btn btn-outline" onclick="_pm.view='board';_renderPMBoard()">← All Projects</button></div>
+  </div>`;
+  if(!myTasks.length){
+    h+=`<div style="padding:3rem;text-align:center;color:var(--mid)">No open tasks assigned to you 🎉</div>`;
+  } else {
+    h+=`<div class="billing-tbl"><table><thead><tr>
+      <th>Task</th><th>Project</th><th>Stage</th><th>Priority</th><th>Due</th><th>Actions</th>
+    </tr></thead><tbody>`;
+    myTasks.forEach(t=>{
+      const proj=_pm.projects.find(p=>p.id===t.project_id)||{name:'—'};
+      const stageLabel=STAGES.find(s=>s.key===t.stage)?.label||t.stage;
+      const dueColor=t.due_date&&new Date(t.due_date)<new Date()?'color:#f87171':'';
+      h+=`<tr>
+        <td><a href="#" style="color:var(--teal);text-decoration:none" onclick="event.preventDefault();_pmOpenTask(${t.id})">${escHtml(t.title)}</a></td>
+        <td><a href="#" style="color:var(--mid);text-decoration:none" onclick="event.preventDefault();_pmProjectDetail(${t.project_id})">${escHtml(proj.name)}</a></td>
+        <td><span style="font-size:.78rem">${stageLabel}</span></td>
+        <td><span style="font-size:.78rem;color:${t.priority==='high'?'#f87171':t.priority==='medium'?'#fb923c':'#4ade80'}">${t.priority}</span></td>
+        <td style="${dueColor};font-size:.78rem">${t.due_date||'—'}</td>
+        <td><button class="btn btn-outline" style="font-size:.72rem;padding:.2rem .55rem" onclick="_pmMoveModal(${t.id},'${t.stage}')">Move</button></td>
+      </tr>`;
+    });
+    h+=`</tbody></table></div>`;
+  }
+  h+=_pmMoveModalHTML();
+  root.innerHTML=h;
+}
+
+async function _pmProjectDetail(projectId){
+  _pm.view='detail';
+  const proj=_pm.projects.find(p=>p.id===projectId);
+  if(!proj)return;
+  _pm.activeProject=proj;
+  const root=pmRoot();
+  root.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>';
+  try{
+    const tRes=await fetch(`api.php?action=load_tasks&project_id=${projectId}`).then(r=>r.json());
+    const tasks=tRes.tasks||[];
+    _pm.tasks=_pm.tasks.filter(t=>t.project_id!==projectId).concat(tasks);
+    const role=cur.role;
+    const canManage=(role==='admin'||role==='manager'||role==='hr');
+    let h=`
+    <div class="dash-top">
+      <div>
+        <div style="font-size:.78rem;color:var(--mid);margin-bottom:.25rem">
+          <a href="#" style="color:var(--teal);text-decoration:none" onclick="event.preventDefault();renderProjects()">Projects</a>
+          › ${escHtml(proj.name)}
+        </div>
+        <h2 style="margin:0">${escHtml(proj.name)}</h2>
+        <p style="margin:.25rem 0 0">${proj.client_name?escHtml(proj.client_name)+' · ':''}<span class="btype-tag bt-${proj.billing_type||'billable'}">${(BILLING_TYPES.find(b=>b.key===proj.billing_type)||{label:'Billable'}).label}</span></p>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
+        ${canManage?`<button class="btn btn-primary" onclick="_pmAddTaskModal(${projectId})">+ Add Task</button>`:''}
+      </div>
+    </div>
+    <div class="pm-detail-grid">`;
+
+    STAGES.forEach(s=>{
+      const sTasks=tasks.filter(t=>t.stage===s.key);
+      if(!sTasks.length && s.key==='done') return; // hide empty Done column in detail
+      h+=`<div class="pm-detail-section">
+        <div class="pm-col-header"><span class="pm-col-label">${s.label}</span><span class="pm-col-count">${sTasks.length}</span></div>`;
+      sTasks.forEach(t=>{
+        h+=_pmTaskCard(t,s);
+      });
+      h+=`</div>`;
+    });
+    h+=`</div>`;
+    h+=_pmTaskModalHTML(projectId);
+    h+=_pmMoveModalHTML();
+
+    root.innerHTML=h;
+  }catch(e){
+    root.innerHTML=`<div style="padding:2rem;text-align:center;color:#f87171">Error: ${e.message}</div>`;
+  }
+}
+
+async function _pmOpenTask(taskId){
+  const task=_pm.tasks.find(t=>t.id===taskId);
+  if(!task)return;
+  _pm.activeTask=task;
+  // Load comments
+  try{
+    const cRes=await fetch(`api.php?action=load_task_comments&task_id=${taskId}`).then(r=>r.json());
+    _pm.comments=cRes.comments||[];
+    _pmShowTaskPanel(task);
+  }catch(e){
+    _pmShowTaskPanel(task);
+  }
+}
+
+function _pmShowTaskPanel(task){
+  const proj=_pm.projects.find(p=>p.id===task.project_id)||{name:''};
+  const stageLabel=STAGES.find(s=>s.key===task.stage)?.label||task.stage;
+  const existing=document.getElementById('pm-task-panel');
+  if(existing)existing.remove();
+
+  const panel=document.createElement('div');
+  panel.id='pm-task-panel';
+  panel.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;justify-content:flex-end;padding:1rem';
+
+  const commentsHtml=_pm.comments.map(c=>`
+    <div class="${c.is_activity?'pm-activity':'pm-comment'}">
+      <span class="pm-cmt-who">${escHtml(c.user_name)}</span>
+      <span class="pm-cmt-time"> · ${c.created_at?.slice(5,16)||''}</span>
+      <div class="pm-cmt-text">${escHtml(c.comment)}</div>
+    </div>`).join('');
+
+  panel.innerHTML=`
+  <div style="background:var(--bg);border-radius:14px;width:min(520px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+    <div style="padding:1.25rem 1.25rem .75rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-size:.75rem;color:var(--mid);margin-bottom:.2rem">${escHtml(proj.name)} · ${stageLabel}</div>
+        <div style="font-size:1.05rem;font-weight:600;color:var(--dark)">${escHtml(task.title)}</div>
+      </div>
+      <button onclick="this.closest('#pm-task-panel').remove()" style="background:none;border:none;color:var(--mid);font-size:1.3rem;cursor:pointer;padding:.1rem .35rem">✕</button>
+    </div>
+    <div style="padding:.85rem 1.25rem;display:flex;gap:1.25rem;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+      <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Assignee</div><div style="font-size:.85rem;color:var(--dark)">${escHtml(task.assigned_name||'Unassigned')}</div></div>
+      <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Priority</div><div style="font-size:.85rem;color:${task.priority==='high'?'#f87171':task.priority==='medium'?'#fb923c':'#4ade80'}">${task.priority}</div></div>
+      <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Due</div><div style="font-size:.85rem;color:var(--dark)">${task.due_date||'—'}</div></div>
+      <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Billing</div><span class="btype-tag bt-${task.billing_type||'billable'}">${(BILLING_TYPES.find(b=>b.key===task.billing_type)||{label:'Billable'}).label}</span></div>
+    </div>
+    ${task.description?`<div style="padding:.75rem 1.25rem;font-size:.83rem;color:var(--mid);border-bottom:1px solid var(--border)">${escHtml(task.description)}</div>`:''}
+    <div style="flex:1;overflow-y:auto;padding:.75rem 1.25rem">
+      <div style="font-size:.75rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.6rem">Activity & Comments</div>
+      <div id="pm-comments-list">${commentsHtml||'<div style="color:var(--mid);font-size:.82rem">No comments yet.</div>'}</div>
+    </div>
+    <div style="padding:.75rem 1.25rem;border-top:1px solid var(--border);display:flex;gap:.5rem">
+      <input id="pm-comment-input" type="text" placeholder="Add a comment…" style="flex:1;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--dark);font-size:.85rem"
+        onkeydown="if(event.key==='Enter')_pmSubmitComment(${task.id})">
+      <button class="btn btn-primary" style="font-size:.82rem;padding:.45rem .9rem" onclick="_pmSubmitComment(${task.id})">Send</button>
+    </div>
+    <div style="padding:.5rem 1.25rem .85rem;display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .65rem" onclick="_pmMoveModal(${task.id},'${task.stage}')">→ Move Stage</button>
+    </div>
+  </div>`;
+  document.body.appendChild(panel);
+  panel.addEventListener('click',function(e){if(e.target===panel)panel.remove();});
+}
+
+async function _pmSubmitComment(taskId){
+  const inp=document.getElementById('pm-comment-input');
+  const comment=inp?inp.value.trim():'';
+  if(!comment)return;
+  inp.value='';
+  try{
+    await api({action:'add_task_comment',task_id:taskId,user_id:cur.id,user_name:cur.name,comment});
+    // Refresh comments
+    const cRes=await fetch(`api.php?action=load_task_comments&task_id=${taskId}`).then(r=>r.json());
+    _pm.comments=cRes.comments||[];
+    const list=document.getElementById('pm-comments-list');
+    if(list){
+      list.innerHTML=_pm.comments.map(c=>`
+        <div class="${c.is_activity?'pm-activity':'pm-comment'}">
+          <span class="pm-cmt-who">${escHtml(c.user_name)}</span>
+          <span class="pm-cmt-time"> · ${c.created_at?.slice(5,16)||''}</span>
+          <div class="pm-cmt-text">${escHtml(c.comment)}</div>
+        </div>`).join('');
+    }
+  }catch(e){alert('Error: '+e.message);}
+}
+
+// ── MOVE MODAL ────────────────────────────────────────────────────────────
+function _pmMoveModal(taskId,currentStage){
+  const modal=document.getElementById('pm-move-modal');
+  if(!modal)return;
+  const task=_pm.tasks.find(t=>t.id===taskId);
+  modal.querySelector('#pm-move-title').textContent=task?task.title:'Task';
+  modal.querySelector('#pm-move-task-id').value=taskId;
+  modal.querySelector('#pm-move-current').value=currentStage;
+
+  // Highlight suggested next stage
+  const curIdx=STAGES.findIndex(s=>s.key===currentStage);
+  const suggested=STAGES[curIdx+1]?.key||null;
+
+  modal.querySelectorAll('.pm-stage-btn').forEach(btn=>{
+    const k=btn.dataset.stage;
+    btn.className='pm-stage-btn'+(k===currentStage?' pm-stage-current':k===suggested?' pm-stage-suggested':'');
+    btn.disabled=(k===currentStage);
+  });
+  modal.style.display='flex';
+}
+
+function _pmMoveModalHTML(){
+  const buttons=STAGES.map(s=>`<button class="pm-stage-btn" data-stage="${s.key}" onclick="_pmDoMove('${s.key}')">${s.label}</button>`).join('');
+  return `<div id="pm-move-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;align-items:center;justify-content:center">
+    <div style="background:var(--bg);border-radius:14px;padding:1.5rem;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <h3 id="pm-move-title" style="margin:0 0 .3rem;font-size:1rem;color:var(--dark)">Move Task</h3>
+      <div style="font-size:.78rem;color:var(--mid);margin-bottom:1rem">Select the new stage for this task:</div>
+      <input type="hidden" id="pm-move-task-id">
+      <input type="hidden" id="pm-move-current">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+        ${buttons}
+      </div>
+      <div style="margin-top:.3rem;font-size:.73rem;color:var(--mid)">
+        <span style="display:inline-block;width:10px;height:10px;background:var(--teal);border-radius:2px;vertical-align:middle;margin-right:.3rem"></span>Suggested next stage
+      </div>
+      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+        <button class="btn btn-outline" onclick="document.getElementById('pm-move-modal').style.display='none'">Cancel</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function _pmDoMove(newStage){
+  const modal=document.getElementById('pm-move-modal');
+  const taskId=parseInt(modal.querySelector('#pm-move-task-id').value);
+  modal.style.display='none';
+  const panel=document.getElementById('pm-task-panel');
+  if(panel)panel.remove();
+  try{
+    await api({action:'update_task',id:taskId,stage:newStage,actor_id:cur.id,actor_name:cur.name});
+    // Update local state
+    const t=_pm.tasks.find(t=>t.id===taskId);
+    if(t)t.stage=newStage;
+    // Re-render current view
+    if(_pm.view==='detail'&&_pm.activeProject) _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='mytasks') _pmMyTasks();
+    else _renderPMBoard();
+  }catch(e){alert('Error moving task: '+e.message);}
+}
+
+// ── ADD PROJECT MODAL ─────────────────────────────────────────────────────
+function _pmProjectModalHTML(){
+  const clientOpts=_pm.projects.length?'':'';//clients loaded separately
+  return `<div id="pm-proj-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;align-items:center;justify-content:center">
+    <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <h3 style="margin:0 0 1.1rem;color:var(--dark)">New Project</h3>
+      <label class="pm-lbl">Project Name</label>
+      <input id="pm-proj-name" type="text" placeholder="e.g. Acme Rebrand" class="pm-inp">
+      <label class="pm-lbl">Description</label>
+      <input id="pm-proj-desc" type="text" placeholder="Optional" class="pm-inp">
+      <label class="pm-lbl">Billing Type</label>
+      <select id="pm-proj-billing" class="pm-inp">
+        ${BILLING_TYPES.map(b=>`<option value="${b.key}">${b.label}</option>`).join('')}
+      </select>
+      <label class="pm-lbl">Due Date</label>
+      <input id="pm-proj-due" type="date" class="pm-inp">
+      <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.5rem">
+        <button class="btn btn-outline" onclick="document.getElementById('pm-proj-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="_pmSaveProject()">Create Project</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function _pmAddProjectModal(){
+  const modal=document.getElementById('pm-proj-modal');
+  if(!modal)return;
+  modal.querySelector('#pm-proj-name').value='';
+  modal.querySelector('#pm-proj-desc').value='';
+  modal.querySelector('#pm-proj-due').value='';
+  modal.style.display='flex';
+}
+
+async function _pmSaveProject(){
+  const name=document.getElementById('pm-proj-name').value.trim();
+  const desc=document.getElementById('pm-proj-desc').value.trim();
+  const billing=document.getElementById('pm-proj-billing').value;
+  const due=document.getElementById('pm-proj-due').value;
+  if(!name){alert('Project name is required.');return;}
+  try{
+    const r=await api({action:'add_project',name,description:desc,billing_type:billing,due_date:due||null,created_by:cur.id});
+    if(!r.ok)throw new Error(r.error||'Unknown error');
+    document.getElementById('pm-proj-modal').style.display='none';
+    await renderProjects();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+// ── ADD TASK MODAL ────────────────────────────────────────────────────────
+function _pmTaskModalHTML(projectId){
+  const projOpts=_pm.projects.map(p=>`<option value="${p.id}"${p.id===projectId?' selected':''}>${escHtml(p.name)}</option>`).join('');
+  const empOpts=EMPS.map(e=>`<option value="${e.id}">${escHtml(e.name)}</option>`).join('');
+  return `<div id="pm-task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;align-items:center;justify-content:center">
+    <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.35);max-height:90vh;overflow-y:auto">
+      <h3 style="margin:0 0 1.1rem;color:var(--dark)">Add Task</h3>
+      <label class="pm-lbl">Project</label>
+      <select id="pm-task-proj" class="pm-inp">${projOpts}</select>
+      <label class="pm-lbl">Task Title</label>
+      <input id="pm-task-title" type="text" placeholder="What needs to be done?" class="pm-inp">
+      <label class="pm-lbl">Description</label>
+      <input id="pm-task-desc" type="text" placeholder="Optional" class="pm-inp">
+      <label class="pm-lbl">Assign To</label>
+      <select id="pm-task-assign" class="pm-inp"><option value="">— Unassigned —</option>${empOpts}</select>
+      <label class="pm-lbl">Priority</label>
+      <select id="pm-task-priority" class="pm-inp">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+      <label class="pm-lbl">Stage</label>
+      <select id="pm-task-stage" class="pm-inp">
+        ${STAGES.map(s=>`<option value="${s.key}">${s.label}</option>`).join('')}
+      </select>
+      <label class="pm-lbl">Due Date</label>
+      <input id="pm-task-due" type="date" class="pm-inp">
+      <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.5rem">
+        <button class="btn btn-outline" onclick="document.getElementById('pm-task-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" onclick="_pmSaveTask()">Add Task</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function _pmAddTaskModal(projectId){
+  const modal=document.getElementById('pm-task-modal');
+  if(!modal)return;
+  if(projectId){
+    const sel=modal.querySelector('#pm-task-proj');
+    if(sel){
+      for(let i=0;i<sel.options.length;i++){
+        if(parseInt(sel.options[i].value)===projectId){sel.selectedIndex=i;break;}
+      }
+    }
+  }
+  modal.querySelector('#pm-task-title').value='';
+  modal.querySelector('#pm-task-desc').value='';
+  modal.querySelector('#pm-task-assign').value='';
+  modal.querySelector('#pm-task-stage').value='backlog';
+  modal.querySelector('#pm-task-due').value='';
+  modal.style.display='flex';
+}
+
+async function _pmSaveTask(){
+  const projId=parseInt(document.getElementById('pm-task-proj').value);
+  const title=document.getElementById('pm-task-title').value.trim();
+  const desc=document.getElementById('pm-task-desc').value.trim();
+  const assignSel=document.getElementById('pm-task-assign');
+  const assignId=assignSel.value?parseInt(assignSel.value):null;
+  const assignName=assignId?(assignSel.options[assignSel.selectedIndex].text||''):'';
+  const priority=document.getElementById('pm-task-priority').value;
+  const stage=document.getElementById('pm-task-stage').value;
+  const due=document.getElementById('pm-task-due').value;
+  if(!projId||!title){alert('Project and task title are required.');return;}
+  try{
+    const r=await api({
+      action:'add_task',
+      project_id:projId,
+      title,
+      description:desc||null,
+      assigned_to:assignId||null,
+      assigned_name:assignName||null,
+      priority,
+      stage,
+      due_date:due||null,
+      created_by:cur.id,
+      actor_name:cur.name
+    });
+    if(!r.ok)throw new Error(r.error||'Unknown error');
+    document.getElementById('pm-task-modal').style.display='none';
+    // Refresh
+    if(_pm.view==='detail'&&_pm.activeProject) await _pmProjectDetail(_pm.activeProject.id);
+    else await renderProjects();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+function escHtml(str){
+  if(!str)return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────
