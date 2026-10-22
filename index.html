@@ -753,6 +753,9 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
     // Detect employee vs non-employee after EMPS load below to show correct reset form
   }
 
+  // Build login form immediately so user can interact while data loads
+  buildLoginForm();
+
   // Load clients for company dropdown (background, non-blocking)
   fetch(API_BASE+"?action=load_clients").then(r=>r.json()).then(d=>{
     if(d.success&&d.clients) CLIENTS=d.clients;
@@ -775,7 +778,19 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
         pin_set:!!e.pin_set
       }));
     }
-    buildLoginForm();
+    // Only build login form once — if already built, just refresh the name options
+    if(document.getElementById('lf-name')){
+      const sel=document.getElementById('lf-name');
+      const curVal=sel.value;
+      const sorted=[...EMPS].sort((a,b)=>{const ra=a.role==="employee"?0:1,rb=b.role==="employee"?0:1;return ra!==rb?ra-rb:a.name.localeCompare(b.name);});
+      const nameCounts={};sorted.forEach(e=>{nameCounts[e.name]=(nameCounts[e.name]||0)+1;});
+      const roleLabel={employee:'Employee',manager:'Manager',hr:'HR',admin:'Admin'};
+      const opts=sorted.map(e=>{const label=nameCounts[e.name]>1?`${e.name} (${roleLabel[e.role]||e.role})`:e.name;return `<option value="${e.id}">${label}</option>`;}).join('');
+      sel.innerHTML=`<option value="">— Select your name —</option>${opts}`;
+      if(curVal) sel.value=curVal;
+    } else {
+      buildLoginForm();
+    }
 
     // Now handle reset token if present
     if(tok&&uid){
@@ -799,7 +814,7 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
     }
   }).catch(()=>{
     // If load fails, still show form (EMPS stays empty)
-    buildLoginForm();
+    if(!document.getElementById('lf-name')) buildLoginForm();
     if(tok&&uid){
       document.getElementById("login-card-select").style.display="none";
       document.getElementById("login-card-reset").style.display="";
