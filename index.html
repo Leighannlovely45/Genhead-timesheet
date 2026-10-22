@@ -376,7 +376,14 @@ function buildLoginForm(){
     const ra=a.role==="employee"?0:1, rb=b.role==="employee"?0:1;
     return ra!==rb ? ra-rb : a.name.localeCompare(b.name);
   });
-  const opts=sorted.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+  // Count how many times each name appears so we can disambiguate duplicates
+  const nameCounts={};
+  sorted.forEach(e=>{ nameCounts[e.name]=(nameCounts[e.name]||0)+1; });
+  const roleLabel={employee:'Employee',manager:'Manager',hr:'HR',admin:'Admin'};
+  const opts=sorted.map(e=>{
+    const label=nameCounts[e.name]>1 ? `${e.name} (${roleLabel[e.role]||e.role})` : e.name;
+    return `<option value="${e.id}">${label}</option>`;
+  }).join('');
   // Inject entire form via JS so browser never sees it during initial parse
   document.getElementById('lf-mount').innerHTML=`
     <h2>Sign in to your account</h2>

