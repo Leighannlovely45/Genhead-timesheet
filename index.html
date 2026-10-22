@@ -765,7 +765,7 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
 function renderTS(uid){
   const d=gd(uid,pidx);
   const emp=EMPS.find(e=>e.id===uid);
-  const isViewing=!!cur._vid;
+  const isViewing=!!cur._vid && cur._vid!==cur.id;
   const body=document.getElementById("app-body");
 
   let h=`<div class="emp-info">
@@ -835,7 +835,8 @@ function renderTS(uid){
   </div>`;
 
   if(!isViewing){
-    h+=`<div class="action-bar"><button class="btn btn-outline" onclick="doExport()">Export CSV</button><button class="btn btn-primary" onclick="doSubmit()">${d.submitted?"Resubmit":"Submit to GHL"}</button></div>`;
+    const backBtn=cur._vid?`<button class="btn btn-outline" onclick="backDash()">&#8592; Back to Dashboard</button>`:'';
+    h+=`<div class="action-bar">${backBtn}<button class="btn btn-outline" onclick="doExport()">Export CSV</button><button class="btn btn-primary" onclick="doSubmit()">${d.submitted?"Resubmit":"Submit to GHL"}</button></div>`;
   } else {
     h+=`<div class="action-bar"><button class="btn btn-outline" onclick="backDash()">&#8592; Back to Dashboard</button></div>`;
   }
