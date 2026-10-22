@@ -126,6 +126,34 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── TEST DECISION WEBHOOK (fires a test payload to GHL Workflow 3) ──────────
+    if ($action === 'test_decision_webhook') {
+        $url = getSetting('ghl_notify_webhook_url');
+        if (!$url) { echo json_encode(['success' => false, 'error' => 'ghl_notify_webhook_url not set']); exit; }
+        $decision = trim($_GET['decision'] ?? 'approved'); // approved | rejected | returned
+        $payload = [
+            'event'          => 'timecard_decision',
+            'decision'       => $decision,
+            'employee_name'  => 'Test Employee',
+            'employee_email' => 'Leighann.lovely@genhead.com',
+            'employee_id'    => 'etest',
+            'manager_name'   => 'Test Manager',
+            'manager_email'  => 'Leighann.lovely@genhead.com',
+            'period'         => 'Oct 7 – Oct 20, 2026',
+            'hours'          => '40.00',
+            'note'           => 'Test decision note',
+            'decided_at'     => date('c'),
+            'timestamp'      => date('c'),
+        ];
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_POST=>true, CURLOPT_POSTFIELDS=>json_encode($payload), CURLOPT_HTTPHEADER=>['Content-Type: application/json'], CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>10]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        echo json_encode(['success' => true, 'http_code' => $code, 'response' => $resp]);
+        exit;
+    }
+
     // ── SET SINGLE SETTING VIA GET (WAF bypass — webhook URLs only) ───────────
     if ($action === 'set_setting') {
         $db      = getDB();
