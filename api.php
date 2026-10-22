@@ -154,6 +154,16 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── DEACTIVATE USER VIA GET (one-time setup helper) ──────────────────────
+    if ($action === 'deactivate_user') {
+        $db  = getDB();
+        $id  = preg_replace('/^e/', '', trim($_GET['id'] ?? ''));
+        if (!$id) { echo json_encode(['success' => false, 'error' => 'id required']); exit; }
+        $db->prepare("UPDATE users SET status = 'inactive' WHERE id = ?")->execute([$id]);
+        echo json_encode(['success' => true, 'deactivated' => 'e' . $id]);
+        exit;
+    }
+
     // ── CREATE TEST ADMIN ACCOUNT VIA GET (one-time setup helper) ────────────
     if ($action === 'create_test_admin') {
         $db    = getDB();
