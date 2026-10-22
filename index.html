@@ -2141,7 +2141,8 @@ async function _pmSubmitComment(taskId){
   if(!comment)return;
   inp.value='';
   try{
-    await api({action:'add_task_comment',task_id:taskId,user_id:cur.id,user_name:cur.name,comment});
+    const cp=new URLSearchParams({action:'add_task_comment',task_id:taskId,user_id:cur.id,user_name:cur.name,comment});
+    await fetch(API_BASE+'?'+cp).then(x=>x.json());
     // Refresh comments
     const cRes=await fetch(`api.php?action=load_task_comments&task_id=${taskId}`).then(r=>r.json());
     _pm.comments=cRes.comments||[];
@@ -2206,7 +2207,8 @@ async function _pmDoMove(newStage){
   const panel=document.getElementById('pm-task-panel');
   if(panel)panel.remove();
   try{
-    await api({action:'update_task',id:taskId,stage:newStage,actor_id:cur.id,actor_name:cur.name});
+    const mp=new URLSearchParams({action:'update_task',id:taskId,stage:newStage,actor_id:cur.id,actor_name:cur.name});
+    await fetch(API_BASE+'?'+mp).then(x=>x.json());
     // Update local state
     const t=_pm.tasks.find(t=>t.id===taskId);
     if(t)t.stage=newStage;
@@ -2257,8 +2259,9 @@ async function _pmSaveProject(){
   const due=document.getElementById('pm-proj-due').value;
   if(!name){alert('Project name is required.');return;}
   try{
-    const r=await api({action:'add_project',name,description:desc,billing_type:billing,due_date:due||null,created_by:cur.id});
-    if(!r.ok)throw new Error(r.error||'Unknown error');
+    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',created_by:cur.id});
+    const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
+    if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-proj-modal').style.display='none';
     await renderProjects();
   }catch(e){alert('Error: '+e.message);}
@@ -2330,20 +2333,9 @@ async function _pmSaveTask(){
   const due=document.getElementById('pm-task-due').value;
   if(!projId||!title){alert('Project and task title are required.');return;}
   try{
-    const r=await api({
-      action:'add_task',
-      project_id:projId,
-      title,
-      description:desc||null,
-      assigned_to:assignId||null,
-      assigned_name:assignName||null,
-      priority,
-      stage,
-      due_date:due||null,
-      created_by:cur.id,
-      actor_name:cur.name
-    });
-    if(!r.ok)throw new Error(r.error||'Unknown error');
+    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',created_by:cur.id,actor_name:cur.name});
+    const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
+    if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-task-modal').style.display='none';
     // Refresh
     if(_pm.view==='detail'&&_pm.activeProject) await _pmProjectDetail(_pm.activeProject.id);
