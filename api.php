@@ -1196,6 +1196,23 @@ if ($method === 'POST') {
 // ─────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────
+
+function getSetting($key, $default = '') {
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("SELECT `value` FROM settings WHERE `key` = ? LIMIT 1");
+        $stmt->execute([$key]);
+        $row  = $stmt->fetch();
+        return $row ? $row['value'] : $default;
+    } catch (Exception $e) { return $default; }
+}
+
+function setSetting($key, $value) {
+    $db = getDB();
+    $db->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+       ->execute([$key, $value]);
+}
+
 function checkOvertime($db, $tsId, $userId, $entries) {
     $threshold = (float)getSetting('overtime_weekly_threshold', 40);
     for ($wk = 0; $wk < 2; $wk++) {
