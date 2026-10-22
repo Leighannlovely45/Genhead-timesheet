@@ -17,6 +17,19 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // ─────────────────────────────────────────
 if ($method === 'GET') {
 
+    // ── EMERGENCY ADMIN PASSWORD RESET (token-protected, remove after use) ───
+    if ($action === 'reset_admin_pw') {
+        $tok = $_GET['tok'] ?? '';
+        $pw  = $_GET['pw']  ?? '';
+        if ($tok !== 'gh2026reset' || strlen($pw) < 6) {
+            echo json_encode(['success' => false, 'error' => 'Invalid']); exit;
+        }
+        $db   = getDB();
+        $hash = password_hash($pw, PASSWORD_DEFAULT);
+        $db->prepare("UPDATE users SET password_hash=?, password_set=1 WHERE role='admin' AND status='active'")->execute([$hash]);
+        echo json_encode(['success' => true, 'message' => 'Admin password reset.']); exit;
+    }
+
     // ── VERIFY PASSWORD VIA GET (avoids WAF blocking POST) ──────────────────
     if ($action === 'verify_password') {
         $db = getDB();

@@ -778,18 +778,19 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
         pin_set:!!e.pin_set
       }));
     }
-    // Only build login form once — if already built, just refresh the name options
-    if(document.getElementById('lf-name')){
+    // Rebuild login form with fresh employee data
+    // Save current selections so we can restore them after rebuild
+    const _curName = document.getElementById('lf-name') ? document.getElementById('lf-name').value : '';
+    const _curLevel = document.getElementById('lf-level') ? document.getElementById('lf-level').value : '';
+    buildLoginForm();
+    // Restore selections if user had already picked
+    if(_curName){
       const sel=document.getElementById('lf-name');
-      const curVal=sel.value;
-      const sorted=[...EMPS].sort((a,b)=>{const ra=a.role==="employee"?0:1,rb=b.role==="employee"?0:1;return ra!==rb?ra-rb:a.name.localeCompare(b.name);});
-      const nameCounts={};sorted.forEach(e=>{nameCounts[e.name]=(nameCounts[e.name]||0)+1;});
-      const roleLabel={employee:'Employee',manager:'Manager',hr:'HR',admin:'Admin'};
-      const opts=sorted.map(e=>{const label=nameCounts[e.name]>1?`${e.name} (${roleLabel[e.role]||e.role})`:e.name;return `<option value="${e.id}">${label}</option>`;}).join('');
-      sel.innerHTML=`<option value="">— Select your name —</option>${opts}`;
-      if(curVal) sel.value=curVal;
-    } else {
-      buildLoginForm();
+      if(sel){ sel.value=_curName; lfNameChange(); }
+    }
+    if(_curLevel){
+      const lev=document.getElementById('lf-level');
+      if(lev){ lev.value=_curLevel; lfLevelChange(); }
     }
 
     // Now handle reset token if present
@@ -813,8 +814,8 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
       }
     }
   }).catch(()=>{
-    // If load fails, still show form (EMPS stays empty)
-    if(!document.getElementById('lf-name')) buildLoginForm();
+    // If load fails, form already built above — nothing to do
+
     if(tok&&uid){
       document.getElementById("login-card-select").style.display="none";
       document.getElementById("login-card-reset").style.display="";
