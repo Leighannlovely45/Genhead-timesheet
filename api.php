@@ -88,6 +88,17 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── TEST INVITE WEBHOOK (fires a test payload to GHL Workflow 1) ──────────
+    if ($action === 'test_invite_webhook') {
+        $name  = trim($_GET['name']  ?? 'Test Employee');
+        $email = trim($_GET['email'] ?? '');
+        $role  = trim($_GET['role']  ?? 'employee');
+        if (!$email) { echo json_encode(['success' => false, 'error' => 'email param required']); exit; }
+        sendInviteWebhook($name, $email, $role, 'test_' . time());
+        echo json_encode(['success' => true, 'message' => 'Webhook fired', 'to' => $email]);
+        exit;
+    }
+
     // ── SET SINGLE SETTING VIA GET (WAF bypass — webhook URLs only) ───────────
     if ($action === 'set_setting') {
         $db      = getDB();
