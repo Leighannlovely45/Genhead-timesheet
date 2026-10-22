@@ -426,6 +426,7 @@ function buildLoginForm(){
   // Inject entire form via JS so browser never sees it during initial parse
   document.getElementById('lf-mount').innerHTML=`
     <h2>Sign in to your account</h2>
+    <form autocomplete="off" onsubmit="return false" style="margin:0">
     <div class="lf-group">
       <label class="lf-label">Name</label>
       <select class="lf-select" id="lf-name" autocomplete="off">
@@ -472,7 +473,8 @@ function buildLoginForm(){
     <button class="btn btn-primary" style="width:100%;margin-top:.25rem" id="lf-submit" disabled>Sign In</button>
     <div style="text-align:center;margin-top:.85rem">
       <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none">Forgot PIN?</span>
-    </div>`;
+    </div>
+    </form>`;
   // Wire up events after injection
   document.getElementById('lf-name').addEventListener('change', lfNameChange);
   document.getElementById('lf-level').addEventListener('change', lfLevelChange);
