@@ -452,12 +452,11 @@ function buildLoginForm(){
     </div>
     <div class="lf-group" id="lf-pw-group" style="display:none">
       <label class="lf-label" id="lf-pw-label">Password</label>
-      <input type="text" name="fake-user" style="display:none" autocomplete="username" tabindex="-1" aria-hidden="true">
-      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="new-password" name="gh-pw">
+      <input type="text" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="off" name="gh-access-code" style="-webkit-text-security:disc;text-security:disc;" spellcheck="false" autocorrect="off" autocapitalize="off" data-lpignore="true" data-form-type="other">
     </div>
     <div class="lf-group" id="lf-pw-confirm-group" style="display:none">
       <label class="lf-label">Confirm Password</label>
-      <input type="password" class="lf-input" id="lf-password-confirm" placeholder="Re-enter your password" autocomplete="new-password">
+      <input type="text" class="lf-input" id="lf-password-confirm" placeholder="Re-enter your password" autocomplete="off" name="gh-access-code-2" style="-webkit-text-security:disc;text-security:disc;" spellcheck="false" autocorrect="off" autocapitalize="off" data-lpignore="true" data-form-type="other">
     </div>
     <div id="lf-pin-confirm" style="display:none">
       <div class="lf-group">
@@ -557,7 +556,7 @@ function lfLevelChange(){
     document.getElementById("lf-submit").disabled=false;
     // Check if first-time setup needed
     if(uid){
-      api({action:"verify_pin",uid,pin:"__check__"}).then(r=>{
+      fetch(`api.php?action=verify_pin&id=${encodeURIComponent(uid)}&pin=0000`).then(x=>x.json()).then(r=>{
         if(r.needs_setup){
           _pinMode='setup';
           document.getElementById("lf-pin-label").textContent="Create your 4-digit PIN";
