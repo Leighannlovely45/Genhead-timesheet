@@ -46,6 +46,9 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .lf-input::placeholder{color:rgba(255,255,255,.25)}
 .lf-select-wrap{position:relative}
 .lf-select-wrap::after{content:'▾';position:absolute;right:.85rem;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.4);pointer-events:none;font-size:.9rem}
+.name-suggestion{padding:.6rem .85rem;font-size:.9rem;color:#fff;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06)}
+.name-suggestion:last-child{border-bottom:none}
+.name-suggestion:hover,.name-suggestion.hovered{background:rgba(3,173,143,.25)}
 
 /* APP SHELL */
 #s-app.active{display:flex;flex-direction:column;min-height:100vh}
@@ -447,31 +450,57 @@ function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.re
 // ── AUTH STATE ─────────────────────────────────────────────────────────────
 let _pinUser=null, _pinMode='enter'; // modes: 'enter','setup'
 let _resetToken=null, _resetUid=null;
-let _refreshingDropdown=false; // true while refreshNameDropdown rebuilds options
+let _selectedEmpId=null; // tracks confirmed autocomplete selection
 
-// ── BUILD LOGIN FORM (called after EMPS loaded from DB) ───────────────────
-function buildLoginForm(){
-  const sorted=[...EMPS].sort((a,b)=>{
-    const ra=a.role==="employee"?0:1, rb=b.role==="employee"?0:1;
-    return ra!==rb ? ra-rb : a.name.localeCompare(b.name);
-  });
-  // Count how many times each name appears so we can disambiguate duplicates
-  const nameCounts={};
-  sorted.forEach(e=>{ nameCounts[e.name]=(nameCounts[e.name]||0)+1; });
+// ── NAME AUTOCOMPLETE HELPERS ────────────────────────────────────────────
+function buildEmpLabel(e){
   const roleLabel={employee:'Employee',manager:'Manager',hr:'HR',admin:'Admin'};
-  const opts=sorted.map(e=>{
-    const label=nameCounts[e.name]>1 ? `${e.name} (${roleLabel[e.role]||e.role})` : e.name;
-    return `<option value="${e.id}">${label}</option>`;
+  const nameCounts={};
+  EMPS.forEach(x=>{ nameCounts[x.name]=(nameCounts[x.name]||0)+1; });
+  return nameCounts[e.name]>1 ? `${e.name} (${roleLabel[e.role]||e.role})` : e.name;
+}
+function renderNameSuggestions(query){
+  const list=document.getElementById('lf-name-list');
+  if(!list) return;
+  const q=query.trim().toLowerCase();
+  if(q.length===0){ list.style.display='none'; return; }
+  const matches=EMPS.filter(e=>buildEmpLabel(e).toLowerCase().includes(q))
+    .sort((a,b)=>{
+      const ra=a.role==="employee"?0:1, rb=b.role==="employee"?0:1;
+      return ra!==rb ? ra-rb : a.name.localeCompare(b.name);
+    }).slice(0,8);
+  if(matches.length===0){ list.style.display='none'; return; }
+  list.innerHTML=matches.map(e=>{
+    const label=buildEmpLabel(e);
+    return `<div class="name-suggestion" data-id="${e.id}" data-label="${label.replace(/"/g,'&quot;')}">${label}</div>`;
   }).join('');
+  list.style.display='block';
+  list.querySelectorAll('.name-suggestion').forEach(el=>{
+    el.addEventListener('mousedown',function(ev){
+      ev.preventDefault();
+      selectNameSuggestion(this.dataset.id, this.dataset.label);
+    });
+  });
+}
+function selectNameSuggestion(id, label){
+  _selectedEmpId=id;
+  const inp=document.getElementById('lf-name-input');
+  if(inp) inp.value=label;
+  const list=document.getElementById('lf-name-list');
+  if(list) list.style.display='none';
+  const u=EMPS.find(e=>e.id===id);
+  if(u) lfNameChangeById(u); else resetLevelField();
+}
+
+// ── BUILD LOGIN FORM (called once immediately, before EMPS loads) ────────
+function buildLoginForm(){
   // Inject entire form via JS so browser never sees it during initial parse
   document.getElementById('lf-mount').innerHTML=`
     <h2>Sign in to your account</h2>
-    <div class="lf-group">
+    <div class="lf-group" style="position:relative">
       <label class="lf-label">Name</label>
-      <select class="lf-select" id="lf-name" autocomplete="off">
-        <option value="">— Select your name —</option>
-        ${opts}
-      </select>
+      <input type="text" class="lf-input" id="lf-name-input" placeholder="Start typing your name…" autocomplete="off" autocorrect="off" spellcheck="false">
+      <div id="lf-name-list" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:#1a2a3a;border:1.5px solid rgba(3,173,143,.5);border-radius:0 0 10px 10px;max-height:220px;overflow-y:auto"></div>
     </div>
     <div class="lf-group" id="lf-level-group">
       <label class="lf-label">Access Level</label>
@@ -514,7 +543,23 @@ function buildLoginForm(){
       <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none">Forgot password?</span>
     </div>`;
   // Wire up events after injection
-  document.getElementById('lf-name').addEventListener('change', lfNameChange);
+  const nameInp=document.getElementById('lf-name-input');
+  nameInp.addEventListener('input',function(){ _selectedEmpId=null; resetLevelField(); renderNameSuggestions(this.value); });
+  nameInp.addEventListener('blur',function(){ setTimeout(()=>{ const l=document.getElementById('lf-name-list'); if(l) l.style.display='none'; },150); });
+  nameInp.addEventListener('keydown',function(e){
+    const list=document.getElementById('lf-name-list');
+    if(!list||list.style.display==='none') return;
+    const items=[...list.querySelectorAll('.name-suggestion')];
+    const cur=list.querySelector('.name-suggestion.hovered');
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();
+      let idx=items.indexOf(cur);
+      idx=e.key==='ArrowDown' ? Math.min(idx+1,items.length-1) : Math.max(idx-1,0);
+      items.forEach(i=>i.classList.remove('hovered')); items[idx].classList.add('hovered');
+    } else if(e.key==='Enter'&&cur){
+      e.preventDefault(); selectNameSuggestion(cur.dataset.id,cur.dataset.label);
+    } else if(e.key==='Escape'){ list.style.display='none'; }
+  });
   document.getElementById('lf-level').addEventListener('change', lfLevelChange);
   document.getElementById('lf-submit').addEventListener('click', lfSubmit);
   document.getElementById('lf-forgot').addEventListener('click', showForgotPin);
@@ -569,11 +614,7 @@ function lfNameChangeById(u){
 }
 
 function lfNameChange(){
-  if(_refreshingDropdown) return; // ignore programmatic rebuild
-  const uid=document.getElementById("lf-name").value;
-  if(!uid){ resetLevelField(); return; }
-  const u=EMPS.find(e=>String(e.id)===String(uid));
-  if(u) lfNameChangeById(u); else resetLevelField();
+  // Legacy — no longer used (autocomplete input replaces select)
 }
 
 function lfLevelChange(){
@@ -611,10 +652,10 @@ function lfLevelChange(){
 }
 
 function lfSubmit(){
-  const uid=document.getElementById("lf-name").value;
+  const uid=_selectedEmpId;
   const level=document.getElementById("lf-level").value;
   document.getElementById("lf-error").textContent="";
-  if(!uid||!level){document.getElementById("lf-error").textContent="Please select your name and access level.";return;}
+  if(!uid||!level){document.getElementById("lf-error").textContent="Please select your name from the list and access level.";return;}
   const u=EMPS.find(e=>e.id===uid);
   if(!u) return;
   _pinUser=u;
@@ -811,39 +852,9 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
     if(d.success&&d.clients) CLIENTS=d.clients;
   }).catch(()=>{});
 
-  // Helper: repopulate only the name <select> options after EMPS loads,
-  // preserving any value the user has already chosen.
-  function refreshNameDropdown(){
-    const sel=document.getElementById('lf-name');
-    if(!sel) return;
-    const prev=sel.value; // preserve current selection
-    const sorted=[...EMPS].sort((a,b)=>{
-      const ra=a.role==="employee"?0:1, rb=b.role==="employee"?0:1;
-      return ra!==rb ? ra-rb : a.name.localeCompare(b.name);
-    });
-    const nameCounts={};
-    sorted.forEach(e=>{ nameCounts[e.name]=(nameCounts[e.name]||0)+1; });
-    const roleLabel={employee:'Employee',manager:'Manager',hr:'HR',admin:'Admin'};
-    // Suppress lfNameChange while rebuilding options
-    _refreshingDropdown=true;
-    sel.innerHTML='<option value="">— Select your name —</option>'+
-      sorted.map(e=>{
-        const label=nameCounts[e.name]>1?`${e.name} (${roleLabel[e.role]||e.role})`:e.name;
-        return `<option value="${e.id}">${label}</option>`;
-      }).join('');
-    // Restore previous selection if still valid
-    if(prev){
-      sel.value=prev;
-      // If the user had already picked a name, re-trigger level detection
-      // only when the rest of the form is still in its initial state
-      // (no level chosen yet — don't overwrite a half-filled form)
-      if(sel.value===prev){
-        const levelEl=document.getElementById('lf-level');
-        if(levelEl&&!levelEl.value) lfNameChangeById(EMPS.find(e=>e.id===prev));
-      }
-    }
-    _refreshingDropdown=false;
-  }
+  // No-op: autocomplete input no longer needs a rebuild when EMPS loads.
+  // EMPS array is queried live on each keystroke, so there's nothing to refresh.
+  function refreshNameDropdown(){ /* intentionally empty */ }
 
   // Load employees from DB (load is a GET action)
   fetch(API_BASE+"?action=load").then(r=>r.json()).then(data=>{
