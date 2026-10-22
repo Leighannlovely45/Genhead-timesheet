@@ -323,28 +323,12 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
     <button class="btn btn-primary" style="width:100%" onclick="sendForgotPin()">Send Reset Link</button>
   </div>
 
-  <!-- RESET PIN / PASSWORD (from email link) -->
+  <!-- RESET PASSWORD (from email link) -->
   <div class="login-card" id="login-card-reset" style="display:none">
-    <h2 id="rreset-title">Set a new PIN</h2>
-    <p id="rreset-sub" style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Choose a 4-digit PIN you'll use to log in.</p>
-    <!-- PIN fields (employees) -->
-    <div id="rreset-pin-section">
-      <div style="display:flex;gap:.5rem;justify-content:center;margin-bottom:.75rem">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin0" oninput="rpinNext(0)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin1" oninput="rpinNext(1)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin2" oninput="rpinNext(2)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin3" oninput="rpinNext(3)">
-      </div>
-      <p style="font-size:.8rem;color:rgba(255,255,255,.5);margin:.5rem 0 .5rem;text-align:center">Confirm PIN</p>
-      <div style="display:flex;gap:.5rem;justify-content:center;margin-bottom:.75rem">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin4" oninput="rpinNext(4)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin5" oninput="rpinNext(5)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin6" oninput="rpinNext(6)">
-        <input type="password" inputmode="numeric" maxlength="1" class="pin-digit" id="rpin7" oninput="rpinNext(7)">
-      </div>
-    </div>
-    <!-- Password fields (manager/hr/admin) -->
-    <div id="rreset-pw-section" style="display:none">
+    <h2 id="rreset-title">Set a new password</h2>
+    <p id="rreset-sub" style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Choose a new password for your account.</p>
+    <!-- Password fields (all roles) -->
+    <div id="rreset-pw-section">
       <div class="lf-group">
         <label class="lf-label">New Password</label>
         <input type="password" class="lf-input" id="rreset-pw" placeholder="Choose a password (min 6 chars)" onkeydown="if(event.key==='Enter')document.getElementById('rreset-pw-conf').focus()">
@@ -355,7 +339,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
       </div>
     </div>
     <div id="rpin-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin-bottom:.5rem"></div>
-    <button class="btn btn-primary" style="width:100%" onclick="submitResetPin()" id="rreset-btn">Set PIN &amp; Log In</button>
+    <button class="btn btn-primary" style="width:100%" onclick="submitResetPin()" id="rreset-btn">Set Password &amp; Log In</button>
   </div>
 </div>
 
@@ -824,15 +808,6 @@ function sendForgotPin(){
   });
 }
 
-function rpinNext(idx){
-  const el=document.getElementById("rpin"+idx);
-  if(!el)return;
-  el.value=el.value.replace(/\D/g,"").slice(-1);
-  if(el.value&&idx<3) document.getElementById("rpin"+(idx+1)).focus();
-  if(el.value&&idx>=4&&idx<7) document.getElementById("rpin"+(idx+1)).focus();
-  if(idx===7&&el.value) submitResetPin();
-}
-
 function submitResetPin(){
   // All users now use passwords — no more PIN reset path
   const u=EMPS.find(e=>String(e.id).replace(/^e/,'')===String(_resetUid));
@@ -912,17 +887,6 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
     if(tok&&uid){
       document.getElementById("login-card-select").style.display="none";
       document.getElementById("login-card-reset").style.display="";
-      // Everyone uses password now — always show password fields
-      const pinSec=document.getElementById("rreset-pin-section");
-      const pwSec=document.getElementById("rreset-pw-section");
-      if(pinSec) pinSec.style.display="none";
-      if(pwSec) pwSec.style.display="";
-      const title=document.getElementById("rreset-title");
-      const sub=document.getElementById("rreset-sub");
-      if(title) title.textContent="Set a new password";
-      if(sub) sub.textContent="Choose a new password for your account.";
-      const btn=document.getElementById("rreset-btn");
-      if(btn) btn.textContent="Set Password & Log In";
     }
   }).catch(()=>{
     // If load fails, form is already shown (EMPS stays empty — user sees placeholder only)
