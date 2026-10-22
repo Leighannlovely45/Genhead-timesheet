@@ -1798,10 +1798,8 @@ async function saveClient(){
   try{
     let r;
     if(id){
-      // For existing client we only update name and type — note: update_client only does active field
-      // For full name/type edit we'd need a new API action; for now, re-add won't help, inform user
-      r=await api({action:"update_client",id:parseInt(id),active:1});
-      if(r.success) showToast("Client updated (name/type changes require DB edit).");
+      r=await api({action:"update_client",id:parseInt(id),name,type,active:1});
+      if(r.success) showToast("Client updated.");
     } else {
       r=await api({action:"add_client",name,type,billable:type!=="internal"?1:0});
       if(r.success) showToast(`Client "${name}" added.`);

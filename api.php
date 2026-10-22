@@ -919,7 +919,7 @@ if ($method === 'POST') {
             $expires  = date('Y-m-d H:i:s', strtotime('+1 hour'));
             $key      = 'pin_reset_' . $user['id'];
             $val      = json_encode(['token' => $token, 'expires' => $expires]);
-            $db->prepare("INSERT INTO settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=?")->execute([$key, $val, $val]);
+            $db->prepare("INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=?")->execute([$key, $val, $val]);
             $resetUrl = 'https://timesheet.genhead.com/index.html?reset_token=' . $token . '&uid=' . $user['id'];
             $isPin    = $user['role'] === 'employee';
             $subject  = 'Genhead Timesheet — Reset Your ' . ($isPin ? 'PIN' : 'Password');
@@ -941,7 +941,7 @@ if ($method === 'POST') {
         $pass  = trim($body['password'] ?? ''); // new password for mgr/hr/admin
         if (!$uid || !$token) { echo json_encode(['success' => false, 'error' => 'Invalid request']); exit; }
         $key  = 'pin_reset_' . $uid;
-        $stmt = $db->prepare("SELECT value FROM settings WHERE key_name = ? LIMIT 1");
+        $stmt = $db->prepare("SELECT value FROM settings WHERE `key` = ? LIMIT 1");
         $stmt->execute([$key]);
         $row  = $stmt->fetch();
         if (!$row) { echo json_encode(['success' => false, 'error' => 'Reset link is invalid or expired']); exit; }
@@ -966,7 +966,7 @@ if ($method === 'POST') {
             $hash = password_hash($pass, PASSWORD_DEFAULT);
             $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $uid]);
         }
-        $db->prepare("DELETE FROM settings WHERE key_name = ?")->execute([$key]);
+        $db->prepare("DELETE FROM settings WHERE `key` = ?")->execute([$key]);
         echo json_encode(['success' => true, 'role' => $uRow['role']]);
         exit;
     }
@@ -1277,8 +1277,16 @@ if ($method === 'POST') {
     // ── UPDATE CLIENT ───────────────────────────────────────────────────────
     if ($action === 'update_client') {
         $id     = (int)($body['id']     ?? 0);
-        $active = isset($body['active']) ? (int)$body['active'] : 1;
-        $db->prepare("UPDATE clients SET active = ? WHERE id = ?")->execute([$active, $id]);
+        $fields = []; $params = [];
+        if (isset($body['active'])) { $fields[] = 'active = ?';  $params[] = (int)$body['active']; }
+        if (!empty($body['name']))  { $fields[] = 'name = ?';    $params[] = trim($body['name']); }
+        if (!empty($body['type']))  { $fields[] = 'type = ?';    $params[] = trim($body['type']); }
+        if (!empty($body['plan_type']))  { $fields[] = 'plan_type = ?';  $params[] = trim($body['plan_type']); }
+        if (!empty($body['plan_label'])) { $fields[] = 'plan_label = ?'; $params[] = trim($body['plan_label']); }
+        if (isset($body['monthly_hours'])) { $fields[] = 'monthly_hours = ?'; $params[] = (float)$body['monthly_hours']; }
+        if (!$id || !$fields) { echo json_encode(['success'=>false,'error'=>'id and at least one field required']); exit; }
+        $params[] = $id;
+        $db->prepare("UPDATE clients SET ".implode(', ',$fields)." WHERE id = ?")->execute($params);
         echo json_encode(['success' => true]);
         exit;
     }
