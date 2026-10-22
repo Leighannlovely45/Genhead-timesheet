@@ -50,6 +50,19 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── CHECK PASSWORD SET VIA GET ─────────────────────────────────────────
+    if ($action === 'check_password_set') {
+        $db = getDB();
+        $id = preg_replace('/^e/', '', $_GET['id'] ?? '');
+        if (!$id) { echo json_encode(['needs_setup' => false]); exit; }
+        $stmt = $db->prepare("SELECT password_set FROM users WHERE id = ? AND role IN ('manager','hr','admin') AND status = 'active' LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) { echo json_encode(['needs_setup' => false]); exit; }
+        echo json_encode(['needs_setup' => !(bool)$row['password_set']]);
+        exit;
+    }
+
     // ── VERIFY PIN VIA GET (avoids WAF blocking POST) ──────────────────────
     if ($action === 'verify_pin') {
         $db  = getDB();

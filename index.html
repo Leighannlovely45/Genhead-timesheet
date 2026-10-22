@@ -607,24 +607,47 @@ function lfLevelChange(){
     setTimeout(()=>document.getElementById("pin0").focus(),100);
   } else {
     // Manager / HR / Admin — password field
+    // Always check server to see if password is set (avoids stale client-side flag causing setup mode on repeat logins)
     document.getElementById("lf-pw-group").style.display="";
-    document.getElementById("lf-submit").disabled=false;
-    // Check if first-time password setup needed
-    if(u && !u.password_set){
-      _pinMode='setup';
-      document.getElementById("lf-pw-label").textContent="Create your password";
-      document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
-      // Show confirm field
-      document.getElementById("lf-pw-confirm-group").style.display="";
-      document.getElementById("lf-forgot").style.display="none";
+    document.getElementById("lf-submit").disabled=true;
+    document.getElementById("lf-pw-label").textContent="Password";
+    document.getElementById("lf-password").placeholder="Checking…";
+    document.getElementById("lf-pw-confirm-group").style.display="none";
+    document.getElementById("lf-forgot").style.display="none";
+    _pinMode='enter';
+    if(uid){
+      fetch(`api.php?action=check_password_set&id=${encodeURIComponent(uid)}`).then(x=>x.json()).then(r=>{
+        document.getElementById("lf-submit").disabled=false;
+        if(r.needs_setup){
+          _pinMode='setup';
+          document.getElementById("lf-pw-label").textContent="Create your password";
+          document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
+          document.getElementById("lf-pw-confirm-group").style.display="";
+          document.getElementById("lf-forgot").style.display="none";
+        } else {
+          _pinMode='enter';
+          document.getElementById("lf-pw-label").textContent="Password";
+          document.getElementById("lf-password").placeholder="Enter your password";
+          document.getElementById("lf-pw-confirm-group").style.display="none";
+          document.getElementById("lf-forgot").style.display="inline";
+        }
+        setTimeout(()=>document.getElementById("lf-password").focus(),100);
+      }).catch(()=>{
+        // Fallback: assume password is set
+        _pinMode='enter';
+        document.getElementById("lf-pw-label").textContent="Password";
+        document.getElementById("lf-password").placeholder="Enter your password";
+        document.getElementById("lf-pw-confirm-group").style.display="none";
+        document.getElementById("lf-forgot").style.display="inline";
+        document.getElementById("lf-submit").disabled=false;
+        setTimeout(()=>document.getElementById("lf-password").focus(),100);
+      });
     } else {
       _pinMode='enter';
       document.getElementById("lf-pw-label").textContent="Password";
       document.getElementById("lf-password").placeholder="Enter your password";
-      document.getElementById("lf-pw-confirm-group").style.display="none";
-      document.getElementById("lf-forgot").style.display="inline";
+      document.getElementById("lf-submit").disabled=false;
     }
-    setTimeout(()=>document.getElementById("lf-password").focus(),100);
   }
 }
 
