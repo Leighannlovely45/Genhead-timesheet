@@ -218,6 +218,12 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .btype-tag.bt-nonbillable{background:#fef9c3;border-color:#fde047;color:#854d0e}
 .btype-tag.bt-marketing{background:#f0f4ff;border-color:#a5b4fc;color:#3730a3}
 .pm-lbl{display:block;font-size:.78rem;font-weight:600;color:var(--dark);margin-bottom:.25rem;margin-top:.65rem}
+.pm-proj-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;cursor:pointer;transition:box-shadow .15s,border-color .15s;display:flex;flex-direction:column;gap:.25rem}
+.pm-proj-card:hover{border-color:var(--teal);box-shadow:0 4px 16px rgba(3,173,143,.13)}
+.pm-proj-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.2rem}
+.pm-proj-card-name{font-size:.95rem;font-weight:600;color:var(--dark);line-height:1.3}
+.pm-proj-card-client{font-size:.72rem;color:var(--teal);font-weight:500;white-space:nowrap;margin-top:.15rem}
+.pm-proj-card-desc{font-size:.78rem;color:var(--mid);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pm-inp{width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box;font-family:'DM Sans',sans-serif}
 .pm-inp:focus{outline:none;border-color:var(--teal)}
 
@@ -1961,10 +1967,14 @@ function _renderPMBoard(){
   const root=pmRoot();
   const role=cur.role;
   const canManage=(role==='admin'||role==='manager'||role==='hr');
+  // Employees only see their own tasks; managers/admins see all
+  const visibleTasks = canManage ? _pm.tasks : _pm.tasks.filter(t=>String(t.assigned_to)===String(cur.db_id||cur.id.replace('e','')));
+
   let h=`
   <div class="dash-top">
-    <div><h2>Projects</h2><p>Track work across all active projects</p></div>
+    <div><h2>Projects</h2><p>${canManage?'All projects and tasks across the team':'Your assigned tasks'}</p></div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
+      ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectsView()">📁 All Projects</button>`:''}
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks()">My Tasks</button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
@@ -1972,7 +1982,7 @@ function _renderPMBoard(){
   <div class="pm-board">`;
 
   STAGES.forEach(s=>{
-    const stageTasks=_pm.tasks.filter(t=>t.stage===s.key);
+    const stageTasks=visibleTasks.filter(t=>t.stage===s.key);
     h+=`<div class="pm-col">
       <div class="pm-col-header">
         <span class="pm-col-label">${s.label}</span>
@@ -1993,6 +2003,59 @@ function _renderPMBoard(){
   // Move modal (hidden)
   h+=_pmMoveModalHTML();
 
+  root.innerHTML=h;
+}
+
+// ── ALL PROJECTS GRID VIEW ─────────────────────────────────────────────────
+function _pmProjectsView(){
+  _pm.view='projects';
+  const root=pmRoot();
+  const role=cur.role;
+  const canManage=(role==='admin'||role==='manager'||role==='hr');
+  let h=`
+  <div class="dash-top">
+    <div><h2>All Projects</h2><p>${_pm.projects.length} active project${_pm.projects.length!==1?'s':''}</p></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pm.view='board';_renderPMBoard()">← Board View</button>
+      ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
+    </div>
+  </div>`;
+
+  if(!_pm.projects.length){
+    h+=`<div style="padding:3rem;text-align:center;color:var(--mid)">No projects yet. Create one to get started.</div>`;
+  } else {
+    h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;padding:.25rem 0">`;
+    _pm.projects.forEach(p=>{
+      const total=parseInt(p.task_count)||0;
+      const done=parseInt(p.done_count)||0;
+      const pct=total?Math.round(done/total*100):0;
+      const billingLabel=(BILLING_TYPES.find(b=>b.key===p.billing_type)||{label:'Billable'}).label;
+      const overdue=p.due_date&&new Date(p.due_date)<new Date();
+      h+=`<div class="pm-proj-card" onclick="_pmProjectDetail(${p.id})">
+        <div class="pm-proj-card-top">
+          <div class="pm-proj-card-name">${escHtml(p.name)}</div>
+          ${p.client_name?`<div class="pm-proj-card-client">${escHtml(p.client_name)}</div>`:''}
+        </div>
+        ${p.description?`<div class="pm-proj-card-desc">${escHtml(p.description)}</div>`:''}
+        <div style="margin:.75rem 0 .4rem">
+          <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--mid);margin-bottom:.3rem">
+            <span>${done}/${total} tasks done</span><span>${pct}%</span>
+          </div>
+          <div style="height:5px;background:var(--hover);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--teal);border-radius:3px;transition:width .3s"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span class="btype-tag bt-${p.billing_type||'billable'}">${billingLabel}</span>
+          ${p.due_date?`<span style="font-size:.72rem;color:${overdue?'#f87171':'var(--mid)'}">Due ${p.due_date}</span>`:''}
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  h+=_pmProjectModalHTML();
+  h+=_pmTaskModalHTML();
+  h+=_pmMoveModalHTML();
   root.innerHTML=h;
 }
 
@@ -2121,6 +2184,9 @@ function _pmShowTaskPanel(task){
   const existing=document.getElementById('pm-task-panel');
   if(existing)existing.remove();
 
+  const role=cur.role;
+  const canManage=(role==='admin'||role==='manager'||role==='hr');
+
   const panel=document.createElement('div');
   panel.id='pm-task-panel';
   panel.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;justify-content:flex-end;padding:1rem';
@@ -2132,6 +2198,36 @@ function _pmShowTaskPanel(task){
       <div class="pm-cmt-text">${escHtml(c.comment)}</div>
     </div>`).join('');
 
+  const empOpts=EMPS.map(e=>`<option value="${e.id}"${String(e.id)===String(task.assigned_to)?' selected':''}>${escHtml(e.name)}</option>`).join('');
+
+  const editSection=canManage?`
+    <div style="padding:.75rem 1.25rem;border-bottom:1px solid var(--border);background:var(--hover);border-radius:0">
+      <div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.6rem">Edit Task</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+        <div>
+          <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Assign To</label>
+          <select id="pm-edit-assign" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
+            <option value="">— Unassigned —</option>${empOpts}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Priority</label>
+          <select id="pm-edit-priority" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
+            <option value="low"${task.priority==='low'?' selected':''}>Low</option>
+            <option value="medium"${task.priority==='medium'?' selected':''}>Medium</option>
+            <option value="high"${task.priority==='high'?' selected':''}>High</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Due Date</label>
+          <input id="pm-edit-due" type="date" value="${task.due_date||''}" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <button class="btn btn-primary" style="font-size:.78rem;padding:.35rem .8rem;width:100%" onclick="_pmSaveTaskEdits(${task.id})">Save</button>
+        </div>
+      </div>
+    </div>`:'';
+
   panel.innerHTML=`
   <div style="background:var(--bg);border-radius:14px;width:min(520px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)">
     <div style="padding:1.25rem 1.25rem .75rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
@@ -2139,7 +2235,7 @@ function _pmShowTaskPanel(task){
         <div style="font-size:.75rem;color:var(--mid);margin-bottom:.2rem">${escHtml(proj.name)} · ${stageLabel}</div>
         <div style="font-size:1.05rem;font-weight:600;color:var(--dark)">${escHtml(task.title)}</div>
       </div>
-      <button onclick="this.closest('#pm-task-panel').remove()" style="background:none;border:none;color:var(--mid);font-size:1.3rem;cursor:pointer;padding:.1rem .35rem">✕</button>
+      <button onclick="document.getElementById('pm-task-panel').remove()" style="background:none;border:none;color:var(--mid);font-size:1.3rem;cursor:pointer;padding:.1rem .35rem">✕</button>
     </div>
     <div style="padding:.85rem 1.25rem;display:flex;gap:1.25rem;flex-wrap:wrap;border-bottom:1px solid var(--border)">
       <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Assignee</div><div style="font-size:.85rem;color:var(--dark)">${escHtml(task.assigned_name||'Unassigned')}</div></div>
@@ -2148,6 +2244,7 @@ function _pmShowTaskPanel(task){
       <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Billing</div><span class="btype-tag bt-${task.billing_type||'billable'}">${(BILLING_TYPES.find(b=>b.key===task.billing_type)||{label:'Billable'}).label}</span></div>
     </div>
     ${task.description?`<div style="padding:.75rem 1.25rem;font-size:.83rem;color:var(--mid);border-bottom:1px solid var(--border)">${escHtml(task.description)}</div>`:''}
+    ${editSection}
     <div style="flex:1;overflow-y:auto;padding:.75rem 1.25rem">
       <div style="font-size:.75rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.6rem">Activity & Comments</div>
       <div id="pm-comments-list">${commentsHtml||'<div style="color:var(--mid);font-size:.82rem">No comments yet.</div>'}</div>
@@ -2163,6 +2260,30 @@ function _pmShowTaskPanel(task){
   </div>`;
   document.body.appendChild(panel);
   panel.addEventListener('click',function(e){if(e.target===panel)panel.remove();});
+}
+
+async function _pmSaveTaskEdits(taskId){
+  const assignEl=document.getElementById('pm-edit-assign');
+  const priEl=document.getElementById('pm-edit-priority');
+  const dueEl=document.getElementById('pm-edit-due');
+  const assignId=assignEl?assignEl.value:'';
+  const assignName=assignEl&&assignEl.value?EMPS.find(e=>String(e.id)===assignEl.value)?.name||'':'';
+  const priority=priEl?priEl.value:'medium';
+  const due=dueEl?dueEl.value:'';
+  try{
+    const p=new URLSearchParams({action:'update_task',id:taskId,assigned_to:assignId,assigned_name:assignName,priority,due_date:due,actor_id:cur.id,actor_name:cur.name});
+    const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
+    if(!r.success)throw new Error(r.error||'Unknown error');
+    // Update local state
+    const t=_pm.tasks.find(t=>t.id===taskId);
+    if(t){t.assigned_to=assignId;t.assigned_name=assignName;t.priority=priority;t.due_date=due;}
+    // Close panel and re-render
+    const panel=document.getElementById('pm-task-panel');
+    if(panel)panel.remove();
+    if(_pm.view==='detail'&&_pm.activeProject) _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='mytasks') _pmMyTasks();
+    else _renderPMBoard();
+  }catch(e){alert('Error saving: '+e.message);}
 }
 
 async function _pmSubmitComment(taskId){
@@ -2251,7 +2372,9 @@ async function _pmDoMove(newStage){
 
 // ── ADD PROJECT MODAL ─────────────────────────────────────────────────────
 function _pmProjectModalHTML(){
-  const clientOpts=_pm.projects.length?'':'';//clients loaded separately
+  const clientOpts=CLIENTS.length
+    ? CLIENTS.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('')
+    : '';
   return `<div id="pm-proj-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;align-items:center;justify-content:center">
     <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.35)">
       <h3 style="margin:0 0 1.1rem;color:var(--dark)">New Project</h3>
@@ -2259,6 +2382,9 @@ function _pmProjectModalHTML(){
       <input id="pm-proj-name" type="text" placeholder="e.g. Acme Rebrand" class="pm-inp">
       <label class="pm-lbl">Description</label>
       <input id="pm-proj-desc" type="text" placeholder="Optional" class="pm-inp">
+      ${clientOpts?`<label class="pm-lbl">Client</label>
+      <select id="pm-proj-client" class="pm-inp"><option value="">— No client —</option>${clientOpts}</select>`
+      :'<input id="pm-proj-client" type="hidden" value="">'}
       <label class="pm-lbl">Billing Type</label>
       <select id="pm-proj-billing" class="pm-inp">
         ${BILLING_TYPES.map(b=>`<option value="${b.key}">${b.label}</option>`).join('')}
@@ -2279,6 +2405,8 @@ function _pmAddProjectModal(){
   modal.querySelector('#pm-proj-name').value='';
   modal.querySelector('#pm-proj-desc').value='';
   modal.querySelector('#pm-proj-due').value='';
+  const csel=modal.querySelector('#pm-proj-client');
+  if(csel)csel.value='';
   modal.style.display='flex';
 }
 
@@ -2287,9 +2415,11 @@ async function _pmSaveProject(){
   const desc=document.getElementById('pm-proj-desc').value.trim();
   const billing=document.getElementById('pm-proj-billing').value;
   const due=document.getElementById('pm-proj-due').value;
+  const clientEl=document.getElementById('pm-proj-client');
+  const clientId=clientEl?clientEl.value:'';
   if(!name){alert('Project name is required.');return;}
   try{
-    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',created_by:cur.id});
+    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',created_by:cur.id,client_id:clientId||''});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-proj-modal').style.display='none';
