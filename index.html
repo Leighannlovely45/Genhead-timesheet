@@ -990,7 +990,10 @@ function renderDash(){
   <div id="pane-dash">
     <div class="dash-top">
       <div><h2>${role==="admin"?"Admin":role==="hr"?"HR":"Manager"} Dashboard</h2><p>${PERIODS[pidx]} &nbsp;${showPayroll?'<span class="conf">Confidential</span>':''}</p></div>
-      ${showPayroll?`<button class="btn btn-purple" onclick="exportMaster()">Export Master CSV</button>`:""}
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-outline" onclick="viewEmp('${cur.id}')" style="font-size:.82rem">&#128101; My Timesheet</button>
+        ${showPayroll?`<button class="btn btn-purple" onclick="exportMaster()">Export Master CSV</button>`:""}
+      </div>
     </div>
     <div class="metrics">
       <div class="mc accent"><div class="ml">Total Hours</div><div class="mv">${tH.toFixed(1)}</div><div class="ms">This period</div></div>
