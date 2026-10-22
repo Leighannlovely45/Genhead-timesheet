@@ -88,6 +88,20 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── SET SINGLE SETTING VIA GET (WAF bypass — webhook URLs only) ───────────
+    if ($action === 'set_setting') {
+        $db      = getDB();
+        $key     = trim($_GET['key']   ?? '');
+        $value   = trim($_GET['value'] ?? '');
+        $allowed = ['ghl_invite_webhook_url', 'ghl_webhook_url', 'ghl_notify_webhook_url'];
+        if (!in_array($key, $allowed, true)) {
+            echo json_encode(['success' => false, 'error' => 'Key not allowed']); exit;
+        }
+        setSetting($key, $value);
+        echo json_encode(['success' => true, 'key' => $key]);
+        exit;
+    }
+
     if ($action === 'load') {
         $db = getDB();
         $employees = $db->query("SELECT id, ghl_contact_id, name, email, role, pin, pin_set, password_set, rate, status, delegate_to, added_from_ghl, manager_id FROM users WHERE status = 'active' ORDER BY name")->fetchAll();
