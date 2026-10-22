@@ -728,15 +728,29 @@ if ($method === 'POST') {
             if (!empty($body[$k])) { $ghlContactId = trim($body[$k]); break; }
         }
 
-        $stmt = $db->prepare("SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1");
-        $stmt->execute([$name]);
-        $existing = $stmt->fetch();
+        // Look up by email first (most reliable), then fall back to name
+        $existing = null;
+        if ($email) {
+            $stmt = $db->prepare("SELECT id, role FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1");
+            $stmt->execute([$email]);
+            $existing = $stmt->fetch();
+        }
+        if (!$existing) {
+            $stmt = $db->prepare("SELECT id, role FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1");
+            $stmt->execute([$name]);
+            $existing = $stmt->fetch();
+        }
         if ($existing) {
-            // Update ghl_contact_id if we now have it
-            if ($ghlContactId) {
-                $db->prepare("UPDATE users SET ghl_contact_id = ? WHERE id = ?")->execute([$ghlContactId, $existing['id']]);
+            // Person already exists — update ghl_contact_id and name if we have better data, but never downgrade their role
+            $updates = [];
+            $params  = [];
+            if ($ghlContactId) { $updates[] = "ghl_contact_id = ?"; $params[] = $ghlContactId; }
+            if ($name)         { $updates[] = "name = ?";           $params[] = $name; }
+            if ($updates) {
+                $params[] = $existing['id'];
+                $db->prepare("UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?")->execute($params);
             }
-            echo json_encode(['success' => true, 'message' => 'Employee already exists', 'id' => 'e' . $existing['id']]);
+            echo json_encode(['success' => true, 'message' => 'Employee already exists — record updated', 'id' => 'e' . $existing['id'], 'role' => $existing['role']]);
             exit;
         }
         $stmt = $db->prepare("INSERT INTO users (name, email, role, ghl_contact_id, added_from_ghl) VALUES (?, ?, 'employee', ?, 1)");
@@ -756,6 +770,17 @@ if ($method === 'POST') {
         $email = trim($body['email'] ?? '');
         $pin   = trim($body['pin']   ?? '');
         if (!$name) { echo json_encode(['success' => false, 'error' => 'Name required']); exit; }
+        // Check for existing record by email to avoid duplicates
+        $existing = null;
+        if ($email) {
+            $chk = $db->prepare("SELECT id, role FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1");
+            $chk->execute([$email]);
+            $existing = $chk->fetch();
+        }
+        if ($existing) {
+            echo json_encode(['success' => true, 'message' => 'Employee already exists', 'employee' => ['id' => 'e'.$existing['id'], 'name' => $name, 'email' => $email, 'role' => $existing['role']]]);
+            exit;
+        }
         $stmt = $db->prepare("INSERT INTO users (name, email, pin, pin_set, role) VALUES (?, ?, ?, ?, 'employee')");
         $stmt->execute([$name, $email, $pin ?: null, $pin ? 1 : 0]);
         $newId = $db->lastInsertId();
@@ -782,6 +807,27 @@ if ($method === 'POST') {
         $role     = in_array($body['role'] ?? '', ['manager','hr','admin']) ? $body['role'] : 'manager';
         if (!$name) { echo json_encode(['success'=>false,'error'=>'Name required']); exit; }
         $hash = $password ? password_hash($password, PASSWORD_DEFAULT) : null;
+        // Role priority: admin > hr > manager > employee — never downgrade
+        $rolePriority = ['employee'=>0,'manager'=>1,'hr'=>2,'admin'=>3];
+        // Check for existing record by email
+        $existing = null;
+        if ($email) {
+            $chk = $db->prepare("SELECT id, role FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1");
+            $chk->execute([$email]);
+            $existing = $chk->fetch();
+        }
+        if ($existing) {
+            // Upgrade role if new role is higher; update name and password if provided
+            $currentPriority = $rolePriority[$existing['role']] ?? 0;
+            $newPriority     = $rolePriority[$role] ?? 1;
+            $finalRole       = $newPriority > $currentPriority ? $role : $existing['role'];
+            $updates = ["role = ?", "name = ?"]; $params = [$finalRole, $name];
+            if ($hash) { $updates[] = "password_hash = ?"; $updates[] = "password_set = 1"; $params[] = $hash; }
+            $params[] = $existing['id'];
+            $db->prepare("UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?")->execute($params);
+            echo json_encode(['success'=>true,'message'=>'Existing user upgraded','id'=>'e'.$existing['id'],'name'=>$name,'role'=>$finalRole]);
+            exit;
+        }
         $stmt = $db->prepare("INSERT INTO users (name, email, role, password_hash, password_set, status) VALUES (?, ?, ?, ?, ?, 'active')");
         $stmt->execute([$name, $email, $role, $hash, $password ? 1 : 0]);
         $newId = $db->lastInsertId();
