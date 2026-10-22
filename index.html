@@ -452,7 +452,8 @@ function buildLoginForm(){
     </div>
     <div class="lf-group" id="lf-pw-group" style="display:none">
       <label class="lf-label" id="lf-pw-label">Password</label>
-      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="new-password">
+      <input type="text" name="fake-user" style="display:none" autocomplete="username" tabindex="-1" aria-hidden="true">
+      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="new-password" name="gh-pw">
     </div>
     <div class="lf-group" id="lf-pw-confirm-group" style="display:none">
       <label class="lf-label">Confirm Password</label>
