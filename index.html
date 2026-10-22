@@ -751,10 +751,39 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
     // Detect employee vs non-employee after EMPS load below to show correct reset form
   }
 
+  // Build the form immediately so it's ready before any async fetch returns.
+  // EMPS is empty at this point so the dropdown shows only the placeholder;
+  // after load() returns we repopulate the <select> without touching the rest
+  // of the form, so any selection the user has already made is preserved.
+  buildLoginForm();
+
   // Load clients for company dropdown (background, non-blocking)
   fetch(API_BASE+"?action=load_clients").then(r=>r.json()).then(d=>{
     if(d.success&&d.clients) CLIENTS=d.clients;
   }).catch(()=>{});
+
+  // Helper: repopulate only the name <select> options after EMPS loads,
+  // preserving any value the user has already chosen.
+  function refreshNameDropdown(){
+    const sel=document.getElementById('lf-name');
+    if(!sel) return;
+    const prev=sel.value; // preserve current selection
+    const sorted=[...EMPS].sort((a,b)=>{
+      const ra=a.role==="employee"?0:1, rb=b.role==="employee"?0:1;
+      return ra!==rb ? ra-rb : a.name.localeCompare(b.name);
+    });
+    const nameCounts={};
+    sorted.forEach(e=>{ nameCounts[e.name]=(nameCounts[e.name]||0)+1; });
+    const roleLabel={employee:'Employee',manager:'Manager',hr:'HR',admin:'Admin'};
+    // Replace options, keeping placeholder first
+    sel.innerHTML='<option value="">— Select your name —</option>'+
+      sorted.map(e=>{
+        const label=nameCounts[e.name]>1?`${e.name} (${roleLabel[e.role]||e.role})`:e.name;
+        return `<option value="${e.id}">${label}</option>`;
+      }).join('');
+    // Restore previous selection if still valid
+    if(prev) sel.value=prev;
+  }
 
   // Load employees from DB (load is a GET action)
   fetch(API_BASE+"?action=load").then(r=>r.json()).then(data=>{
@@ -773,7 +802,9 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
         pin_set:!!e.pin_set
       }));
     }
-    buildLoginForm();
+    // Only refresh the dropdown options — never rebuild the whole form.
+    // This preserves any name the user has already selected.
+    refreshNameDropdown();
 
     // Now handle reset token if present
     if(tok&&uid){
@@ -796,8 +827,7 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
       }
     }
   }).catch(()=>{
-    // If load fails, still show form (EMPS stays empty)
-    buildLoginForm();
+    // If load fails, form is already shown (EMPS stays empty — user sees placeholder only)
     if(tok&&uid){
       document.getElementById("login-card-select").style.display="none";
       document.getElementById("login-card-reset").style.display="";
