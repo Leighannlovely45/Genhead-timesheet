@@ -579,75 +579,30 @@ function lfLevelChange(){
   document.getElementById("lf-pin-group").style.display="none";
   document.getElementById("lf-pw-group").style.display="none";
   document.getElementById("lf-pin-confirm").style.display="none";
+  document.getElementById("lf-pw-confirm-group").style.display="none";
   document.getElementById("lf-forgot").style.display="none";
   document.getElementById("lf-error").textContent="";
   document.getElementById("lf-submit").disabled=true;
   clearPinInputs();
+  _pinMode='enter'; // default; server response may switch to setup
   if(!level) return;
-  const uid=document.getElementById("lf-name").value;
-  const u=uid ? EMPS.find(e=>String(e.id)===String(uid)) : null;
   if(level==="employee"){
+    // Show PIN entry immediately — no probe call. Server tells us if setup needed on submit.
     document.getElementById("lf-pin-group").style.display="";
     document.getElementById("lf-pin-label").textContent="PIN";
     document.getElementById("lf-forgot").style.display="inline";
     document.getElementById("lf-submit").disabled=false;
-    // Check if first-time setup needed
-    if(uid){
-      fetch(`api.php?action=verify_pin&id=${encodeURIComponent(uid)}&pin=0000`).then(x=>x.json()).then(r=>{
-        if(r.needs_setup){
-          _pinMode='setup';
-          document.getElementById("lf-pin-label").textContent="Create your 4-digit PIN";
-          document.getElementById("lf-pin-confirm").style.display="";
-          document.getElementById("lf-forgot").style.display="none";
-        } else {
-          _pinMode='enter';
-        }
-      }).catch(()=>{ _pinMode='enter'; });
-    }
     setTimeout(()=>document.getElementById("pin0").focus(),100);
   } else {
-    // Manager / HR / Admin — password field
-    // Always check server to see if password is set (avoids stale client-side flag causing setup mode on repeat logins)
+    // Manager / HR / Admin — show password field immediately, no pre-flight call.
+    // Server returns needs_setup:true on submit if not yet set.
     document.getElementById("lf-pw-group").style.display="";
-    document.getElementById("lf-submit").disabled=true;
     document.getElementById("lf-pw-label").textContent="Password";
-    document.getElementById("lf-password").placeholder="Checking…";
+    document.getElementById("lf-password").placeholder="Enter your password";
     document.getElementById("lf-pw-confirm-group").style.display="none";
-    document.getElementById("lf-forgot").style.display="none";
-    _pinMode='enter';
-    if(uid){
-      fetch(`api.php?action=check_password_set&id=${encodeURIComponent(uid)}`).then(x=>x.json()).then(r=>{
-        document.getElementById("lf-submit").disabled=false;
-        if(r.needs_setup){
-          _pinMode='setup';
-          document.getElementById("lf-pw-label").textContent="Create your password";
-          document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
-          document.getElementById("lf-pw-confirm-group").style.display="";
-          document.getElementById("lf-forgot").style.display="none";
-        } else {
-          _pinMode='enter';
-          document.getElementById("lf-pw-label").textContent="Password";
-          document.getElementById("lf-password").placeholder="Enter your password";
-          document.getElementById("lf-pw-confirm-group").style.display="none";
-          document.getElementById("lf-forgot").style.display="inline";
-        }
-        setTimeout(()=>document.getElementById("lf-password").focus(),100);
-      }).catch(()=>{
-        // Fallback: assume password is set
-        _pinMode='enter';
-        document.getElementById("lf-pw-label").textContent="Password";
-        document.getElementById("lf-password").placeholder="Enter your password";
-        document.getElementById("lf-pw-confirm-group").style.display="none";
-        document.getElementById("lf-forgot").style.display="inline";
-        document.getElementById("lf-submit").disabled=false;
-        setTimeout(()=>document.getElementById("lf-password").focus(),100);
-      });
-    } else {
-      _pinMode='enter';
-      document.getElementById("lf-pw-label").textContent="Password";
-      document.getElementById("lf-password").placeholder="Enter your password";
-      document.getElementById("lf-submit").disabled=false;
-    }
+    document.getElementById("lf-forgot").style.display="inline";
+    document.getElementById("lf-submit").disabled=false;
+    setTimeout(()=>document.getElementById("lf-password").focus(),100);
   }
 }
 
@@ -659,49 +614,89 @@ function lfSubmit(){
   const u=EMPS.find(e=>e.id===uid);
   if(!u) return;
   _pinUser=u;
+  const errEl=document.getElementById("lf-error");
+  const submitBtn=document.getElementById("lf-submit");
+
   if(level==="employee"){
     const digits=[0,1,2,3].map(i=>document.getElementById("pin"+i).value);
-    if(digits.some(d=>!d)){document.getElementById("lf-error").textContent="Please enter all 4 digits.";return;}
     const pin=digits.join("");
+
     if(_pinMode==='setup'){
+      // Already in setup mode — confirm the PIN
+      if(digits.some(d=>!d)){errEl.textContent="Please enter all 4 digits.";return;}
       const conf=[4,5,6,7].map(i=>document.getElementById("pin"+i).value);
-      if(conf.some(d=>!d)){document.getElementById("lf-error").textContent="Please confirm your PIN.";return;}
-      if(pin!==conf.join("")){
-        document.getElementById("lf-error").textContent="PINs don't match — try again.";
-        clearPinInputs();document.getElementById("pin0").focus();return;
-      }
+      if(conf.some(d=>!d)){errEl.textContent="Please confirm your PIN.";return;}
+      if(pin!==conf.join("")){errEl.textContent="PINs don't match — try again.";clearPinInputs();document.getElementById("pin0").focus();return;}
+      submitBtn.disabled=true;
       fetch(`api.php?action=set_pin&id=${encodeURIComponent(uid)}&pin=${encodeURIComponent(pin)}`).then(r=>r.json()).then(r=>{
+        submitBtn.disabled=false;
         if(r.ok||r.success) doLogin(u);
-        else document.getElementById("lf-error").textContent=r.error||"Error setting PIN.";
-      }).catch(()=>document.getElementById("lf-error").textContent="Error — try again.");
+        else errEl.textContent=r.error||"Error setting PIN.";
+      }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
+
     } else {
+      // Normal login — submit the PIN; server tells us if setup is needed
+      if(digits.some(d=>!d)){errEl.textContent="Please enter all 4 digits.";return;}
+      submitBtn.disabled=true;
       fetch(`api.php?action=verify_pin&id=${encodeURIComponent(uid)}&pin=${encodeURIComponent(pin)}`).then(r=>r.json()).then(r=>{
-        if(r.ok||r.success) doLogin(u);
-        else{document.getElementById("lf-error").textContent="Incorrect PIN.";clearPinInputs();document.getElementById("pin0").focus();}
-      }).catch(()=>document.getElementById("lf-error").textContent="Error — try again.");
-    }
-  } else {
-    const pw=document.getElementById("lf-password").value;
-    if(!pw){document.getElementById("lf-error").textContent="Please enter your password.";return;}
-    if(_pinMode==='setup'){
-      // First-time password setup
-      const pwConf=document.getElementById("lf-password-confirm").value;
-      if(pw.length<6){document.getElementById("lf-error").textContent="Password must be at least 6 characters.";return;}
-      if(pw!==pwConf){document.getElementById("lf-error").textContent="Passwords don't match — try again.";document.getElementById("lf-password-confirm").value="";return;}
-      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
-        if(r.success){
-          // Update local record so future checks work
-          if(u) u.password_set=true;
+        submitBtn.disabled=false;
+        if(r.ok||r.success){
           doLogin(u);
+        } else if(r.needs_setup){
+          // First-time user — switch to setup mode
+          _pinMode='setup';
+          document.getElementById("lf-pin-label").textContent="Create your 4-digit PIN";
+          document.getElementById("lf-pin-confirm").style.display="";
+          document.getElementById("lf-forgot").style.display="none";
+          clearPinInputs();document.getElementById("pin0").focus();
+          errEl.textContent="No PIN set yet — please create one.";
         } else {
-          document.getElementById("lf-error").textContent=r.error||"Error setting password.";
+          errEl.textContent="Incorrect PIN.";clearPinInputs();document.getElementById("pin0").focus();
         }
-      });
+      }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
+    }
+
+  } else {
+    // Manager / HR / Admin — password login
+    const pw=document.getElementById("lf-password").value;
+    if(!pw){errEl.textContent="Please enter your password.";return;}
+
+    if(_pinMode==='setup'){
+      // Already in setup mode — confirm the new password
+      const pwConf=document.getElementById("lf-password-confirm").value;
+      if(pw.length<6){errEl.textContent="Password must be at least 6 characters.";return;}
+      if(pw!==pwConf){errEl.textContent="Passwords don't match — try again.";document.getElementById("lf-password-confirm").value="";return;}
+      submitBtn.disabled=true;
+      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
+        submitBtn.disabled=false;
+        if(r.success){if(u)u.password_set=true;doLogin(u);}
+        else errEl.textContent=r.error||"Error setting password.";
+      }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
+
     } else {
+      // Normal login — submit password; server tells us if setup is needed
+      submitBtn.disabled=true;
       fetch(`api.php?action=verify_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
-        if(r.success) doLogin(u);
-        else document.getElementById("lf-error").textContent="Incorrect password.";
-      }).catch(()=>document.getElementById("lf-error").textContent="Error — try again.");
+        submitBtn.disabled=false;
+        if(r.success){
+          if(u)u.password_set=true;
+          doLogin(u);
+        } else if(r.needs_setup){
+          // First-time user — switch to setup mode
+          _pinMode='setup';
+          document.getElementById("lf-pw-label").textContent="Create your password";
+          document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
+          document.getElementById("lf-password").value="";
+          document.getElementById("lf-pw-confirm-group").style.display="";
+          document.getElementById("lf-forgot").style.display="none";
+          errEl.textContent="No password set yet — please create one.";
+          setTimeout(()=>document.getElementById("lf-password").focus(),100);
+        } else {
+          errEl.textContent="Incorrect password.";
+          document.getElementById("lf-password").value="";
+          setTimeout(()=>document.getElementById("lf-password").focus(),100);
+        }
+      }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
     }
   }
 }
