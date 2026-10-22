@@ -426,7 +426,6 @@ function buildLoginForm(){
   // Inject entire form via JS so browser never sees it during initial parse
   document.getElementById('lf-mount').innerHTML=`
     <h2>Sign in to your account</h2>
-    <form autocomplete="off" onsubmit="return false" style="margin:0">
     <div class="lf-group">
       <label class="lf-label">Name</label>
       <select class="lf-select" id="lf-name" autocomplete="off">
@@ -452,11 +451,11 @@ function buildLoginForm(){
     </div>
     <div class="lf-group" id="lf-pw-group" style="display:none">
       <label class="lf-label" id="lf-pw-label">Password</label>
-      <input type="text" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="off" name="gh-access-code" style="-webkit-text-security:disc;text-security:disc;" spellcheck="false" autocorrect="off" autocapitalize="off" data-lpignore="true" data-form-type="other">
+      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="new-password">
     </div>
     <div class="lf-group" id="lf-pw-confirm-group" style="display:none">
       <label class="lf-label">Confirm Password</label>
-      <input type="text" class="lf-input" id="lf-password-confirm" placeholder="Re-enter your password" autocomplete="off" name="gh-access-code-2" style="-webkit-text-security:disc;text-security:disc;" spellcheck="false" autocorrect="off" autocapitalize="off" data-lpignore="true" data-form-type="other">
+      <input type="password" class="lf-input" id="lf-password-confirm" placeholder="Re-enter your password" autocomplete="new-password">
     </div>
     <div id="lf-pin-confirm" style="display:none">
       <div class="lf-group">
@@ -473,8 +472,7 @@ function buildLoginForm(){
     <button class="btn btn-primary" style="width:100%;margin-top:.25rem" id="lf-submit" disabled>Sign In</button>
     <div style="text-align:center;margin-top:.85rem">
       <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none">Forgot PIN?</span>
-    </div>
-    </form>`;
+    </div>`;
   // Wire up events after injection
   document.getElementById('lf-name').addEventListener('change', lfNameChange);
   document.getElementById('lf-level').addEventListener('change', lfLevelChange);
@@ -753,9 +751,6 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
     // Detect employee vs non-employee after EMPS load below to show correct reset form
   }
 
-  // Build login form immediately so user can interact while data loads
-  buildLoginForm();
-
   // Load clients for company dropdown (background, non-blocking)
   fetch(API_BASE+"?action=load_clients").then(r=>r.json()).then(d=>{
     if(d.success&&d.clients) CLIENTS=d.clients;
@@ -778,20 +773,7 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
         pin_set:!!e.pin_set
       }));
     }
-    // Rebuild login form with fresh employee data
-    // Save current selections so we can restore them after rebuild
-    const _curName = document.getElementById('lf-name') ? document.getElementById('lf-name').value : '';
-    const _curLevel = document.getElementById('lf-level') ? document.getElementById('lf-level').value : '';
     buildLoginForm();
-    // Restore selections if user had already picked
-    if(_curName){
-      const sel=document.getElementById('lf-name');
-      if(sel){ sel.value=_curName; lfNameChange(); }
-    }
-    if(_curLevel){
-      const lev=document.getElementById('lf-level');
-      if(lev){ lev.value=_curLevel; lfLevelChange(); }
-    }
 
     // Now handle reset token if present
     if(tok&&uid){
@@ -814,8 +796,8 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
       }
     }
   }).catch(()=>{
-    // If load fails, form already built above — nothing to do
-
+    // If load fails, still show form (EMPS stays empty)
+    buildLoginForm();
     if(tok&&uid){
       document.getElementById("login-card-select").style.display="none";
       document.getElementById("login-card-reset").style.display="";
