@@ -488,6 +488,8 @@ function selectNameSuggestion(id, label){
   if(inp) inp.value=label;
   const list=document.getElementById('lf-name-list');
   if(list) list.style.display='none';
+  const hint=document.getElementById('lf-name-hint');
+  if(hint) hint.style.display='none';
   const u=EMPS.find(e=>e.id===id);
   if(u) lfNameChangeById(u); else resetLevelField();
 }
@@ -501,6 +503,7 @@ function buildLoginForm(){
       <label class="lf-label">Name</label>
       <input type="text" class="lf-input" id="lf-name-input" placeholder="Start typing your name…" autocomplete="off" autocorrect="off" spellcheck="false">
       <div id="lf-name-list" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:#1a2a3a;border:1.5px solid rgba(3,173,143,.5);border-radius:0 0 10px 10px;max-height:220px;overflow-y:auto"></div>
+      <div id="lf-name-hint" style="font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.35rem;display:none">Select your name from the list ↑</div>
     </div>
     <div class="lf-group" id="lf-level-group">
       <label class="lf-label">Access Level</label>
@@ -544,7 +547,21 @@ function buildLoginForm(){
     </div>`;
   // Wire up events after injection
   const nameInp=document.getElementById('lf-name-input');
-  nameInp.addEventListener('input',function(){ _selectedEmpId=null; resetLevelField(); renderNameSuggestions(this.value); });
+  nameInp.addEventListener('input',function(){
+    _selectedEmpId=null; resetLevelField(); renderNameSuggestions(this.value);
+    const q=this.value.trim().toLowerCase();
+    const hint=document.getElementById('lf-name-hint');
+    if(q.length>0){
+      const matches=EMPS.filter(e=>buildEmpLabel(e).toLowerCase().includes(q));
+      if(matches.length===1){
+        selectNameSuggestion(matches[0].id, buildEmpLabel(matches[0]));
+      } else {
+        if(hint) hint.style.display='block';
+      }
+    } else {
+      if(hint) hint.style.display='none';
+    }
+  });
   nameInp.addEventListener('blur',function(){ setTimeout(()=>{ const l=document.getElementById('lf-name-list'); if(l) l.style.display='none'; },150); });
   nameInp.addEventListener('keydown',function(e){
     const list=document.getElementById('lf-name-list');
