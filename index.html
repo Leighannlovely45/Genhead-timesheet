@@ -308,10 +308,10 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
     <div id="lf-mount"></div>
   </div>
 
-  <!-- FORGOT PIN -->
+  <!-- FORGOT PASSWORD -->
   <div class="login-card" id="login-card-forgot" style="display:none">
     <div style="font-size:.78rem;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:.75rem" onclick="showLoginSelect()">&#8592; Back</div>
-    <h2>Reset your PIN</h2>
+    <h2>Reset your password</h2>
     <p style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Enter your Genhead email and we'll send you a reset link.</p>
     <input type="email" id="forgot-email" placeholder="you@genhead.com" class="lf-input" style="margin-bottom:.75rem">
     <div id="forgot-msg" style="font-size:.78rem;min-height:1.2em;margin-bottom:.5rem;text-align:center"></div>
@@ -510,7 +510,7 @@ function buildLoginForm(){
     <div id="lf-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin:.25rem 0"></div>
     <button class="btn btn-primary" style="width:100%;margin-top:.25rem" id="lf-submit" disabled>Sign In</button>
     <div style="text-align:center;margin-top:.85rem">
-      <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none">Forgot PIN?</span>
+      <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none">Forgot password?</span>
     </div>`;
   // Wire up events after injection
   document.getElementById('lf-name').addEventListener('change', lfNameChange);
@@ -587,12 +587,14 @@ function lfLevelChange(){
   _pinMode='enter'; // default; server response may switch to setup
   if(!level) return;
   if(level==="employee"){
-    // Show PIN entry immediately — no probe call. Server tells us if setup needed on submit.
-    document.getElementById("lf-pin-group").style.display="";
-    document.getElementById("lf-pin-label").textContent="PIN";
+    // Employees use password — same flow as manager/hr/admin
+    document.getElementById("lf-pw-group").style.display="";
+    document.getElementById("lf-pw-label").textContent="Password";
+    document.getElementById("lf-password").placeholder="Enter your password";
+    document.getElementById("lf-pw-confirm-group").style.display="none";
     document.getElementById("lf-forgot").style.display="inline";
     document.getElementById("lf-submit").disabled=false;
-    setTimeout(()=>document.getElementById("pin0").focus(),100);
+    setTimeout(()=>document.getElementById("lf-password").focus(),100);
   } else {
     // Manager / HR / Admin — show password field immediately, no pre-flight call.
     // Server returns needs_setup:true on submit if not yet set.
@@ -618,40 +620,40 @@ function lfSubmit(){
   const submitBtn=document.getElementById("lf-submit");
 
   if(level==="employee"){
-    const digits=[0,1,2,3].map(i=>document.getElementById("pin"+i).value);
-    const pin=digits.join("");
+    // Employees now use password — same flow as manager/hr/admin below
+    const pw=document.getElementById("lf-password").value;
+    if(!pw){errEl.textContent="Please enter your password.";return;}
 
     if(_pinMode==='setup'){
-      // Already in setup mode — confirm the PIN
-      if(digits.some(d=>!d)){errEl.textContent="Please enter all 4 digits.";return;}
-      const conf=[4,5,6,7].map(i=>document.getElementById("pin"+i).value);
-      if(conf.some(d=>!d)){errEl.textContent="Please confirm your PIN.";return;}
-      if(pin!==conf.join("")){errEl.textContent="PINs don't match — try again.";clearPinInputs();document.getElementById("pin0").focus();return;}
+      const pwConf=document.getElementById("lf-password-confirm").value;
+      if(pw.length<6){errEl.textContent="Password must be at least 6 characters.";return;}
+      if(pw!==pwConf){errEl.textContent="Passwords don't match — try again.";document.getElementById("lf-password-confirm").value="";return;}
       submitBtn.disabled=true;
-      fetch(`api.php?action=set_pin&id=${encodeURIComponent(uid)}&pin=${encodeURIComponent(pin)}`).then(r=>r.json()).then(r=>{
+      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
         submitBtn.disabled=false;
-        if(r.ok||r.success) doLogin(u);
-        else errEl.textContent=r.error||"Error setting PIN.";
+        if(r.success){if(u)u.password_set=true;doLogin(u);}
+        else errEl.textContent=r.error||"Error setting password.";
       }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
-
     } else {
-      // Normal login — submit the PIN; server tells us if setup is needed
-      if(digits.some(d=>!d)){errEl.textContent="Please enter all 4 digits.";return;}
       submitBtn.disabled=true;
-      fetch(`api.php?action=verify_pin&id=${encodeURIComponent(uid)}&pin=${encodeURIComponent(pin)}`).then(r=>r.json()).then(r=>{
+      fetch(`api.php?action=verify_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
         submitBtn.disabled=false;
-        if(r.ok||r.success){
+        if(r.success){
+          if(u)u.password_set=true;
           doLogin(u);
         } else if(r.needs_setup){
-          // First-time user — switch to setup mode
           _pinMode='setup';
-          document.getElementById("lf-pin-label").textContent="Create your 4-digit PIN";
-          document.getElementById("lf-pin-confirm").style.display="";
+          document.getElementById("lf-pw-label").textContent="Create your password";
+          document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
+          document.getElementById("lf-password").value="";
+          document.getElementById("lf-pw-confirm-group").style.display="";
           document.getElementById("lf-forgot").style.display="none";
-          clearPinInputs();document.getElementById("pin0").focus();
-          errEl.textContent="No PIN set yet — please create one.";
+          errEl.textContent="No password set yet — please create one.";
+          setTimeout(()=>document.getElementById("lf-password").focus(),100);
         } else {
-          errEl.textContent="Incorrect PIN.";clearPinInputs();document.getElementById("pin0").focus();
+          errEl.textContent="Incorrect password.";
+          document.getElementById("lf-password").value="";
+          setTimeout(()=>document.getElementById("lf-password").focus(),100);
         }
       }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
     }
@@ -758,29 +760,17 @@ function rpinNext(idx){
 }
 
 function submitResetPin(){
-  // Employee: PIN digits. Manager/HR/Admin: password fields.
+  // All users now use passwords — no more PIN reset path
   const u=EMPS.find(e=>String(e.id).replace(/^e/,'')===String(_resetUid));
-  const isEmployee=!u||(u.role==="employee");
   document.getElementById("rpin-error").textContent="";
-  if(isEmployee){
-    const pin=[0,1,2,3].map(i=>document.getElementById("rpin"+i).value).join("");
-    const conf=[4,5,6,7].map(i=>document.getElementById("rpin"+i).value).join("");
-    if(pin.length<4||conf.length<4){document.getElementById("rpin-error").textContent="Enter all digits.";return;}
-    if(pin!==conf){document.getElementById("rpin-error").textContent="PINs don't match.";return;}
-    api({action:"reset_pin",uid:_resetUid,token:_resetToken,pin}).then(r=>{
-      if(r.ok){ window.history.replaceState({},"",window.location.pathname); if(u)doLogin(u);else showLoginSelect(); }
-      else { document.getElementById("rpin-error").textContent=r.error||"Reset failed. Link may have expired."; }
-    });
-  } else {
-    const pw=document.getElementById("rreset-pw").value;
-    const conf=document.getElementById("rreset-pw-conf").value;
-    if(pw.length<6){document.getElementById("rpin-error").textContent="Password must be at least 6 characters.";return;}
-    if(pw!==conf){document.getElementById("rpin-error").textContent="Passwords don't match.";return;}
-    api({action:"reset_pin",uid:_resetUid,token:_resetToken,password:pw}).then(r=>{
-      if(r.ok){ window.history.replaceState({},"",window.location.pathname); if(u)doLogin(u);else showLoginSelect(); }
-      else { document.getElementById("rpin-error").textContent=r.error||"Reset failed. Link may have expired."; }
-    });
-  }
+  const pw=document.getElementById("rreset-pw").value;
+  const conf=document.getElementById("rreset-pw-conf").value;
+  if(pw.length<6){document.getElementById("rpin-error").textContent="Password must be at least 6 characters.";return;}
+  if(pw!==conf){document.getElementById("rpin-error").textContent="Passwords don't match.";return;}
+  api({action:"reset_pin",uid:_resetUid,token:_resetToken,password:pw}).then(r=>{
+    if(r.ok){ window.history.replaceState({},"",window.location.pathname); if(u)doLogin(u);else showLoginSelect(); }
+    else { document.getElementById("rpin-error").textContent=r.error||"Reset failed. Link may have expired."; }
+  });
 }
 
 function doLogin(u){
@@ -865,23 +855,19 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
 
     // Now handle reset token if present
     if(tok&&uid){
-      const u=EMPS.find(e=>String(e.id).replace(/^e/,'')===String(uid));
-      const isEmployee=!u||(u.role==="employee");
       document.getElementById("login-card-select").style.display="none";
       document.getElementById("login-card-reset").style.display="";
-      if(!isEmployee){
-        // Show password fields, hide PIN fields
-        const pinSec=document.getElementById("rreset-pin-section");
-        const pwSec=document.getElementById("rreset-pw-section");
-        if(pinSec) pinSec.style.display="none";
-        if(pwSec) pwSec.style.display="";
-        const title=document.getElementById("rreset-title");
-        const sub=document.getElementById("rreset-sub");
-        if(title) title.textContent="Set a new password";
-        if(sub) sub.textContent="Choose a new password for your account.";
-        const btn=document.getElementById("rreset-btn");
-        if(btn) btn.textContent="Set Password & Log In";
-      }
+      // Everyone uses password now — always show password fields
+      const pinSec=document.getElementById("rreset-pin-section");
+      const pwSec=document.getElementById("rreset-pw-section");
+      if(pinSec) pinSec.style.display="none";
+      if(pwSec) pwSec.style.display="";
+      const title=document.getElementById("rreset-title");
+      const sub=document.getElementById("rreset-sub");
+      if(title) title.textContent="Set a new password";
+      if(sub) sub.textContent="Choose a new password for your account.";
+      const btn=document.getElementById("rreset-btn");
+      if(btn) btn.textContent="Set Password & Log In";
     }
   }).catch(()=>{
     // If load fails, form is already shown (EMPS stays empty — user sees placeholder only)
@@ -2546,7 +2532,7 @@ async function _pmSaveProject(){
   const clientId=clientEl?clientEl.value:'';
   if(!name){alert('Project name is required.');return;}
   try{
-    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',created_by:cur.id,client_id:clientId||''});
+    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',created_by:parseInt(cur.id)||0,client_id:clientId||''});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-proj-modal').style.display='none';
@@ -2620,7 +2606,7 @@ async function _pmSaveTask(){
   const due=document.getElementById('pm-task-due').value;
   if(!projId||!title){alert('Project and task title are required.');return;}
   try{
-    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',created_by:cur.id,actor_name:cur.name});
+    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',created_by:parseInt(cur.id)||0,actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-task-modal').style.display='none';
