@@ -1923,12 +1923,14 @@ async function syncClientsFromGHL(){
 // ── PROJECTS ──────────────────────────────────────────────────────────────
 // State for the projects tab
 let _pm = {
-  view: 'board',        // 'board' | 'detail' | 'mytasks'
+  view: 'board',        // 'board' | 'detail' | 'mytasks' | 'projects'
   projects: [],
   tasks: [],
+  followedTaskIds: [],  // task ids this user follows
   activeProject: null,  // project object when in 'detail' view
   activeTask: null,     // task object when comment panel is open
   comments: [],
+  clientFilter: '',     // client_name filter string
   loading: false
 };
 
@@ -1948,12 +1950,22 @@ async function renderProjects(){
   root.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">Loading…</div>';
   _pm.loading=true;
   try{
-    const [pRes, tRes]= await Promise.all([
+    const dbId=cur.db_id||(cur.id?parseInt(cur.id.replace('e',''))||0:0);
+    const fetches=[
       fetch(`api.php?action=load_projects`).then(r=>r.json()),
       fetch(`api.php?action=load_tasks`).then(r=>r.json())
-    ]);
-    _pm.projects = pRes.projects||[];
-    _pm.tasks    = tRes.tasks||[];
+    ];
+    if(dbId) fetches.push(fetch(`api.php?action=load_followed_tasks&uid=${dbId}`).then(r=>r.json()).catch(()=>({tasks:[]})));
+    const results=await Promise.all(fetches);
+    _pm.projects = results[0].projects||[];
+    _pm.tasks    = results[1].tasks||[];
+    // Merge followed tasks (avoid duplicates)
+    if(results[2]){
+      const followedTasks=results[2].tasks||[];
+      const existingIds=new Set(_pm.tasks.map(t=>t.id));
+      followedTasks.forEach(t=>{ if(!existingIds.has(t.id)){t._followed=true;_pm.tasks.push(t);} });
+      _pm.followedTaskIds=followedTasks.map(t=>t.id);
+    }
     _pm.loading  = false;
     _pm.view='board';
     _pm.activeProject=null;
@@ -1967,13 +1979,27 @@ function _renderPMBoard(){
   const root=pmRoot();
   const role=cur.role;
   const canManage=(role==='admin'||role==='manager'||role==='hr');
-  // Employees only see their own tasks; managers/admins see all
-  const visibleTasks = canManage ? _pm.tasks : _pm.tasks.filter(t=>String(t.assigned_to)===String(cur.db_id||cur.id.replace('e','')));
+  const myDbId=String(cur.db_id||cur.id.replace('e',''));
+  // Employees see their own tasks + tasks they follow; managers/admins see all
+  let visibleTasks = canManage ? _pm.tasks
+    : _pm.tasks.filter(t=>String(t.assigned_to)===myDbId || _pm.followedTaskIds.includes(t.id));
+  // Apply client filter
+  if(_pm.clientFilter) visibleTasks=visibleTasks.filter(t=>t.client_name===_pm.clientFilter);
+
+  // Build unique client list for filter dropdown
+  const clientNames=[...new Set(_pm.tasks.map(t=>t.client_name).filter(Boolean))].sort();
+  const clientFilterHtml=clientNames.length?`
+    <select style="font-size:.8rem;padding:.35rem .7rem;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--dark);cursor:pointer"
+      onchange="_pm.clientFilter=this.value;_renderPMBoard()">
+      <option value="">All Clients</option>
+      ${clientNames.map(c=>`<option value="${escHtml(c)}"${_pm.clientFilter===c?' selected':''}>${escHtml(c)}</option>`).join('')}
+    </select>`:'';
 
   let h=`
   <div class="dash-top">
-    <div><h2>Projects</h2><p>${canManage?'All projects and tasks across the team':'Your assigned tasks'}</p></div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
+    <div><h2>Projects</h2><p>${canManage?'All projects and tasks across the team':'Your assigned &amp; followed tasks'}</p></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+      ${clientFilterHtml}
       ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectsView()">📁 All Projects</button>`:''}
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks()">My Tasks</button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
@@ -2007,25 +2033,35 @@ function _renderPMBoard(){
 }
 
 // ── ALL PROJECTS GRID VIEW ─────────────────────────────────────────────────
-function _pmProjectsView(){
+function _pmProjectsView(clientFilter){
+  if(clientFilter!==undefined)_pm.clientFilter=clientFilter;
   _pm.view='projects';
   const root=pmRoot();
   const role=cur.role;
   const canManage=(role==='admin'||role==='manager'||role==='hr');
+  const clientNames=[...new Set(_pm.projects.map(p=>p.client_name).filter(Boolean))].sort();
+  const clientFilterHtml=clientNames.length?`
+    <select style="font-size:.8rem;padding:.35rem .7rem;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--dark);cursor:pointer"
+      onchange="_pmProjectsView(this.value)">
+      <option value="">All Clients</option>
+      ${clientNames.map(c=>`<option value="${escHtml(c)}"${_pm.clientFilter===c?' selected':''}>${escHtml(c)}</option>`).join('')}
+    </select>`:'';
+  const visibleProjects=_pm.clientFilter?_pm.projects.filter(p=>p.client_name===_pm.clientFilter):_pm.projects;
   let h=`
   <div class="dash-top">
-    <div><h2>All Projects</h2><p>${_pm.projects.length} active project${_pm.projects.length!==1?'s':''}</p></div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
-      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pm.view='board';_renderPMBoard()">← Board View</button>
+    <div><h2>All Projects</h2><p>${visibleProjects.length} project${visibleProjects.length!==1?'s':''}</p></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+      ${clientFilterHtml}
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pm.view='board';_pm.clientFilter='';_renderPMBoard()">← Board View</button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
   </div>`;
 
-  if(!_pm.projects.length){
-    h+=`<div style="padding:3rem;text-align:center;color:var(--mid)">No projects yet. Create one to get started.</div>`;
+  if(!visibleProjects.length){
+    h+=`<div style="padding:3rem;text-align:center;color:var(--mid)">No projects${_pm.clientFilter?' for this client':' yet'}.</div>`;
   } else {
     h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;padding:.25rem 0">`;
-    _pm.projects.forEach(p=>{
+    visibleProjects.forEach(p=>{
       const total=parseInt(p.task_count)||0;
       const done=parseInt(p.done_count)||0;
       const pct=total?Math.round(done/total*100):0;
@@ -2168,12 +2204,17 @@ async function _pmOpenTask(taskId){
   const task=_pm.tasks.find(t=>t.id===taskId);
   if(!task)return;
   _pm.activeTask=task;
-  // Load comments
   try{
-    const cRes=await fetch(`api.php?action=load_task_comments&task_id=${taskId}`).then(r=>r.json());
+    const [cRes, fRes]=await Promise.all([
+      fetch(`api.php?action=load_task_comments&task_id=${taskId}`).then(r=>r.json()),
+      fetch(`api.php?action=load_task_followers&task_id=${taskId}`).then(r=>r.json()).catch(()=>({followers:[]}))
+    ]);
     _pm.comments=cRes.comments||[];
+    _pm.taskFollowers=fRes.followers||[];
     _pmShowTaskPanel(task);
   }catch(e){
+    _pm.comments=[];
+    _pm.taskFollowers=[];
     _pmShowTaskPanel(task);
   }
 }
@@ -2256,6 +2297,12 @@ function _pmShowTaskPanel(task){
     </div>
     <div style="padding:.5rem 1.25rem .85rem;display:flex;gap:.5rem;flex-wrap:wrap">
       <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .65rem" onclick="_pmMoveModal(${task.id},'${task.stage}')">→ Move Stage</button>
+      ${String(task.assigned_to)!==String(cur.db_id||cur.id.replace('e',''))?`
+      <button id="pm-follow-btn" class="btn ${_pm.taskFollowers&&_pm.taskFollowers.includes(parseInt(cur.db_id||cur.id.replace('e','')))?'btn-primary':'btn-outline'}"
+        style="font-size:.75rem;padding:.3rem .65rem"
+        onclick="_pmToggleFollow(${task.id})">
+        ${_pm.taskFollowers&&_pm.taskFollowers.includes(parseInt(cur.db_id||cur.id.replace('e','')))?'★ Following':'☆ Follow'}
+      </button>`:''}
     </div>
   </div>`;
   document.body.appendChild(panel);
@@ -2284,6 +2331,35 @@ async function _pmSaveTaskEdits(taskId){
     else if(_pm.view==='mytasks') _pmMyTasks();
     else _renderPMBoard();
   }catch(e){alert('Error saving: '+e.message);}
+}
+
+async function _pmToggleFollow(taskId){
+  const dbId=parseInt(cur.db_id||cur.id.replace('e','')||0);
+  if(!dbId)return;
+  try{
+    const p=new URLSearchParams({action:'toggle_task_follower',task_id:taskId,user_id:dbId});
+    const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
+    if(!r.success)throw new Error(r.error||'Failed');
+    const nowFollowing=r.following;
+    // Update local followed list
+    if(nowFollowing){
+      if(!_pm.followedTaskIds.includes(taskId))_pm.followedTaskIds.push(taskId);
+      if(!_pm.taskFollowers)_pm.taskFollowers=[];
+      if(!_pm.taskFollowers.includes(dbId))_pm.taskFollowers.push(dbId);
+      // Add task to local tasks if not already there
+      const task=_pm.tasks.find(t=>t.id===taskId);
+      if(task)task._followed=true;
+    } else {
+      _pm.followedTaskIds=_pm.followedTaskIds.filter(id=>id!==taskId);
+      _pm.taskFollowers=(_pm.taskFollowers||[]).filter(id=>id!==dbId);
+    }
+    // Update button without full re-render
+    const btn=document.getElementById('pm-follow-btn');
+    if(btn){
+      btn.className='btn '+(nowFollowing?'btn-primary':'btn-outline');
+      btn.textContent=nowFollowing?'★ Following':'☆ Follow';
+    }
+  }catch(e){alert('Error: '+e.message);}
 }
 
 async function _pmSubmitComment(taskId){

@@ -625,7 +625,48 @@ if ($method === 'GET') {
 // ─────────────────────────────────────────
 // GET MUTATIONS (WAF-safe — PM actions via query string)
 // ─────────────────────────────────────────
-if ($method === 'GET' && in_array($action, ['add_project','update_project','add_task','update_task','add_task_comment'])) {
+// ── LOAD TASK FOLLOWERS ───────────────────────────────────────────────────────
+if ($action === 'load_task_followers') {
+    $db     = getDB();
+    $taskId = (int)($_GET['task_id'] ?? 0);
+    if (!$taskId) { echo json_encode(['success' => false, 'error' => 'task_id required']); exit; }
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS task_followers (
+            task_id INT NOT NULL, user_id INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (task_id, user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $stmt = $db->prepare("SELECT user_id FROM task_followers WHERE task_id = ?");
+        $stmt->execute([$taskId]);
+        $ids = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'user_id');
+        echo json_encode(['success' => true, 'followers' => $ids]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => true, 'followers' => []]);
+    }
+    exit;
+}
+
+// ── LOAD FOLLOWED TASKS (tasks user follows but isn't assigned to) ────────────
+if ($action === 'load_followed_tasks') {
+    $db  = getDB();
+    $uid = (int)($_GET['uid'] ?? 0);
+    if (!$uid) { echo json_encode(['success' => false, 'error' => 'uid required']); exit; }
+    try {
+        $stmt = $db->prepare(
+            "SELECT t.*, p.name AS project_name, p.client_name
+             FROM tasks t
+             JOIN task_followers tf ON tf.task_id = t.id AND tf.user_id = ?
+             LEFT JOIN projects p ON p.id = t.project_id
+             WHERE t.assigned_to != ? AND t.stage != 'done'
+             ORDER BY t.due_date ASC"
+        );
+        $stmt->execute([$uid, $uid]);
+        echo json_encode(['success' => true, 'tasks' => $stmt->fetchAll()]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => true, 'tasks' => []]);
+    }
+    exit;
+}
+
+if ($method === 'GET' && in_array($action, ['add_project','update_project','add_task','update_task','add_task_comment','toggle_task_follower'])) {
     $body = $_GET;
     $db = getDB();
 
@@ -700,6 +741,32 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','add_
         $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,0)")
            ->execute([$taskId,$userId,$userName,$comment]);
         echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
+        exit;
+    }
+    if ($action === 'toggle_task_follower') {
+        $taskId = (int)($body['task_id'] ?? 0);
+        $userId = (int)($body['user_id'] ?? 0);
+        if (!$taskId || !$userId) { echo json_encode(['success'=>false,'error'=>'task_id and user_id required']); exit; }
+        try {
+            // Ensure table exists
+            $db->exec("CREATE TABLE IF NOT EXISTS task_followers (
+                task_id INT NOT NULL,
+                user_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (task_id, user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $check = $db->prepare("SELECT 1 FROM task_followers WHERE task_id=? AND user_id=?");
+            $check->execute([$taskId, $userId]);
+            if ($check->fetch()) {
+                $db->prepare("DELETE FROM task_followers WHERE task_id=? AND user_id=?")->execute([$taskId, $userId]);
+                echo json_encode(['success'=>true,'following'=>false]);
+            } else {
+                $db->prepare("INSERT INTO task_followers (task_id,user_id) VALUES (?,?)")->execute([$taskId, $userId]);
+                echo json_encode(['success'=>true,'following'=>true]);
+            }
+        } catch (Exception $e) {
+            echo json_encode(['success'=>false,'error'=>$e->getMessage()]);
+        }
         exit;
     }
 }
