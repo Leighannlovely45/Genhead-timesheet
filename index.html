@@ -444,9 +444,10 @@ function btSelect(dayIdx, ei, currentVal, readonly){
 
 function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");window.scrollTo({top:0,behavior:"instant"});}
 
-// ── PIN AUTH STATE ─────────────────────────────────────────────────────────
+// ── AUTH STATE ─────────────────────────────────────────────────────────────
 let _pinUser=null, _pinMode='enter'; // modes: 'enter','setup'
 let _resetToken=null, _resetUid=null;
+let _refreshingDropdown=false; // true while refreshNameDropdown rebuilds options
 
 // ── BUILD LOGIN FORM (called after EMPS loaded from DB) ───────────────────
 function buildLoginForm(){
@@ -568,6 +569,7 @@ function lfNameChangeById(u){
 }
 
 function lfNameChange(){
+  if(_refreshingDropdown) return; // ignore programmatic rebuild
   const uid=document.getElementById("lf-name").value;
   if(!uid){ resetLevelField(); return; }
   const u=EMPS.find(e=>String(e.id)===String(uid));
@@ -822,14 +824,25 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
     const nameCounts={};
     sorted.forEach(e=>{ nameCounts[e.name]=(nameCounts[e.name]||0)+1; });
     const roleLabel={employee:'Employee',manager:'Manager',hr:'HR',admin:'Admin'};
-    // Replace options, keeping placeholder first
+    // Suppress lfNameChange while rebuilding options
+    _refreshingDropdown=true;
     sel.innerHTML='<option value="">— Select your name —</option>'+
       sorted.map(e=>{
         const label=nameCounts[e.name]>1?`${e.name} (${roleLabel[e.role]||e.role})`:e.name;
         return `<option value="${e.id}">${label}</option>`;
       }).join('');
     // Restore previous selection if still valid
-    if(prev) sel.value=prev;
+    if(prev){
+      sel.value=prev;
+      // If the user had already picked a name, re-trigger level detection
+      // only when the rest of the form is still in its initial state
+      // (no level chosen yet — don't overwrite a half-filled form)
+      if(sel.value===prev){
+        const levelEl=document.getElementById('lf-level');
+        if(levelEl&&!levelEl.value) lfNameChangeById(EMPS.find(e=>e.id===prev));
+      }
+    }
+    _refreshingDropdown=false;
   }
 
   // Load employees from DB (load is a GET action)
