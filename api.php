@@ -433,6 +433,159 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── RICH REPORT v2 ──────────────────────────────────────────────────────────
+    if ($action === 'load_report_v2') {
+        $db         = getDB();
+        $period     = trim($_GET['period']     ?? '');
+        $dateStart  = trim($_GET['date_start'] ?? '');
+        $dateEnd    = trim($_GET['date_end']   ?? '');
+        $useCustom  = ($dateStart && $dateEnd);
+
+        // Ensure estimated_hours column exists on projects
+        try { $db->exec("ALTER TABLE projects ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
+
+        // Build the timesheet JOIN condition — period match OR date range overlap
+        if ($useCustom) {
+            $tsCond   = "t.period_start <= ? AND t.period_end >= ?";
+            $tsParams = [$dateEnd, $dateStart];
+        } else {
+            $tsCond   = "t.period = ?";
+            $tsParams = [$period];
+        }
+
+        // --- MASTER: all entries per employee, broken out by billing type
+        $mSql = "
+            SELECT u.name AS employee, u.rate,
+                SUM(te.hours) AS total_hours,
+                SUM(CASE WHEN COALESCE(te.billing_type,'billable')='billable'    THEN te.hours ELSE 0 END) AS billable_hours,
+                SUM(CASE WHEN COALESCE(te.billing_type,'billable')='nonbillable' THEN te.hours ELSE 0 END) AS nonbillable_hours,
+                SUM(CASE WHEN COALESCE(te.billing_type,'billable')='marketing'   THEN te.hours ELSE 0 END) AS marketing_hours,
+                SUM(t.total_pay) AS total_pay,
+                MAX(t.status) AS status
+            FROM users u
+            LEFT JOIN timesheets t ON t.user_id=u.id AND {$tsCond}
+            LEFT JOIN timesheet_entries te ON te.timesheet_id=t.id
+            WHERE u.status='active' AND u.role='employee'
+            GROUP BY u.id ORDER BY u.name";
+        $masterStmt = $db->prepare($mSql);
+        $masterStmt->execute($tsParams);
+        $master = $masterStmt->fetchAll();
+
+        // --- BILLABLE: by client, with employee breakdown
+        $billableStmt = $db->prepare("
+            SELECT c.name AS client, c.type,
+                SUM(te.hours) AS hours,
+                GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') AS employees,
+                SUM(u.rate * te.hours) AS cost
+            FROM timesheet_entries te
+            JOIN timesheets t ON te.timesheet_id=t.id
+            JOIN clients c ON te.client_id=c.id
+            JOIN users u ON t.user_id=u.id
+            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='billable'
+            GROUP BY c.id ORDER BY hours DESC");
+        $billableStmt->execute($tsParams);
+        $billable = $billableStmt->fetchAll();
+
+        // --- BILLABLE by employee × client (for drilldown)
+        $billableEmpStmt = $db->prepare("
+            SELECT c.name AS client, u.name AS employee,
+                SUM(te.hours) AS hours,
+                u.rate,
+                SUM(u.rate * te.hours) AS cost
+            FROM timesheet_entries te
+            JOIN timesheets t ON te.timesheet_id=t.id
+            JOIN clients c ON te.client_id=c.id
+            JOIN users u ON t.user_id=u.id
+            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='billable'
+            GROUP BY c.id, u.id ORDER BY c.name, hours DESC");
+        $billableEmpStmt->execute($tsParams);
+        $billableByEmp = $billableEmpStmt->fetchAll();
+
+        // --- NON-BILLABLE: by client (includes internal)
+        $nbStmt = $db->prepare("
+            SELECT COALESCE(c.name,'(No Client)') AS client, COALESCE(c.type,'') AS type,
+                SUM(te.hours) AS hours,
+                GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') AS employees
+            FROM timesheet_entries te
+            JOIN timesheets t ON te.timesheet_id=t.id
+            LEFT JOIN clients c ON te.client_id=c.id
+            JOIN users u ON t.user_id=u.id
+            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='nonbillable'
+            GROUP BY c.id ORDER BY hours DESC");
+        $nbStmt->execute($tsParams);
+        $nonbillable = $nbStmt->fetchAll();
+
+        // --- NON-BILLABLE by employee (for drilldown)
+        $nbEmpStmt = $db->prepare("
+            SELECT u.name AS employee, COALESCE(c.name,'(No Client)') AS client,
+                SUM(te.hours) AS hours
+            FROM timesheet_entries te
+            JOIN timesheets t ON te.timesheet_id=t.id
+            LEFT JOIN clients c ON te.client_id=c.id
+            JOIN users u ON t.user_id=u.id
+            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='nonbillable'
+            GROUP BY u.id, c.id ORDER BY u.name, hours DESC");
+        $nbEmpStmt->execute($tsParams);
+        $nbByEmp = $nbEmpStmt->fetchAll();
+
+        // --- MARKETING: by client
+        $mkStmt = $db->prepare("
+            SELECT COALESCE(c.name,'(No Client)') AS client, COALESCE(c.type,'') AS type,
+                SUM(te.hours) AS hours,
+                GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') AS employees
+            FROM timesheet_entries te
+            JOIN timesheets t ON te.timesheet_id=t.id
+            LEFT JOIN clients c ON te.client_id=c.id
+            JOIN users u ON t.user_id=u.id
+            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='marketing'
+            GROUP BY c.id ORDER BY hours DESC");
+        $mkStmt->execute($tsParams);
+        $marketing = $mkStmt->fetchAll();
+
+        // --- MARKETING by employee
+        $mkEmpStmt = $db->prepare("
+            SELECT u.name AS employee, COALESCE(c.name,'(No Client)') AS client,
+                SUM(te.hours) AS hours
+            FROM timesheet_entries te
+            JOIN timesheets t ON te.timesheet_id=t.id
+            LEFT JOIN clients c ON te.client_id=c.id
+            JOIN users u ON t.user_id=u.id
+            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='marketing'
+            GROUP BY u.id, c.id ORDER BY u.name, hours DESC");
+        $mkEmpStmt->execute($tsParams);
+        $mkByEmp = $mkEmpStmt->fetchAll();
+
+        // --- PROJECTIONS: projects with estimated_hours vs actual logged hours
+        $projStmt = $db->prepare("
+            SELECT p.id, p.name, p.client_name, p.billing_type, p.status,
+                p.due_date, p.estimated_hours,
+                (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id) AS task_count,
+                (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.stage='done') AS done_count,
+                COALESCE((
+                    SELECT SUM(te2.hours)
+                    FROM timesheet_entries te2
+                    JOIN timesheets ts2 ON te2.timesheet_id=ts2.id
+                    WHERE te2.deliverable LIKE CONCAT('%',p.name,'%')
+                ), 0) AS logged_hours
+            FROM projects p
+            WHERE p.status != 'archived'
+            ORDER BY p.due_date IS NULL, p.due_date ASC, p.updated_at DESC");
+        $projStmt->execute();
+        $projections = $projStmt->fetchAll();
+
+        echo json_encode(['success' => true, 'report' => [
+            'master'      => $master,
+            'billable'    => $billable,
+            'billableEmp' => $billableByEmp,
+            'nonbillable' => $nonbillable,
+            'nbEmp'       => $nbByEmp,
+            'marketing'   => $marketing,
+            'mkEmp'       => $mkByEmp,
+            'projections' => $projections,
+        ]]);
+        exit;
+    }
+
     if ($action === 'export_payroll') {
         $db = getDB();
         $period = $_GET['period'] ?? '';
@@ -742,6 +895,15 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','add_
             $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
                ->execute([$id,$actorId,$actorName,"Moved to ".$stageMap[$body['stage']]]);
         }
+        echo json_encode(['success'=>true]);
+        exit;
+    }
+    if ($action === 'set_project_est_hours') {
+        $id  = (int)($body['project_id'] ?? 0);
+        $hrs = isset($body['estimated_hours']) ? (float)$body['estimated_hours'] : null;
+        if (!$id) { echo json_encode(['success'=>false,'error'=>'project_id required']); exit; }
+        try { $db->exec("ALTER TABLE projects ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
+        $db->prepare("UPDATE projects SET estimated_hours=? WHERE id=?")->execute([$hrs,$id]);
         echo json_encode(['success'=>true]);
         exit;
     }

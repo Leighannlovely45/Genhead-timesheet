@@ -170,6 +170,14 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .mc .ms{font-size:.7rem;color:var(--teal);margin-top:.15rem}
 
 /* BILLING SUMMARY TABLE */
+.rpt-tab{padding:.38rem .9rem;border-radius:7px;font-size:.78rem;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--mid);font-family:'DM Sans',sans-serif;transition:all .15s}
+.rpt-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.rpt-tab:hover:not(.active){background:var(--hover)}
+.rpt-section{display:none}.rpt-section.show{display:block}
+.rpt-card{background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.1rem;margin-bottom:.9rem}
+.rpt-card h3{margin:0 0 .75rem;font-size:.9rem;color:var(--dark);font-weight:600}
+.proj-bar-wrap{height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-top:.3rem}
+.proj-bar{height:8px;border-radius:4px;transition:width .4s}
 .billing-tbl{background:var(--bg);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:.9rem}
 .billing-tbl table{width:100%;border-collapse:collapse;font-size:.8rem}
 .billing-tbl thead tr{background:var(--navy)}
@@ -1285,9 +1293,19 @@ function renderDash(){
 
   <!-- REPORTS PANE -->
   <div id="pane-reports" style="display:none">
-    <div class="dash-top">
-      <div><h2>Reports</h2><p id="cr-period-label"></p></div>
-      <button class="btn btn-outline" onclick="exportClientReport()">&#11015; Export CSV</button>
+    <div class="dash-top" style="flex-wrap:wrap;gap:.6rem">
+      <div><h2>Reports</h2><p id="cr-period-label" style="margin:0;font-size:.8rem;color:var(--mid)"></p></div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.35rem .8rem" onclick="exportReportCSV()">&#11015; Export CSV</button>
+      </div>
+    </div>
+    <!-- Report sub-tabs -->
+    <div style="display:flex;gap:.3rem;margin-bottom:1rem;flex-wrap:wrap" id="rpt-tabs">
+      <button class="rpt-tab active" onclick="switchRptTab('master')">📊 Master</button>
+      <button class="rpt-tab" onclick="switchRptTab('billable')">💰 Billable</button>
+      <button class="rpt-tab" onclick="switchRptTab('nonbillable')">🔧 Non-Billable</button>
+      <button class="rpt-tab" onclick="switchRptTab('marketing')">📣 Marketing</button>
+      <button class="rpt-tab" onclick="switchRptTab('projections')">🔮 Projections</button>
     </div>
     <div id="cr-content"><div style="color:var(--mid);padding:2rem;text-align:center">Loading...</div></div>
   </div>
@@ -1559,84 +1577,366 @@ function renderTeam(){
   </table></div>`;
 }
 
+// ── REPORTS V2 ──────────────────────────────────────────────────────────────
+let _rptTab='master';
+let _rptData=null;
+let _rptRangeMode='period'; // 'period' | 'custom'
+let _rptStart='', _rptEnd='';
+
+function switchRptTab(tab){
+  _rptTab=tab;
+  const tabs=['master','billable','nonbillable','marketing','projections'];
+  document.querySelectorAll('.rpt-tab').forEach((b,i)=>{
+    b.className='rpt-tab'+(tabs[i]===tab?' active':'');
+  });
+  if(_rptData) renderRptTab(_rptData);
+}
+
 async function loadClientReport(){
-  const period=PERIODS[pidx];
-  const lbl=document.getElementById("cr-period-label");
-  if(lbl) lbl.textContent=period+" · Confidential";
   const el=document.getElementById("cr-content");
   if(!el) return;
+
+  // Build range selector UI on first load
+  const lbl=document.getElementById("cr-period-label");
+  if(lbl) lbl.textContent='';
+
+  // Inject range controls above content if not already there
+  let rangeBar=document.getElementById('rpt-range-bar');
+  if(!rangeBar){
+    rangeBar=document.createElement('div');
+    rangeBar.id='rpt-range-bar';
+    rangeBar.style.cssText='display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;padding:.75rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:10px';
+    rangeBar.innerHTML=`
+      <span style="font-size:.78rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.04em">Range</span>
+      <select id="rpt-range-mode" style="background:var(--hover);border:1px solid var(--border);border-radius:7px;padding:.35rem .7rem;font-size:.82rem;color:var(--dark)" onchange="onRptRangeMode()">
+        <option value="period">Pay Period</option>
+        <option value="custom">Custom Dates</option>
+      </select>
+      <div id="rpt-period-sel" style="display:flex;gap:.4rem;align-items:center">
+        <select id="rpt-period-pick" style="background:var(--hover);border:1px solid var(--border);border-radius:7px;padding:.35rem .7rem;font-size:.82rem;color:var(--dark)" onchange="loadClientReport()">
+          ${PERIODS.map((p,i)=>`<option value="${p}"${i===pidx?' selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div id="rpt-custom-sel" style="display:none;gap:.4rem;align-items:center;flex-wrap:wrap">
+        <input type="date" id="rpt-date-start" style="background:var(--hover);border:1px solid var(--border);border-radius:7px;padding:.35rem .6rem;font-size:.82rem;color:var(--dark)">
+        <span style="color:var(--mid);font-size:.8rem">to</span>
+        <input type="date" id="rpt-date-end" style="background:var(--hover);border:1px solid var(--border);border-radius:7px;padding:.35rem .6rem;font-size:.82rem;color:var(--dark)">
+        <button class="btn btn-primary" style="padding:.35rem .85rem;font-size:.78rem" onclick="loadClientReport()">Run</button>
+      </div>`;
+    el.parentNode.insertBefore(rangeBar, el);
+  }
+
+  // Determine range label
+  const mode=document.getElementById('rpt-range-mode')?.value||'period';
+  let rangeLabel='';
+  if(mode==='custom'){
+    const s=document.getElementById('rpt-date-start')?.value;
+    const e=document.getElementById('rpt-date-end')?.value;
+    if(!s||!e){el.innerHTML='<div style="color:var(--mid);padding:1.5rem;text-align:center">Pick a start and end date, then click Run.</div>';return;}
+    _rptStart=s; _rptEnd=e;
+    rangeLabel=`${s} → ${e}`;
+  } else {
+    const sel=document.getElementById('rpt-period-pick');
+    rangeLabel=sel?sel.value:PERIODS[pidx];
+    _rptStart=''; _rptEnd='';
+  }
+  if(lbl) lbl.textContent=rangeLabel+' · Confidential';
+
   el.innerHTML='<div style="color:var(--mid);padding:2rem;text-align:center"><span class="spinner" style="display:inline-block;width:20px;height:20px;border:2px solid #e2e8f0;border-top-color:#03AD8F;border-radius:50%;animation:spin .75s linear infinite"></span></div>';
   try{
-    const r=await fetch(`${API_BASE}?action=load_report&period=${encodeURIComponent(period)}`);
+    let url=`${API_BASE}?action=load_report_v2`;
+    if(mode==='custom') url+=`&date_start=${encodeURIComponent(_rptStart)}&date_end=${encodeURIComponent(_rptEnd)}`;
+    else url+=`&period=${encodeURIComponent(rangeLabel)}`;
+    const r=await fetch(url);
     const data=await r.json();
     if(!data.success){el.innerHTML='<div style="color:red;padding:1rem">Failed to load report.</div>';return;}
-    const clients=data.report.clients||[];
-    if(!clients.length){el.innerHTML='<div style="color:var(--mid);padding:2rem;text-align:center">No client hours logged this period.</div>';return;}
-
-    let tB=0,tNB=0,tMK=0,tAll=0;
-    const rows=clients.map(c=>{
-      const b=parseFloat(c.billable_hours||0),nb=parseFloat(c.nonbillable_hours||0),mk=parseFloat(c.marketing_hours||0),tot=parseFloat(c.total_hours||0);
-      tB+=b;tNB+=nb;tMK+=mk;tAll+=tot;
-      return `<tr>
-        <td><strong>${c.name}</strong></td>
-        <td><span style="font-size:.7rem;color:var(--mid);text-transform:uppercase">${c.type||''}</span></td>
-        <td style="font-weight:600;color:var(--dark);font-family:'DM Mono',monospace">${tot.toFixed(1)}</td>
-        <td style="color:#166534;font-weight:600;font-family:'DM Mono',monospace">${b.toFixed(1)}</td>
-        <td style="color:#854d0e;font-weight:600;font-family:'DM Mono',monospace">${nb.toFixed(1)}</td>
-        <td style="color:#3730a3;font-weight:600;font-family:'DM Mono',monospace">${mk.toFixed(1)}</td>
-        <td style="font-size:.72rem;color:var(--mid)">${c.employees||'—'}</td>
-      </tr>`;
-    }).join('');
-
-    el.innerHTML=`
-      <div class="metrics" style="margin-bottom:1rem">
-        <div class="mc accent"><div class="ml">Total Hours</div><div class="mv">${tAll.toFixed(1)}</div><div class="ms">All clients</div></div>
-        <div class="mc" style="border-left:3px solid #10b981"><div class="ml">Billable</div><div class="mv" style="color:#166534">${tB.toFixed(1)}</div><div class="ms">hrs</div></div>
-        <div class="mc" style="border-left:3px solid #f59e0b"><div class="ml">Non-Billable</div><div class="mv" style="color:#854d0e">${tNB.toFixed(1)}</div><div class="ms">hrs</div></div>
-        <div class="mc" style="border-left:3px solid #6366f1"><div class="ml">Marketing</div><div class="mv" style="color:#3730a3">${tMK.toFixed(1)}</div><div class="ms">hrs</div></div>
-      </div>
-      <div class="billing-tbl">
-        <table>
-          <thead><tr>
-            <th>Client</th><th>Type</th><th>Total Hrs</th>
-            <th style="color:#86efac">Billable</th>
-            <th style="color:#fde047">Non-Billable</th>
-            <th style="color:#a5b4fc">Marketing</th>
-            <th>Team Members</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-          <tfoot><tr>
-            <td colspan="2">TOTAL</td>
-            <td style="font-family:'DM Mono',monospace">${tAll.toFixed(1)}</td>
-            <td style="color:#166534;font-family:'DM Mono',monospace">${tB.toFixed(1)}</td>
-            <td style="color:#854d0e;font-family:'DM Mono',monospace">${tNB.toFixed(1)}</td>
-            <td style="color:#3730a3;font-family:'DM Mono',monospace">${tMK.toFixed(1)}</td>
-            <td></td>
-          </tr></tfoot>
-        </table>
-      </div>`;
+    _rptData=data.report;
+    renderRptTab(_rptData);
   }catch(e){
-    el.innerHTML='<div style="color:red;padding:1rem">Error loading report: '+e.message+'</div>';
+    el.innerHTML='<div style="color:red;padding:1rem">Error: '+e.message+'</div>';
   }
 }
 
-async function exportClientReport(){
-  const period=PERIODS[pidx];
-  try{
-    const r=await fetch(`${API_BASE}?action=load_report&period=${encodeURIComponent(period)}`);
-    const data=await r.json();
-    if(!data.success) return;
-    const clients=data.report.clients||[];
-    let csv="Client,Type,Total Hours,Billable Hours,Non-Billable Hours,Marketing Hours,Team Members\n";
-    clients.forEach(c=>{
-      csv+=`"${c.name}","${c.type||''}",${parseFloat(c.total_hours||0).toFixed(1)},${parseFloat(c.billable_hours||0).toFixed(1)},${parseFloat(c.nonbillable_hours||0).toFixed(1)},${parseFloat(c.marketing_hours||0).toFixed(1)},"${c.employees||''}"\n`;
-    });
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-    a.download=`client_report_${period.replace(/\s/g,'_')}.csv`;
-    a.click();
-  }catch(e){ alert('Export failed: '+e.message); }
+function onRptRangeMode(){
+  const mode=document.getElementById('rpt-range-mode')?.value;
+  const ps=document.getElementById('rpt-period-sel');
+  const cs=document.getElementById('rpt-custom-sel');
+  if(ps) ps.style.display=mode==='period'?'flex':'none';
+  if(cs) cs.style.display=mode==='custom'?'flex':'none';
 }
+
+function renderRptTab(d){
+  const el=document.getElementById("cr-content");
+  if(!el) return;
+  if(_rptTab==='master')      el.innerHTML=renderMasterTab(d);
+  else if(_rptTab==='billable')    el.innerHTML=renderBillableTab(d);
+  else if(_rptTab==='nonbillable') el.innerHTML=renderNBTab(d);
+  else if(_rptTab==='marketing')   el.innerHTML=renderMKTab(d);
+  else if(_rptTab==='projections') el.innerHTML=renderProjectionsTab(d);
+}
+
+function fmt(n){return parseFloat(n||0).toFixed(1);}
+function fmtMoney(n){return '$'+parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function rptTblWrap(html){return`<div class="billing-tbl">${html}</div>`;}
+function metricCards(cards){
+  return`<div class="metrics" style="margin-bottom:1rem">${cards.map(c=>`
+    <div class="mc" style="border-left:3px solid ${c.color||'var(--navy)'}">
+      <div class="ml">${c.label}</div>
+      <div class="mv" style="color:${c.color||'var(--navy)'}">${c.val}</div>
+      <div class="ms">${c.sub||''}</div>
+    </div>`).join('')}</div>`;
+}
+
+function renderMasterTab(d){
+  const rows=d.master||[];
+  let tH=0,tB=0,tNB=0,tMK=0,tPay=0;
+  const trs=rows.map(r=>{
+    const h=parseFloat(r.total_hours||0),b=parseFloat(r.billable_hours||0),
+          nb=parseFloat(r.nonbillable_hours||0),mk=parseFloat(r.marketing_hours||0),
+          pay=parseFloat(r.total_pay||0);
+    tH+=h;tB+=b;tNB+=nb;tMK+=mk;tPay+=pay;
+    const bPct=h?Math.round(b/h*100):0;
+    return`<tr>
+      <td><strong>${escHtml(r.employee||'—')}</strong></td>
+      <td style="font-family:'DM Mono',monospace">${fmt(h)}</td>
+      <td style="color:#059669;font-family:'DM Mono',monospace">${fmt(b)}</td>
+      <td style="color:#d97706;font-family:'DM Mono',monospace">${fmt(nb)}</td>
+      <td style="color:#6366f1;font-family:'DM Mono',monospace">${fmt(mk)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:.4rem">
+          <div class="proj-bar-wrap" style="width:60px"><div class="proj-bar" style="width:${bPct}%;background:#059669"></div></div>
+          <span style="font-size:.72rem;color:var(--mid)">${bPct}%</span>
+        </div>
+      </td>
+      <td style="font-family:'DM Mono',monospace;color:var(--dark)">${r.total_pay?fmtMoney(pay):'—'}</td>
+      <td><span style="font-size:.68rem;padding:.15rem .5rem;border-radius:4px;background:${r.status==='approved'?'#dcfce7':r.status==='submitted'?'#fef9c3':'#f1f5f9'};color:${r.status==='approved'?'#166534':r.status==='submitted'?'#854d0e':'#64748b'}">${r.status||'draft'}</span></td>
+    </tr>`;
+  }).join('');
+  return metricCards([
+    {label:'Total Hours',val:fmt(tH),sub:'All employees',color:'#1e293b'},
+    {label:'Billable',val:fmt(tB),sub:`${tH?Math.round(tB/tH*100):0}% of hours`,color:'#059669'},
+    {label:'Non-Billable',val:fmt(tNB),sub:'Internal / overhead',color:'#d97706'},
+    {label:'Marketing',val:fmt(tMK),sub:'Marketing activities',color:'#6366f1'},
+    {label:'Total Payroll',val:fmtMoney(tPay),sub:'This period',color:'#0369a1'},
+  ])+rptTblWrap(`<table>
+    <thead><tr><th>Employee</th><th>Total Hrs</th><th style="color:#86efac">Billable</th><th style="color:#fde047">Non-Bill.</th><th style="color:#a5b4fc">Marketing</th><th>Billable %</th><th>Pay</th><th>Status</th></tr></thead>
+    <tbody>${trs}</tbody>
+    <tfoot><tr><td>TOTAL</td><td style="font-family:'DM Mono',monospace">${fmt(tH)}</td><td style="color:#059669;font-family:'DM Mono',monospace">${fmt(tB)}</td><td style="color:#d97706;font-family:'DM Mono',monospace">${fmt(tNB)}</td><td style="color:#6366f1;font-family:'DM Mono',monospace">${fmt(tMK)}</td><td></td><td style="font-family:'DM Mono',monospace">${fmtMoney(tPay)}</td><td></td></tr></tfoot>
+  </table>`);
+}
+
+function renderBillableTab(d){
+  const rows=d.billable||[];
+  const byEmp=d.billableEmp||[];
+  if(!rows.length) return'<div style="color:var(--mid);padding:2rem;text-align:center">No billable hours logged this period.</div>';
+  let tH=0,tCost=0;
+  const trs=rows.map(c=>{
+    const h=parseFloat(c.hours||0),cost=parseFloat(c.cost||0);
+    tH+=h;tCost+=cost;
+    // employee sub-rows for this client
+    const empSubs=byEmp.filter(e=>e.client===c.client);
+    const empList=empSubs.map(e=>`<span style="font-size:.72rem;background:#f1f5f9;border-radius:4px;padding:.1rem .45rem;margin-right:.2rem">${escHtml(e.employee)} ${fmt(e.hours)}h</span>`).join('');
+    return`<tr>
+      <td><strong>${escHtml(c.client)}</strong><div style="margin-top:.25rem">${empList}</div></td>
+      <td><span style="font-size:.68rem;color:var(--mid);text-transform:uppercase">${c.type||''}</span></td>
+      <td style="font-family:'DM Mono',monospace;font-weight:600;color:#059669">${fmt(h)}</td>
+      <td style="font-family:'DM Mono',monospace;color:#0369a1">${cost?fmtMoney(cost):'—'}</td>
+    </tr>`;
+  }).join('');
+  return metricCards([
+    {label:'Billable Hours',val:fmt(tH),sub:'Client-facing work',color:'#059669'},
+    {label:'Team Cost',val:fmtMoney(tCost),sub:'At employee rates',color:'#0369a1'},
+    {label:'Clients',val:rows.length,sub:'Active this period',color:'#1e293b'},
+  ])+rptTblWrap(`<table>
+    <thead><tr><th>Client</th><th>Type</th><th>Hours</th><th>Team Cost</th></tr></thead>
+    <tbody>${trs}</tbody>
+    <tfoot><tr><td colspan="2">TOTAL</td><td style="font-family:'DM Mono',monospace;color:#059669">${fmt(tH)}</td><td style="font-family:'DM Mono',monospace;color:#0369a1">${fmtMoney(tCost)}</td></tr></tfoot>
+  </table>`);
+}
+
+function renderNBTab(d){
+  const rows=d.nonbillable||[];
+  const byEmp=d.nbEmp||[];
+  if(!rows.length) return'<div style="color:var(--mid);padding:2rem;text-align:center">No non-billable hours logged this period.</div>';
+  let tH=0;
+  // Group by employee to show who is spending non-billable time
+  const empMap={};
+  byEmp.forEach(e=>{
+    if(!empMap[e.employee]) empMap[e.employee]=0;
+    empMap[e.employee]+=parseFloat(e.hours||0);
+  });
+  const empTrs=Object.entries(empMap).sort((a,b)=>b[1]-a[1]).map(([name,h])=>{
+    tH+=h;
+    const empClients=byEmp.filter(e=>e.employee===name).map(e=>`<span style="font-size:.72rem;background:#fef3c7;border-radius:4px;padding:.1rem .45rem;margin-right:.2rem">${escHtml(e.client)} ${fmt(e.hours)}h</span>`).join('');
+    return`<tr>
+      <td><strong>${escHtml(name)}</strong><div style="margin-top:.25rem">${empClients}</div></td>
+      <td style="font-family:'DM Mono',monospace;font-weight:600;color:#d97706">${h.toFixed(1)}</td>
+    </tr>`;
+  }).join('');
+  const clientTrs=rows.map(c=>`<tr>
+    <td>${escHtml(c.client)}</td>
+    <td style="font-size:.68rem;color:var(--mid)">${c.type||'internal'}</td>
+    <td style="font-family:'DM Mono',monospace;color:#d97706">${fmt(c.hours)}</td>
+    <td style="font-size:.72rem;color:var(--mid)">${escHtml(c.employees||'—')}</td>
+  </tr>`).join('');
+  return metricCards([
+    {label:'Non-Bill. Hours',val:fmt(tH),sub:'Overhead & internal',color:'#d97706'},
+  ])+
+  `<div class="rpt-card"><h3>By Employee</h3>`+
+  rptTblWrap(`<table><thead><tr><th>Employee</th><th>Hours</th></tr></thead><tbody>${empTrs}</tbody></table>`)+
+  `</div><div class="rpt-card"><h3>By Client / Project</h3>`+
+  rptTblWrap(`<table><thead><tr><th>Client</th><th>Type</th><th>Hours</th><th>Team</th></tr></thead><tbody>${clientTrs}</tbody></table>`)+
+  `</div>`;
+}
+
+function renderMKTab(d){
+  const rows=d.marketing||[];
+  const byEmp=d.mkEmp||[];
+  if(!rows.length) return'<div style="color:var(--mid);padding:2rem;text-align:center">No marketing hours logged this period.</div>';
+  let tH=0;
+  const empMap={};
+  byEmp.forEach(e=>{
+    if(!empMap[e.employee]) empMap[e.employee]=0;
+    empMap[e.employee]+=parseFloat(e.hours||0);
+  });
+  const empTrs=Object.entries(empMap).sort((a,b)=>b[1]-a[1]).map(([name,h])=>{
+    tH+=h;
+    const empClients=byEmp.filter(e=>e.employee===name).map(e=>`<span style="font-size:.72rem;background:#ede9fe;border-radius:4px;padding:.1rem .45rem;margin-right:.2rem">${escHtml(e.client)} ${fmt(e.hours)}h</span>`).join('');
+    return`<tr>
+      <td><strong>${escHtml(name)}</strong><div style="margin-top:.25rem">${empClients}</div></td>
+      <td style="font-family:'DM Mono',monospace;font-weight:600;color:#6366f1">${h.toFixed(1)}</td>
+    </tr>`;
+  }).join('');
+  const clientTrs=rows.map(c=>`<tr>
+    <td>${escHtml(c.client)}</td>
+    <td style="font-size:.68rem;color:var(--mid)">${c.type||''}</td>
+    <td style="font-family:'DM Mono',monospace;color:#6366f1">${fmt(c.hours)}</td>
+    <td style="font-size:.72rem;color:var(--mid)">${escHtml(c.employees||'—')}</td>
+  </tr>`).join('');
+  return metricCards([
+    {label:'Marketing Hours',val:fmt(tH),sub:'All marketing activities',color:'#6366f1'},
+    {label:'Clients',val:rows.length,sub:'With marketing work',color:'#1e293b'},
+  ])+
+  `<div class="rpt-card"><h3>By Employee</h3>`+
+  rptTblWrap(`<table><thead><tr><th>Employee</th><th>Hours</th></tr></thead><tbody>${empTrs}</tbody></table>`)+
+  `</div><div class="rpt-card"><h3>By Client</h3>`+
+  rptTblWrap(`<table><thead><tr><th>Client</th><th>Type</th><th>Hours</th><th>Team</th></tr></thead><tbody>${clientTrs}</tbody></table>`)+
+  `</div>`;
+}
+
+function renderProjectionsTab(d){
+  const projs=d.projections||[];
+  if(!projs.length) return'<div style="color:var(--mid);padding:2rem;text-align:center">No active projects found.</div>';
+  let totalEst=0,totalLogged=0;
+  projs.forEach(p=>{if(p.estimated_hours) totalEst+=parseFloat(p.estimated_hours||0); totalLogged+=parseFloat(p.logged_hours||0);});
+  const rows=projs.map(p=>{
+    const est=parseFloat(p.estimated_hours||0);
+    const logged=parseFloat(p.logged_hours||0);
+    const pct=est?Math.min(100,Math.round(logged/est*100)):0;
+    const over=est&&logged>est;
+    const barColor=over?'#ef4444':pct>75?'#f59e0b':'#059669';
+    const doneCount=parseInt(p.done_count||0), taskCount=parseInt(p.task_count||0);
+    const taskPct=taskCount?Math.round(doneCount/taskCount*100):0;
+    const due=p.due_date?new Date(p.due_date):null;
+    const today=new Date(); today.setHours(0,0,0,0);
+    const overdue=due&&due<today&&p.status!=='completed';
+    const dueFmt=due?due.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—';
+    return`<tr>
+      <td>
+        <strong>${escHtml(p.name)}</strong>
+        ${p.client_name?`<div style="font-size:.72rem;color:var(--mid)">${escHtml(p.client_name)}</div>`:''}
+      </td>
+      <td><span class="btype-tag bt-${p.billing_type||'billable'}">${(BILLING_TYPES.find(b=>b.key===p.billing_type)||{label:'Billable'}).label}</span></td>
+      <td>
+        <input type="number" min="0" step=".5" value="${est||''}" placeholder="—"
+          style="width:70px;background:var(--hover);border:1px solid var(--border);border-radius:6px;padding:.25rem .5rem;font-size:.8rem;color:var(--dark);text-align:center"
+          onchange="setProjectEstHours(${p.id},this.value)" title="Set estimated hours">
+      </td>
+      <td style="font-family:'DM Mono',monospace;color:${over?'#ef4444':'var(--dark)'};font-weight:${over?'700':'400'}">${fmt(logged)}</td>
+      <td>
+        ${est?`<div style="display:flex;align-items:center;gap:.4rem">
+          <div class="proj-bar-wrap" style="width:80px"><div class="proj-bar" style="width:${pct}%;background:${barColor}"></div></div>
+          <span style="font-size:.72rem;color:${barColor};font-weight:600">${pct}%${over?' ⚠️':''}</span>
+        </div>`:'<span style="font-size:.72rem;color:var(--mid)">Set est. →</span>'}
+      </td>
+      <td>
+        <div style="font-size:.78rem">${doneCount}/${taskCount} tasks</div>
+        <div class="proj-bar-wrap" style="width:60px;margin-top:.2rem"><div class="proj-bar" style="width:${taskPct}%;background:#8b5cf6"></div></div>
+      </td>
+      <td style="font-size:.78rem;color:${overdue?'#ef4444':'var(--mid)'}">${dueFmt}${overdue?' ⚠️':''}</td>
+      <td><span style="font-size:.68rem;padding:.15rem .5rem;border-radius:4px;background:${p.status==='completed'?'#dcfce7':p.status==='on_hold'?'#fef3c7':'#dbeafe'};color:${p.status==='completed'?'#166534':p.status==='on_hold'?'#92400e':'#1e40af'}">${p.status||'active'}</span></td>
+    </tr>`;
+  }).join('');
+  return metricCards([
+    {label:'Active Projects',val:projs.length,sub:'Across all clients',color:'#1e293b'},
+    {label:'Est. Hours',val:fmt(totalEst),sub:'Total projected workload',color:'#8b5cf6'},
+    {label:'Logged Hours',val:fmt(totalLogged),sub:'Matched to projects',color:'#059669'},
+    {label:'Remaining',val:fmt(Math.max(0,totalEst-totalLogged)),sub:'Of estimated',color:'#d97706'},
+  ])+
+  `<p style="font-size:.78rem;color:var(--mid);margin:.5rem 0 .75rem">💡 Click the <strong>Est. Hours</strong> field on any project to set your time budget. Turns orange when 75% used, red when over.</p>`+
+  rptTblWrap(`<table>
+    <thead><tr><th>Project</th><th>Type</th><th>Est. Hrs</th><th>Logged Hrs</th><th>Progress</th><th>Tasks</th><th>Due</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`);
+}
+
+async function setProjectEstHours(projId, val){
+  const hrs=parseFloat(val)||null;
+  await api({action:'set_project_est_hours',project_id:projId,estimated_hours:hrs});
+  showToast('Estimated hours saved.');
+}
+
+async function exportReportCSV(){
+  if(!_rptData){showToast('Load a report first.');return;}
+  const d=_rptData;
+  const lbl=document.getElementById('cr-period-label')?.textContent||'report';
+  let csvParts=[];
+  // Master
+  csvParts.push('MASTER SUMMARY');
+  csvParts.push('Employee,Total Hours,Billable,Non-Billable,Marketing,Total Pay,Status');
+  (d.master||[]).forEach(r=>{
+    csvParts.push(`"${r.employee}",${fmt(r.total_hours)},${fmt(r.billable_hours)},${fmt(r.nonbillable_hours)},${fmt(r.marketing_hours)},${r.total_pay?fmt(r.total_pay):''},${r.status||'draft'}`);
+  });
+  csvParts.push('');
+  // Billable
+  csvParts.push('BILLABLE HOURS BY CLIENT');
+  csvParts.push('Client,Type,Hours,Team Cost');
+  (d.billable||[]).forEach(c=>{
+    csvParts.push(`"${c.client}","${c.type||''}",${fmt(c.hours)},${c.cost?fmt(c.cost):''}`);
+  });
+  csvParts.push('');
+  // Non-billable
+  csvParts.push('NON-BILLABLE HOURS BY CLIENT');
+  csvParts.push('Client,Type,Hours,Team');
+  (d.nonbillable||[]).forEach(c=>{
+    csvParts.push(`"${c.client}","${c.type||''}",${fmt(c.hours)},"${c.employees||''}"`);
+  });
+  csvParts.push('');
+  // Marketing
+  csvParts.push('MARKETING HOURS BY CLIENT');
+  csvParts.push('Client,Type,Hours,Team');
+  (d.marketing||[]).forEach(c=>{
+    csvParts.push(`"${c.client}","${c.type||''}",${fmt(c.hours)},"${c.employees||''}"`);
+  });
+  csvParts.push('');
+  // Projections
+  csvParts.push('PROJECTS & PROJECTIONS');
+  csvParts.push('Project,Client,Type,Est. Hours,Logged Hours,% Used,Tasks Done/Total,Due Date,Status');
+  (d.projections||[]).forEach(p=>{
+    const est=parseFloat(p.estimated_hours||0);
+    const logged=parseFloat(p.logged_hours||0);
+    const pct=est?Math.round(logged/est*100):0;
+    csvParts.push(`"${p.name}","${p.client_name||''}","${p.billing_type||''}",${est||''},${fmt(logged)},${est?pct+'%':''},"${p.done_count||0}/${p.task_count||0}","${p.due_date||''}","${p.status||''}"`);
+  });
+  const csv=csvParts.join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=`genhead_report_${lbl.replace(/[^a-z0-9]/gi,'_').toLowerCase()}.csv`;
+  a.click();
+}
+
+// Keep old name for compatibility
+function exportClientReport(){ exportReportCSV(); }
 
 function saveWH(val){
   GHL_WEBHOOK=val;
