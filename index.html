@@ -533,7 +533,7 @@ function canSeePay(){return cur&&(cur.role==="hr"||cur.role==="admin");}
 // Who this reviewer is allowed to see: HR/Admin = everyone but themselves; Manager = direct reports
 function reviewScope(){
   const me=myDbId();
-  if(cur.role==="hr"||cur.role==="admin") return EMPS.filter(e=>e.role!=="admin"&&String(e.id).replace(/^e/,"")!==me);
+  if(cur.role==="hr"||cur.role==="admin") return EMPS.filter(e=>String(e.id).replace(/^e/,"")!==me);
   if(cur.role==="manager") return EMPS.filter(e=>String(e.manager_id||"")===me);
   return [];
 }
@@ -1450,6 +1450,11 @@ function getTabsForRole(role){
   return tabs;
 }
 
+// Dashboard shows your own card first, then everyone you review
+function dashScope(){
+  const self=EMPS.find(e=>e.id===cur.id)||cur;
+  return [self,...reviewScope().filter(e=>e.id!==cur.id)];
+}
 // Load this period's timecards from the DB into the store for everyone in scope
 let _recCache=null;
 async function loadDashData(){
@@ -1457,7 +1462,10 @@ async function loadDashData(){
     const r=await fetch(`${API_BASE}?action=load_timesheets&t=${Date.now()}`).then(x=>x.json());
     _recCache=r.success?(r.records||[]):[];
   }catch(e){_recCache=_recCache||[];}
-  reviewScope().forEach(emp=>{
+  // Flush any pending auto-save of your own sheet before reloading it
+  if(_autoSaveTimer){clearTimeout(_autoSaveTimer);_autoSaveTimer=null;const od=gd(cur.id,pidx);if(od.loaded&&!od.submitted)await saveTimesheet(cur.id,pidx,false);
+    try{const r=await fetch(`${API_BASE}?action=load_timesheets&t=${Date.now()}`).then(x=>x.json());if(r.success)_recCache=r.records||[];}catch(e){}}
+  dashScope().forEach(emp=>{
     const d=gd(emp.id,pidx);
     const rec=_recCache.find(t=>String(t.user_id)===String(emp.id).replace(/^e/,"")&&t.period===PERIODS[pidx]);
     d.rate=(rec&&rec.pay_rate)||emp.rate||"";
@@ -1471,7 +1479,7 @@ async function loadDashData(){
 function renderDash(){
   const role=cur.role;
   const body=document.getElementById("app-body");
-  const emps=reviewScope();
+  const emps=dashScope();
   const showPayroll=(role==="hr"||role==="admin");
   let tH=0,tP=0,sub=0;
   let totals={billable:{h:0},nonbillable:{h:0},marketing:{h:0}};
@@ -1481,12 +1489,12 @@ function renderDash(){
     // Seed rate from user record if store doesn't have one yet
     if((d.rate===''||d.rate===null||d.rate===undefined)&&emp.rate) d.rate=emp.rate;
     const h=d.entries.reduce((s,e)=>s+pfl(e.hrs),0),rt=pfl(d.rate),pay=h*rt;
-    tH+=h;if(showPayroll)tP+=pay;if(d.status==="submitted"||d.status==="under_review")sub++;
+    tH+=h;if(showPayroll)tP+=pay;if(emp.id!==cur.id&&(d.status==="submitted"||d.status==="under_review"))sub++;
     const bd=calcBreakdown(d);
     BILLING_TYPES.forEach(bt=>{ totals[bt.key].h+=bd[bt.key].h; });
     const st=statusBadge(d.status);
     return `<tr>
-      <td><strong>${escHtml(emp.name)}</strong></td>
+      <td><strong>${escHtml(emp.name)}</strong>${emp.id===cur.id?' <span style="font-size:.66rem;color:var(--teal);font-weight:600">(You)</span>':''}</td>
       <td>${h.toFixed(1)}</td>
       <td style="color:#166534;font-weight:500">${bd.billable.h.toFixed(1)}</td>
       <td style="color:#854d0e;font-weight:500">${bd.nonbillable.h.toFixed(1)}</td>
@@ -1515,7 +1523,7 @@ function renderDash(){
     <div class="metrics">
       <div class="mc accent"><div class="ml">Total Hours</div><div class="mv">${tH.toFixed(1)}</div><div class="ms">This period</div></div>
       ${showPayroll?`<div class="mc accent"><div class="ml">Total Payroll</div><div class="mv">${fm(tP)}</div><div class="ms">This period</div></div>`:""}
-      <div class="mc" style="cursor:pointer" onclick="switchTab('records')" title="Open Records to review"><div class="ml">Needs Review</div><div class="mv">${sub}/${emps.length}</div><div class="ms">Review in Records &rarr;</div></div>
+      <div class="mc" style="cursor:pointer" onclick="switchTab('records')" title="Open Records to review"><div class="ml">Needs Review</div><div class="mv">${sub}/${Math.max(emps.length-1,0)}</div><div class="ms">Review in Records &rarr;</div></div>
       <div class="mc"><div class="ml">Avg Hours</div><div class="mv">${emps.length?(tH/emps.length).toFixed(1):"0.0"}</div><div class="ms">Per employee</div></div>
     </div>
 
