@@ -569,6 +569,15 @@ async function reviewTimecard(action,tsId,comment){
   return r||{success:false};
 }
 function fm(n){return"$"+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/,",");}
+// The pay period that contains today (falls back to the nearest one)
+function currentPeriodIndex(){
+  const today=new Date();today.setHours(0,0,0,0);
+  for(let i=0;i<PSTARTS.length;i++){
+    const s=pdate(i,0),e=pdate(i,13);
+    if(today>=s&&today<=e)return i;
+  }
+  return today<pdate(0,0)?0:PSTARTS.length-1;
+}
 function pdate(pi,offset){const[y,m,d]=PSTARTS[pi];const dt=new Date(y,m,d);dt.setDate(dt.getDate()+offset);return dt;}
 
 // ── BILLING TYPE DROPDOWN HTML ─────────────────────────────────────────────
@@ -992,7 +1001,7 @@ function doLogin(u){
   badge.className="badge-role"+(u.role==="manager"?" mgr":u.role==="hr"?" hr":u.role==="admin"?" admin":"");
   const sel=document.getElementById("period-sel");
   sel.innerHTML=PERIODS.map((p,i)=>`<option value="${i}">${p}</option>`).join("");
-  pidx=PERIODS.length>0?PERIODS.length-1:0;sel.value=pidx;show("s-app");renderApp();
+  pidx=currentPeriodIndex();sel.value=pidx;show("s-app");renderApp();
 }
 
 function logout(){cur=null;showLoginSelect();show("s-login");}
