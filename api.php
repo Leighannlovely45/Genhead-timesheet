@@ -225,7 +225,7 @@ if ($method === 'GET') {
     if ($action === 'load_projects') {
         $db     = getDB();
         $status = $_GET['status'] ?? '';
-        $sql    = "SELECT p.*, u.name AS creator_name,
+        $sql    = "SELECT p.*, COALESCE(p.client_name, (SELECT c.name FROM clients c WHERE c.id = p.client_id)) AS client_name, u.name AS creator_name,
                    (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS task_count,
                    (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.stage = 'done') AS done_count
                    FROM projects p LEFT JOIN users u ON u.id = p.created_by";
@@ -568,7 +568,7 @@ if ($method === 'GET') {
         ensureEntryColumns($db);
         try {
             $projStmt = $db->prepare("
-                SELECT p.id, p.name, p.client_name, p.billing_type, p.status,
+                SELECT p.id, p.name, p.client_id, COALESCE(p.client_name, (SELECT c.name FROM clients c WHERE c.id = p.client_id)) AS client_name, p.billing_type, p.status,
                     p.due_date, p.estimated_hours,
                     (SELECT COUNT(*) FROM tasks tk WHERE tk.project_id=p.id) AS task_count,
                     (SELECT COUNT(*) FROM tasks tk WHERE tk.project_id=p.id AND tk.stage='done') AS done_count,
