@@ -224,14 +224,29 @@ if ($method === 'GET') {
     // ── LOAD PROJECTS ────────────────────────────────────────────────────────
     if ($action === 'load_projects') {
         $db     = getDB();
+        ensureProjectMembers($db);
         $status = $_GET['status'] ?? '';
+        $viewer = (int)preg_replace('/^e/', '', $_GET['viewer'] ?? '');
         $sql    = "SELECT p.*, COALESCE(p.client_name, (SELECT c.name FROM clients c WHERE c.id = p.client_id)) AS client_name, u.name AS creator_name,
                    (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS task_count,
-                   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.stage = 'done') AS done_count
+                   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.stage = 'done') AS done_count,
+                   (SELECT GROUP_CONCAT(pm.user_id ORDER BY um.name SEPARATOR ',') FROM project_members pm JOIN users um ON um.id = pm.user_id WHERE pm.project_id = p.id) AS member_ids,
+                   (SELECT GROUP_CONCAT(um.name ORDER BY um.name SEPARATOR ', ') FROM project_members pm JOIN users um ON um.id = pm.user_id WHERE pm.project_id = p.id) AS member_names
                    FROM projects p LEFT JOIN users u ON u.id = p.created_by";
         $params = [];
         if ($status) { $sql .= " WHERE p.status = ?"; $params[] = $status; }
         else          { $sql .= " WHERE p.status != 'archived'"; }
+        // Admin & HR see every project. Everyone else sees projects they're on the
+        // team for, created, or have a task assigned in.
+        if ($viewer) {
+            $vr = $db->prepare("SELECT role FROM users WHERE id = ? LIMIT 1");
+            $vr->execute([$viewer]);
+            if (!in_array($vr->fetchColumn(), ['admin','hr'])) {
+                $sql .= " AND (p.created_by = ? OR EXISTS (SELECT 1 FROM project_members pm2 WHERE pm2.project_id = p.id AND pm2.user_id = ?)
+                          OR EXISTS (SELECT 1 FROM tasks t2 WHERE t2.project_id = p.id AND t2.assigned_to = ?))";
+                array_push($params, $viewer, $viewer, $viewer);
+            }
+        }
         $sql .= " ORDER BY p.updated_at DESC";
         $rows = $db->prepare($sql);
         $rows->execute($params);
@@ -942,9 +957,10 @@ if ($method === 'GET' && $action === 'fire_webhook') {
     exit;
 }
 
-if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','delete_project','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
-    $body = $_GET;
+if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','delete_project','set_project_members','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
+    $body = normalizeUserIds($_GET);
     $db = getDB();
+    ensureProjectMembers($db);
 
     // ── ADD PROJECT ──────────────────────────────────────────────────────────
     if ($action === 'add_project') {
@@ -966,7 +982,11 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         try { $db->exec("ALTER TABLE projects ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
         $db->prepare("INSERT INTO projects (name,client_id,client_name,status,billing_type,due_date,description,created_by,estimated_hours) VALUES (?,?,?,?,?,?,?,?,?)")
            ->execute([$name,$clientId,$clientName,$status,$billingType,$dueDate,$description,$createdBy,$estHours]);
-        echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
+        $newProjectId = (int)$db->lastInsertId();
+        ensureProjectMembers($db);
+        addProjectMember($db, $newProjectId, $createdBy);
+        foreach (array_filter(explode(',', $body['user_ids'] ?? '')) as $mid) addProjectMember($db, $newProjectId, (int)$mid);
+        echo json_encode(['success'=>true,'id'=>$newProjectId]);
         exit;
     }
     if ($action === 'add_task') {
@@ -986,6 +1006,7 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,due_date,billing_type,estimated_hours,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
            ->execute([$projectId,$title,$description,$assignedTo,$assignedName,$priority,$stage,$dueDate,$billingType,$estHours,$createdBy]);
         $taskId=(int)$db->lastInsertId();
+        if ($assignedTo) addProjectMember($db, $projectId, $assignedTo);
         // Activity log
         $actorName=trim($body['actor_name']??'') ?: 'Someone';
         $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
@@ -1010,6 +1031,14 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         if (!$fields) { echo json_encode(['success'=>false,'error'=>'nothing to update']); exit; }
         $params[]=$id;
         $db->prepare("UPDATE tasks SET ".implode(',',$fields)." WHERE id=?")->execute($params);
+        if (!empty($body['assigned_to']) && (int)$body['assigned_to']) {
+            $pj = $db->prepare("SELECT project_id FROM tasks WHERE id = ?");
+            $pj->execute([$id]);
+            addProjectMember($db, (int)$pj->fetchColumn(), (int)$body['assigned_to']);
+            $actorName=trim($body['actor_name']??'')?:'Someone';
+            $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
+               ->execute([$id,(int)($body['actor_id']??0),$actorName,"Assigned to ".(trim($body['assigned_name']??'')?:'a team member')]);
+        }
         // Activity log for stage move
         if (isset($body['stage']) && array_key_exists($body['stage'],$stageMap)) {
             $actorId=(int)($body['actor_id']??0); $actorName=trim($body['actor_name']??'')?:'Someone';
@@ -1048,6 +1077,23 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         exit;
     }
 
+    // ── SET PROJECT TEAM ───────────────────────────────────────────────────
+    if ($action === 'set_project_members') {
+        $pid     = (int)($body['project_id'] ?? 0);
+        $actorId = (int)($body['actor_id'] ?? 0);
+        if (!$pid) { echo json_encode(['success'=>false,'error'=>'project_id required']); exit; }
+        $role = $db->prepare("SELECT role FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $role->execute([$actorId]);
+        if (!in_array($role->fetchColumn(), ['admin','hr','manager'])) { echo json_encode(['success'=>false,'error'=>'Only Managers, HR or Admin can change the project team']); exit; }
+        $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $body['user_ids'] ?? '')))));
+        $db->beginTransaction();
+        $db->prepare("DELETE FROM project_members WHERE project_id = ?")->execute([$pid]);
+        foreach ($ids as $mid) addProjectMember($db, $pid, $mid);
+        $db->commit();
+        echo json_encode(['success'=>true,'count'=>count($ids)]);
+        exit;
+    }
+
     // ── DELETE PROJECT ─────────────────────────────────────────────────────
     // Removes the project and its tasks. Timesheet hours are kept: lines tagged
     // to this project are un-tagged and count as general hours for the client.
@@ -1072,6 +1118,7 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
                 $db->exec("DELETE FROM tasks WHERE id IN ($in)");
             }
             $db->prepare("UPDATE timesheet_entries SET project_id = NULL WHERE project_id = ?")->execute([$id]);
+            $db->prepare("DELETE FROM project_members WHERE project_id = ?")->execute([$id]);
             $db->prepare("DELETE FROM projects WHERE id = ?")->execute([$id]);
             $db->commit();
         } catch (Exception $e) {
@@ -1224,6 +1271,7 @@ if ($method === 'POST') {
     $rawBody = file_get_contents('php://input');
     $body = json_decode($rawBody, true);
     if (!is_array($body)) $body = !empty($_POST) ? $_POST : [];
+    $body = normalizeUserIds($body);
     $db = getDB();
 
     // ── ADD PROJECT ──────────────────────────────────────────────────────────
@@ -2210,6 +2258,37 @@ function checkOvertime($db, $tsId, $userId, $entries) {
 // Generic notification dispatcher. Sends all timecard events to one GHL
 // webhook URL; GHL branches on the 'event' field.
 // Events: timecard_submitted | timecard_approved | timecard_rejected
+// The page identifies people as "e5"; the database uses 5. (int)"e5" is 0, which
+// silently dropped comments and task assignments — strip the prefix up front.
+function normalizeUserIds($body) {
+    foreach (['assigned_to','actor_id','user_id','created_by','approver_id','hr_id','uid'] as $k) {
+        if (isset($body[$k]) && is_string($body[$k])) $body[$k] = preg_replace('/^e/', '', $body[$k]);
+    }
+    if (isset($body['user_ids']) && is_string($body['user_ids'])) {
+        $body['user_ids'] = preg_replace('/(^|,)e/', '$1', $body['user_ids']);
+    }
+    return $body;
+}
+
+// Project team members (many people per project)
+function ensureProjectMembers($db) {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS project_members (
+            project_id INT NOT NULL,
+            user_id    INT NOT NULL,
+            added_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (project_id, user_id)
+        )");
+    } catch (Exception $e) {}
+}
+function addProjectMember($db, $projectId, $userId) {
+    if (!$projectId || !$userId) return;
+    $db->prepare("INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)")->execute([(int)$projectId, (int)$userId]);
+}
+
 // Adds columns newer code relies on (no-op once they exist)
 function ensureEntryColumns($db) {
     static $done = false;

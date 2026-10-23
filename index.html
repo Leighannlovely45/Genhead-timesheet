@@ -1168,7 +1168,8 @@ function renderTS(uid){
 
   if(!isViewing){
     const backBtn=cur._vid?`<button class="btn btn-outline" onclick="backDash()">&#8592; Back to Dashboard</button>`:'';
-    h+=`<div class="action-bar">${backBtn}<button class="btn btn-outline" onclick="doExport()">Export CSV</button><button class="btn btn-primary" onclick="doSubmit()">${d.submitted?"Resubmit":"Submit to GHL"}</button></div>`;
+    const projBtn=(cur.role==="employee"&&!cur._vid)?`<button class="btn btn-outline" onclick="openEmployeeProjects()">&#128193; My Projects</button>`:'';
+    h+=`<div class="action-bar">${backBtn}${projBtn}<button class="btn btn-outline" onclick="doExport()">Export CSV</button><button class="btn btn-primary" onclick="doSubmit()">${d.submitted?"Resubmit":"Submit to GHL"}</button></div>`;
   } else {
     h+=`<div class="action-bar"><button class="btn btn-outline" onclick="backDash()">&#8592; Back to Dashboard</button></div>`;
   }
@@ -1474,7 +1475,7 @@ function getTabsForRole(role){
     tabs.push({id:"reports",label:"Reports"});
   }
   if(role==="admin") tabs.push({id:"clients",label:"Clients"});
-  if(role==="manager"||role==="hr"||role==="admin") tabs.push({id:"projects",label:"Projects"});
+  tabs.push({id:"projects",label:"Projects"});
   if(role==="admin") tabs.push({id:"ghl",label:"GHL Setup"});
   if(role==="hr"||role==="admin") tabs.push({id:"settings",label:"Settings"});
   return tabs;
@@ -3008,6 +3009,64 @@ const STAGES=[
 ];
 
 function pmRoot(){return document.getElementById('projects-root');}
+// Employees: open Projects from their timesheet (they have no tab bar)
+function openEmployeeProjects(){
+  const body=document.getElementById("app-body");
+  body.innerHTML=`<div class="action-bar" style="justify-content:flex-start;margin-bottom:.75rem"><button class="btn btn-outline" onclick="renderApp()">&#8592; Back to My Timesheet</button></div><div id="projects-root"></div>`;
+  renderProjects();
+}
+function pmIsTeamEditor(){return cur.role==="admin"||cur.role==="hr"||cur.role==="manager";}
+function pmTeamIds(proj){return String(proj?.member_ids||"").split(",").filter(Boolean);}
+// Assignee options: the project's team first (anyone else is added to the team when assigned)
+function pmAssignOptions(projectId,selected){
+  const proj=_pm.projects.find(p=>parseInt(p.id)===parseInt(projectId));
+  const team=new Set(pmTeamIds(proj));
+  const sel=String(selected||"").replace(/^e/,"");
+  const active=EMPS.filter(e=>e.active!==false);
+  const opt=e=>{const id=String(e.id).replace(/^e/,"");return `<option value="${id}" data-name="${escHtml(e.name)}"${id===sel?" selected":""}>${escHtml(e.name)}</option>`;};
+  const inTeam=active.filter(e=>team.has(String(e.id).replace(/^e/,"")));
+  const others=active.filter(e=>!team.has(String(e.id).replace(/^e/,"")));
+  if(!inTeam.length) return active.map(opt).join("");
+  return `<optgroup label="Project team">${inTeam.map(opt).join("")}</optgroup>`+
+    (others.length?`<optgroup label="Others (will join the team)">${others.map(opt).join("")}</optgroup>`:"");
+}
+// Team editor modal
+function pmTeamModal(projectId){
+  const proj=_pm.projects.find(p=>parseInt(p.id)===parseInt(projectId));
+  if(!proj)return;
+  const team=new Set(pmTeamIds(proj));
+  const people=EMPS.filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
+  let m=document.getElementById("pm-team-modal");
+  if(!m){m=document.createElement("div");m.id="pm-team-modal";m.className="rv-overlay";document.body.appendChild(m);}
+  m.innerHTML=`<div class="rv-card" style="max-width:420px">
+    <h3>Project Team</h3>
+    <div style="font-size:.8rem;color:var(--mid);margin-bottom:.6rem">${escHtml(proj.name)}${proj.client_name?" · "+escHtml(proj.client_name):""} &mdash; everyone checked can see this project and its tasks.</div>
+    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:.35rem .6rem">
+      ${people.map(e=>{const id=String(e.id).replace(/^e/,"");return `<label style="display:flex;align-items:center;gap:.55rem;padding:.35rem 0;font-size:.84rem;color:var(--dark);cursor:pointer"><input type="checkbox" class="pm-team-cb" value="${id}"${team.has(id)?" checked":""}> ${escHtml(e.name)} <span style="font-size:.68rem;color:var(--mid);text-transform:uppercase">${escHtml(e.role)}</span></label>`;}).join("")}
+    </div>
+    <div id="pm-team-err" class="rv-err"></div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.6rem">
+      <button class="btn btn-outline" onclick="document.getElementById('pm-team-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" onclick="pmSaveTeam(${proj.id})">Save Team</button>
+    </div></div>`;
+  m.onclick=e=>{if(e.target===m)m.style.display="none";};
+  m.style.display="flex";
+}
+async function pmSaveTeam(projectId){
+  const ids=[...document.querySelectorAll(".pm-team-cb:checked")].map(c=>c.value);
+  try{
+    const r=await fetch(`${API_BASE}?action=set_project_members&project_id=${projectId}&user_ids=${ids.join(",")}&actor_id=${encodeURIComponent(myDbId())}`).then(x=>x.json());
+    if(!r.success){document.getElementById("pm-team-err").textContent=r.error||"Could not save.";return;}
+    const proj=_pm.projects.find(p=>parseInt(p.id)===parseInt(projectId));
+    if(proj){
+      proj.member_ids=ids.join(",");
+      proj.member_names=EMPS.filter(e=>ids.includes(String(e.id).replace(/^e/,""))).map(e=>e.name).sort().join(", ");
+    }
+    document.getElementById("pm-team-modal").style.display="none";
+    showToast("Project team saved.");
+    if(_pm.view==="board"&&_pm.activeProject)_pmProjectBoard(parseInt(projectId));else _pmProjectsView();
+  }catch(e){document.getElementById("pm-team-err").textContent="Network error — try again.";}
+}
 
 async function renderProjects(){
   const root=pmRoot();
@@ -3017,7 +3076,7 @@ async function renderProjects(){
   try{
     const dbId=cur.db_id||(cur.id?parseInt(cur.id.replace('e',''))||0:0);
     const fetches=[
-      fetch(`api.php?action=load_projects`).then(r=>r.json()),
+      fetch(`api.php?action=load_projects&viewer=${encodeURIComponent(myDbId())}&t=${Date.now()}`).then(r=>r.json()),
       fetch(`api.php?action=load_tasks`).then(r=>r.json())
     ];
     if(dbId) fetches.push(fetch(`api.php?action=load_followed_tasks&uid=${dbId}`).then(r=>r.json()).catch(()=>({tasks:[]})));
@@ -3030,6 +3089,11 @@ async function renderProjects(){
       const existingIds=new Set(_pm.tasks.map(t=>t.id));
       followedTasks.forEach(t=>{ if(!existingIds.has(t.id)){t._followed=true;_pm.tasks.push(t);} });
       _pm.followedTaskIds=followedTasks.map(t=>t.id);
+    }
+    // Only keep tasks for projects this person can see (Admin/HR see all)
+    if(!(cur.role==="admin"||cur.role==="hr")){
+      const visible=new Set(_pm.projects.map(p=>p.id));
+      _pm.tasks=_pm.tasks.filter(t=>visible.has(parseInt(t.project_id)));
     }
     _pm.loading  = false;
     _pm.view='projects';
@@ -3153,6 +3217,7 @@ function _pmProjectsView(clientFilter){
           ${p.due_date?`<span style="font-size:.72rem;color:${overdue?'#f87171':'var(--mid)'}">Due ${p.due_date}</span>`:''}
           ${p.estimated_hours?`<span style="font-size:.72rem;color:var(--teal)">~${parseFloat(p.estimated_hours).toFixed(1)}h est.</span>`:`<button onclick="event.stopPropagation();_pmSetEstHours(${p.id})" style="font-size:.68rem;color:var(--mid);background:none;border:1px dashed var(--border);border-radius:4px;padding:.1rem .4rem;cursor:pointer">+ Est. Hours</button>`}
           ${canManage?`<button onclick="event.stopPropagation();_pmArchiveProject(${p.id})" style="margin-left:auto;font-size:.65rem;color:#f87171;background:none;border:1px solid #f87171;border-radius:4px;padding:.1rem .4rem;cursor:pointer;opacity:.6" title="Archive project (hide it)">Archive</button>`:''}
+          ${pmTeamIds(p).length?`<span style="font-size:.7rem;color:var(--mid)" title="${escHtml(p.member_names||'')}">&#128101; ${pmTeamIds(p).length}</span>`:''}
           ${canManage?`<button onclick="event.stopPropagation();_pmDeleteProject(${p.id})" style="font-size:.65rem;color:#fff;background:#ef4444;border:1px solid #ef4444;border-radius:4px;padding:.1rem .45rem;cursor:pointer" title="Delete project permanently">Delete</button>`:''}
         </div>
       </div>`;
@@ -3206,7 +3271,7 @@ function _pmTaskCard(t,s){
 
 function _pmQuickAssign(taskId){
   const t=_pm.tasks.find(x=>x.id===taskId); if(!t) return;
-  const opts=EMPS.filter(e=>e.active||e.status==='active').map(e=>`<option value="${e.id}" data-name="${escHtml(e.name)}" ${String(e.id)===String(t.assigned_to)?'selected':''}>${escHtml(e.name)}</option>`).join('');
+  const opts=pmAssignOptions(t.project_id,t.assigned_to);
   const sel=`<select id="qa-sel" style="width:100%;padding:.5rem;border-radius:7px;border:1px solid var(--border);font-size:.9rem;background:var(--bg);color:var(--dark)">
     <option value="">— Unassigned —</option>${opts}</select>`;
   const modal=document.createElement('div');
@@ -3229,7 +3294,7 @@ async function _pmQuickAssignSave(taskId,sel){
   const t=_pm.tasks.find(x=>x.id===taskId); if(!t) return;
   t.assigned_to=empId||null; t.assigned_name=empName||null;
   _renderPMBoard();
-  await fetch(`${API_BASE}?action=update_task&id=${taskId}&assigned_to=${empId}&assigned_name=${encodeURIComponent(empName)}&actor_id=${cur.db_id||0}&actor_name=${encodeURIComponent(cur.name||'')}`).catch(()=>{});
+  await fetch(`${API_BASE}?action=update_task&id=${taskId}&assigned_to=${empId}&assigned_name=${encodeURIComponent(empName)}&actor_id=${myDbId()}&actor_name=${encodeURIComponent(cur.name||'')}`).catch(()=>{});
 }
 
 function _pmMyTasks(){
@@ -3287,6 +3352,11 @@ function _pmProjectBoard(projectId){
       </div>
       <h2 style="margin:0">${escHtml(proj.name)}</h2>
       <p style="margin:.2rem 0 0">${proj.client_name?escHtml(proj.client_name)+' · ':''}<span class="btype-tag bt-${proj.billing_type||'billable'}" style="font-size:.7rem">${billingLabel}</span>${proj.due_date?` · Due ${proj.due_date}`:''}</p>
+      <div style="margin-top:.4rem;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;font-size:.76rem;color:var(--mid)">
+        <span style="font-weight:600">Team:</span>
+        ${proj.member_names?proj.member_names.split(", ").map(n=>`<span style="background:var(--hover);border:1px solid var(--border);border-radius:999px;padding:.1rem .5rem;color:var(--dark)">${escHtml(n)}</span>`).join(""):'<span>No one yet</span>'}
+        ${pmIsTeamEditor()?`<button class="btn btn-outline" style="font-size:.7rem;padding:.12rem .5rem" onclick="pmTeamModal(${proj.id})">&#128101; Manage Team</button>`:''}
+      </div>
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectDetail(${proj.id})">☰ List View</button>`:''}
@@ -3403,7 +3473,7 @@ function _pmShowTaskPanel(task){
 
   const commentsHtml=_pmRenderComments(_pm.comments);
 
-  const empOpts=EMPS.map(e=>`<option value="${e.id}"${String(e.id)===String(task.assigned_to)?' selected':''}>${escHtml(e.name)}</option>`).join('');
+  const empOpts=pmAssignOptions(task.project_id,task.assigned_to);
 
   const editSection=canManage?`
     <div style="padding:.75rem 1.25rem;border-bottom:1px solid var(--border);background:var(--hover);border-radius:0">
@@ -3484,7 +3554,7 @@ function _pmShowTaskPanel(task){
 
 async function _pmCompleteTask(taskId){
   try{
-    const p=new URLSearchParams({action:'update_task',id:taskId,stage:'done',actor_id:cur.id,actor_name:cur.name});
+    const p=new URLSearchParams({action:'update_task',id:taskId,stage:'done',actor_id:myDbId(),actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     const t=_pm.tasks.find(t=>t.id===taskId);
@@ -3505,13 +3575,13 @@ async function _pmSaveTaskEdits(taskId){
   const estHEl=document.getElementById('pm-edit-est-hours');
   const logHEl=document.getElementById('pm-edit-logged-hours');
   const assignId=assignEl?assignEl.value:'';
-  const assignName=assignEl&&assignEl.value?EMPS.find(e=>String(e.id)===assignEl.value)?.name||'':'';
+  const assignName=assignEl&&assignEl.value?EMPS.find(e=>String(e.id).replace(/^e/,'')===String(assignEl.value).replace(/^e/,''))?.name||'':'';
   const priority=priEl?priEl.value:'medium';
   const due=dueEl?dueEl.value:'';
   const estHours=estHEl?estHEl.value:'';
   const logHours=logHEl?logHEl.value:'';
   try{
-    const p=new URLSearchParams({action:'update_task',id:taskId,assigned_to:assignId,assigned_name:assignName,priority,due_date:due,estimated_hours:estHours,logged_hours:logHours,actor_id:cur.id,actor_name:cur.name});
+    const p=new URLSearchParams({action:'update_task',id:taskId,assigned_to:assignId,assigned_name:assignName,priority,due_date:due,estimated_hours:estHours,logged_hours:logHours,actor_id:myDbId(),actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     // Update local state
@@ -3589,8 +3659,12 @@ async function _pmSubmitComment(taskId){
     list.scrollTop=list.scrollHeight;
   }
   try{
-    const cp=new URLSearchParams({action:'add_task_comment',task_id:taskId,user_id:cur.id,user_name:cur.name,comment});
-    await fetch(API_BASE+'?'+cp).then(x=>x.json());
+    const cp=new URLSearchParams({action:'add_task_comment',task_id:taskId,user_id:myDbId(),user_name:cur.name,comment});
+    const saved=await fetch(API_BASE+'?'+cp).then(x=>x.json());
+    if(!saved||!saved.success){
+      showToast('Comment not saved: '+((saved&&saved.error)||'please try again'));
+      if(inp&&!inp.value)inp.value=comment;
+    }
     // Refresh with real server data
     const cRes=await fetch(`api.php?action=load_task_comments&task_id=${taskId}`).then(r=>r.json());
     _pm.comments=cRes.comments||[];
@@ -3650,7 +3724,7 @@ async function _pmDoMove(newStage){
   const panel=document.getElementById('pm-task-panel');
   if(panel)panel.remove();
   try{
-    const mp=new URLSearchParams({action:'update_task',id:taskId,stage:newStage,actor_id:cur.id,actor_name:cur.name});
+    const mp=new URLSearchParams({action:'update_task',id:taskId,stage:newStage,actor_id:myDbId(),actor_name:cur.name});
     await fetch(API_BASE+'?'+mp).then(x=>x.json());
     // Update local state
     const t=_pm.tasks.find(t=>t.id===taskId);
@@ -3668,7 +3742,7 @@ async function _pmDragDrop(event,toStage){
   const fromStage=event.dataTransfer.getData('fromStage');
   if(!taskId||fromStage===toStage)return;
   try{
-    const mp=new URLSearchParams({action:'update_task',id:taskId,stage:toStage,actor_id:cur.id,actor_name:cur.name});
+    const mp=new URLSearchParams({action:'update_task',id:taskId,stage:toStage,actor_id:myDbId(),actor_name:cur.name});
     await fetch(API_BASE+'?'+mp).then(x=>x.json());
     const t=_pm.tasks.find(t=>t.id===taskId);
     if(t)t.stage=toStage;
@@ -3702,6 +3776,10 @@ function _pmProjectModalHTML(){
       <input id="pm-proj-due" type="date" class="pm-inp">
       <label class="pm-lbl">Estimated Hours <span style="color:var(--mid);font-weight:400">(optional)</span></label>
       <input id="pm-proj-est-hours" type="number" min="0" step="0.5" placeholder="e.g. 40" class="pm-inp">
+      <label class="pm-lbl">Project Team <span style="color:var(--mid);font-weight:400">(who can see this project)</span></label>
+      <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:.25rem .6rem;margin-bottom:.75rem">
+        ${EMPS.filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>{const id=String(e.id).replace(/^e/,"");return `<label style="display:flex;align-items:center;gap:.5rem;padding:.25rem 0;font-size:.82rem;color:var(--dark);cursor:pointer"><input type="checkbox" class="pm-newproj-cb" value="${id}"> ${escHtml(e.name)}</label>`;}).join("")}
+      </div>
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.5rem">
         <button class="btn btn-outline" onclick="document.getElementById('pm-proj-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" onclick="_pmSaveProject()">Create Project</button>
@@ -3720,6 +3798,7 @@ function _pmAddProjectModal(){
   if(eh)eh.value='';
   const csel=modal.querySelector('#pm-proj-client');
   if(csel)csel.value='';
+  modal.querySelectorAll('.pm-newproj-cb').forEach(cb=>{cb.checked=(cb.value===myDbId());});
   modal.style.display='flex';
 }
 
@@ -3764,7 +3843,8 @@ async function _pmSaveProject(){
   if(!name){alert('Project name is required.');return;}
   if(clientEl&&clientEl.tagName==='SELECT'&&!clientId){alert('Please pick the client this project is for.');return;}
   try{
-    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',estimated_hours:estHours,created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,client_id:clientId||''});
+    const teamIds=[...document.querySelectorAll('.pm-newproj-cb:checked')].map(c=>c.value).join(',');
+    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',estimated_hours:estHours,created_by:myDbId(),client_id:clientId||'',user_ids:teamIds});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-proj-modal').style.display='none';
@@ -3817,7 +3897,9 @@ function _pmAddTaskModal(projectId){
   document.getElementById('pm-task-proj-name').value=proj?proj.name:'';
   document.getElementById('pm-task-title').value='';
   document.getElementById('pm-task-desc').value='';
-  document.getElementById('pm-task-assign').value='';
+  const asg=document.getElementById('pm-task-assign');
+  asg.innerHTML=`<option value="">— Unassigned —</option>${pmAssignOptions(proj?proj.id:0,'')}`;
+  asg.value='';
   document.getElementById('pm-task-priority').value='medium';
   document.getElementById('pm-task-stage').value='backlog';
   document.getElementById('pm-task-due').value='';
