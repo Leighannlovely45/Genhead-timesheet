@@ -30,6 +30,15 @@ if ($method === 'GET') {
         echo json_encode(['success' => true, 'message' => 'Admin password reset.']); exit;
     }
 
+    // ── DEBUG: CHECK ADMIN USER (token-protected, remove after use) ──────────
+    if ($action === 'debug_admin') {
+        $tok = $_GET['tok'] ?? '';
+        if ($tok !== 'gh2026reset') { echo json_encode(['error'=>'Invalid']); exit; }
+        $db = getDB();
+        $rows = $db->query("SELECT id, name, email, role, status, password_set, CASE WHEN password_hash IS NULL THEN 'NULL' ELSE 'SET' END as hash_status FROM users WHERE role='admin'")->fetchAll();
+        echo json_encode($rows); exit;
+    }
+
     // ── VERIFY PASSWORD VIA GET (avoids WAF blocking POST) ──────────────────
     if ($action === 'verify_password') {
         $db = getDB();
