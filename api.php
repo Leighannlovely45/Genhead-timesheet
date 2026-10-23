@@ -557,22 +557,26 @@ if ($method === 'GET') {
         $mkByEmp = $mkEmpStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // --- PROJECTIONS: projects with estimated_hours vs actual logged hours
-        $projStmt = $db->prepare("
-            SELECT p.id, p.name, p.client_name, p.billing_type, p.status,
-                p.due_date, p.estimated_hours,
-                (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id) AS task_count,
-                (SELECT COUNT(*) FROM tasks t WHERE t.project_id=p.id AND t.stage='done') AS done_count,
-                COALESCE((
-                    SELECT SUM(te2.hours)
-                    FROM timesheet_entries te2
-                    JOIN timesheets ts2 ON te2.timesheet_id=ts2.id
-                    WHERE te2.deliverable LIKE CONCAT('%',p.name,'%')
-                ), 0) AS logged_hours
-            FROM projects p
-            WHERE p.status != 'archived'
-            ORDER BY p.due_date IS NULL, p.due_date ASC, p.updated_at DESC");
-        $projStmt->execute();
-        $projections = $projStmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $projStmt = $db->prepare("
+                SELECT p.id, p.name, p.client_name, p.billing_type, p.status,
+                    p.due_date, p.estimated_hours,
+                    (SELECT COUNT(*) FROM tasks tk WHERE tk.project_id=p.id) AS task_count,
+                    (SELECT COUNT(*) FROM tasks tk WHERE tk.project_id=p.id AND tk.stage='done') AS done_count,
+                    COALESCE((
+                        SELECT SUM(te2.hours)
+                        FROM timesheet_entries te2
+                        JOIN timesheets ts2 ON te2.timesheet_id=ts2.id
+                        WHERE te2.deliverable LIKE CONCAT('%',p.name,'%')
+                    ), 0) AS logged_hours
+                FROM projects p
+                WHERE p.status != 'archived'
+                ORDER BY p.due_date IS NULL, p.due_date ASC, p.updated_at DESC");
+            $projStmt->execute();
+            $projections = $projStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $pe) {
+            $projections = [];
+        }
 
         $payload = ['success' => true, 'report' => [
             'master'      => $master,

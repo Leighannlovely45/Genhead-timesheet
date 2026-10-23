@@ -2851,7 +2851,7 @@ async function _pmSaveProject(){
   const clientId=clientEl?clientEl.value:'';
   if(!name){alert('Project name is required.');return;}
   try{
-    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',created_by:parseInt(cur.id)||0,client_id:clientId||''});
+    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,client_id:clientId||''});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-proj-modal').style.display='none';
@@ -2925,7 +2925,7 @@ async function _pmSaveTask(){
   const due=document.getElementById('pm-task-due').value;
   if(!projId||!title){alert('Project and task title are required.');return;}
   try{
-    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',created_by:parseInt(cur.id)||0,actor_name:cur.name});
+    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-task-modal').style.display='none';
