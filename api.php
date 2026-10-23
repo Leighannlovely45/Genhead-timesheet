@@ -17,31 +17,6 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // ─────────────────────────────────────────
 if ($method === 'GET') {
 
-    // ── EMERGENCY ADMIN PASSWORD RESET (token-protected, remove after use) ───
-    if ($action === 'reset_admin_pw') {
-        $tok = $_GET['tok'] ?? '';
-        $pw  = $_GET['pw']  ?? '';
-        // WAF-safe: token uses only alphanumeric, password decoded from base64 if prefixed
-        if (strpos($pw, 'b64_') === 0) $pw = base64_decode(substr($pw, 4));
-        if ($tok !== 'gh2026reset' || strlen($pw) < 6) {
-            echo json_encode(['success' => false, 'error' => 'Invalid', 'tok_ok' => ($tok==='gh2026reset'), 'pw_len' => strlen($pw)]); exit;
-        }
-        $db   = getDB();
-        $hash = password_hash($pw, PASSWORD_DEFAULT);
-        $result = $db->prepare("UPDATE users SET password_hash=?, password_set=1 WHERE role='admin' AND status='active'");
-        $result->execute([$hash]);
-        $affected = $result->rowCount();
-        echo json_encode(['success' => true, 'message' => 'Admin password reset.', 'rows_updated' => $affected]); exit;
-    }
-
-    // ── DEBUG: CHECK ADMIN USER (token-protected, remove after use) ──────────
-    if ($action === 'debug_admin') {
-        $tok = $_GET['tok'] ?? '';
-        if ($tok !== 'gh2026reset') { echo json_encode(['error'=>'Invalid', 'got'=>$tok]); exit; }
-        $db = getDB();
-        $rows = $db->query("SELECT id, name, email, role, status, password_set, CASE WHEN password_hash IS NULL THEN 'NULL' ELSE 'SET' END as hash_status FROM users WHERE role='admin'")->fetchAll();
-        echo json_encode(['success'=>true,'rows'=>$rows]); exit;
-    }
 
     // ── VERIFY PASSWORD VIA GET (avoids WAF blocking POST) ──────────────────
     if ($action === 'verify_password') {
@@ -264,6 +239,9 @@ if ($method === 'GET') {
     // ── LOAD TASKS (for a project or all) ────────────────────────────────────
     if ($action === 'load_tasks') {
         $db         = getDB();
+        // Ensure hours columns exist on tasks
+        try { $db->exec("ALTER TABLE tasks ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
+        try { $db->exec("ALTER TABLE tasks ADD COLUMN logged_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
         $projectId  = (int)($_GET['project_id'] ?? 0);
         $assignedTo = (int)($_GET['assigned_to'] ?? 0);
         $stage      = $_GET['stage'] ?? '';
@@ -899,9 +877,11 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         $dueDate     = !empty($body['due_date'])  ? $body['due_date'] : null;
         $description = trim($body['description']  ?? '') ?: null;
         $createdBy   = (int)($body['created_by']  ?? 0);
+        $estHours    = isset($body['estimated_hours']) && $body['estimated_hours'] !== '' ? (float)$body['estimated_hours'] : null;
         if (!$name || !$createdBy) { echo json_encode(['success'=>false,'error'=>'name and created_by required']); exit; }
-        $db->prepare("INSERT INTO projects (name,client_id,client_name,status,billing_type,due_date,description,created_by) VALUES (?,?,?,?,?,?,?,?)")
-           ->execute([$name,$clientId,$clientName,$status,$billingType,$dueDate,$description,$createdBy]);
+        try { $db->exec("ALTER TABLE projects ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
+        $db->prepare("INSERT INTO projects (name,client_id,client_name,status,billing_type,due_date,description,created_by,estimated_hours) VALUES (?,?,?,?,?,?,?,?,?)")
+           ->execute([$name,$clientId,$clientName,$status,$billingType,$dueDate,$description,$createdBy,$estHours]);
         echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
         exit;
     }
@@ -939,6 +919,8 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         if (isset($body['assigned_name'])) { $fields[]='assigned_name = ?'; $params[]=trim($body['assigned_name'])?:null; }
         if (isset($body['priority']) && in_array($body['priority'],['low','medium','high'])) { $fields[]='priority = ?'; $params[]=$body['priority']; }
         if (isset($body['due_date']))      { $fields[]='due_date = ?';      $params[]=$body['due_date']?:null; }
+        if (isset($body['estimated_hours']) && $body['estimated_hours']!=='') { $fields[]='estimated_hours = ?'; $params[]=(float)$body['estimated_hours']; }
+        if (isset($body['logged_hours'])   && $body['logged_hours']!=='')    { $fields[]='logged_hours = ?';    $params[]=(float)$body['logged_hours']; }
         if (!$fields) { echo json_encode(['success'=>false,'error'=>'nothing to update']); exit; }
         $params[]=$id;
         $db->prepare("UPDATE tasks SET ".implode(',',$fields)." WHERE id=?")->execute($params);

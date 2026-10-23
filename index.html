@@ -1203,6 +1203,19 @@ function renderDash(){
     <div class="dash-top"><div><h2>Team</h2><p>Manage employees and staff</p></div>
       <button class="btn btn-primary" onclick="showAddMemberModal()">+ Add Member</button>
     </div>
+    <!-- Search bar -->
+    <div style="margin-bottom:.85rem;display:flex;gap:.6rem;align-items:center">
+      <div style="position:relative;flex:1;max-width:360px">
+        <span style="position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:var(--mid);font-size:.9rem;pointer-events:none">🔍</span>
+        <input id="team-search" type="text" placeholder="Search by name, email, or role…" oninput="renderTeam()" style="width:100%;padding:.5rem .75rem .5rem 2.1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--dark);font-size:.84rem;box-sizing:border-box">
+      </div>
+      <select id="team-role-filter" onchange="renderTeam()" style="background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;font-size:.82rem">
+        <option value="">All Roles</option>
+        <option value="employee">Employees</option>
+        <option value="manager">Managers</option>
+        <option value="hr">HR</option>
+      </select>
+    </div>
     <div id="team-table-wrap" style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1rem"></div>
     <!-- Add/Edit Member Modal -->
     <div id="member-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center">
@@ -1569,29 +1582,66 @@ function renderRecords(){
 function renderTeam(){
   const wrap=document.getElementById("team-table-wrap");
   if(!wrap) return;
-  const allStaff=EMPS.filter(e=>e.role!=="admin");
-  if(!allStaff.length){wrap.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">No team members yet.</div>';return;}
+  const q=(document.getElementById("team-search")?.value||"").toLowerCase();
+  const roleFilter=document.getElementById("team-role-filter")?.value||"";
+  let allStaff=EMPS.filter(e=>e.role!=="admin");
+  if(q) allStaff=allStaff.filter(e=>(e.name||"").toLowerCase().includes(q)||(e.email||"").toLowerCase().includes(q)||(e.role||"").toLowerCase().includes(q));
+  if(roleFilter) allStaff=allStaff.filter(e=>e.role===roleFilter);
+  if(!allStaff.length){
+    wrap.innerHTML=`<div style="padding:2rem;text-align:center;color:var(--mid)">${q||roleFilter?"No members match your search.":"No team members yet."}</div>`;
+    return;
+  }
+  const managers=EMPS.filter(e=>e.role==="manager"||e.role==="hr"||e.role==="admin");
+  const mgrOpts=managers.map(m=>`<option value="${m.id}">${escHtml(m.name)}</option>`).join("");
   const rows=allStaff.map(e=>{
     const roleBadge=e.role==="manager"?'<span class="badge-role mgr">Manager</span>':e.role==="hr"?'<span class="badge-role hr">HR</span>':'<span class="badge-role">Employee</span>';
     const isActive=e.active!==false&&e.status!=="inactive";
     const statusDot=isActive?'<span style="color:#10b981;font-size:.78rem">● Active</span>':'<span style="color:#ef4444;font-size:.78rem">● Inactive</span>';
     const credential=e.role==="employee"?(e.pin_set?'<span style="color:#10b981;font-size:.75rem">PIN set</span>':'<span style="color:#f59e0b;font-size:.75rem">No PIN</span>'):(e.password_set?'<span style="color:#10b981;font-size:.75rem">PW set</span>':'<span style="color:#f59e0b;font-size:.75rem">No PW</span>');
+    // Manager assignment dropdown (only for employees)
+    let mgrCell='<span style="color:var(--mid);font-size:.78rem">—</span>';
+    if(e.role==="employee"){
+      // manager_id in DB is numeric; EMPS ids are "eN" format
+      const curMgrNumId=e.manager_id?String(e.manager_id):"";
+      mgrCell=`<select style="background:var(--hover);color:var(--dark);border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.78rem;max-width:160px" onchange="assignManager('${e.id}',this.value)">
+        <option value="">Unassigned</option>
+        ${managers.map(m=>{const mNumId=String(m.id).replace(/^e/,'');return`<option value="${m.id}"${mNumId===curMgrNumId?' selected':''}>${escHtml(m.name)}</option>`;}).join("")}
+      </select>`;
+    }
     return `<tr>
-      <td><strong>${e.name}</strong></td>
-      <td style="font-size:.78rem;color:var(--mid)">${e.email||"—"}</td>
+      <td><strong>${escHtml(e.name)}</strong></td>
+      <td style="font-size:.78rem;color:var(--mid)">${escHtml(e.email||"—")}</td>
       <td>${roleBadge}</td>
       <td>${statusDot}</td>
       <td>${credential}</td>
+      <td>${mgrCell}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;margin-right:.35rem" onclick="editMember('${e.id}')">Edit</button>
         <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;color:${isActive?'#ef4444':'#10b981'}" onclick="toggleMemberActive('${e.id}',${isActive})">${isActive?"Deactivate":"Reactivate"}</button>
       </td>
     </tr>`;
   }).join("");
-  wrap.innerHTML=`<div class="billing-tbl"><table>
-    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Credential</th><th>Actions</th></tr></thead>
+  const total=EMPS.filter(e=>e.role!=="admin").length;
+  const showing=allStaff.length;
+  const countNote=(q||roleFilter)&&showing<total?`<div style="font-size:.78rem;color:var(--mid);margin-bottom:.6rem">Showing ${showing} of ${total} members</div>`:"";
+  wrap.innerHTML=`${countNote}<div class="billing-tbl"><table>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Credential</th><th>Reports To</th><th>Actions</th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
+}
+
+async function assignManager(empId,mgrId){
+  try{
+    const r=await api({action:"assign_manager",employee_id:empId,manager_id:mgrId||""});
+    if(r.success){
+      const emp=EMPS.find(e=>e.id===empId);
+      if(emp) emp.manager_id=mgrId?mgrId.replace("e",""):null;
+      showToast("Manager assignment updated.");
+    } else {
+      showToast("Failed to assign manager: "+(r.error||"unknown error"));
+      renderTeam(); // revert UI
+    }
+  }catch(e){showToast("Error: "+e.message);renderTeam();}
 }
 
 // ── REPORTS V2 ──────────────────────────────────────────────────────────────
@@ -2582,30 +2632,69 @@ function _pmProjectsView(clientFilter){
 
 function _pmTaskCard(t,s){
   const proj=_pm.projects.find(p=>p.id===t.project_id)||{name:''};
-  const initials=t.assigned_name?t.assigned_name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2):'—';
+  const initials=t.assigned_name?t.assigned_name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2):'?';
   const dueColor=t.due_date&&new Date(t.due_date)<new Date()?'color:#f87171':'color:var(--mid)';
   const dueTxt=t.due_date?t.due_date.slice(5):''; // MM-DD
   const btCls=t.billing_type?`btype-tag bt-${t.billing_type}`:'btype-tag bt-billable';
   const btLabel=t.billing_type?(BILLING_TYPES.find(b=>b.key===t.billing_type)||{label:t.billing_type}).label:'Billable';
   const priColor=t.priority==='high'?'#f87171':t.priority==='medium'?'#fb923c':'#4ade80';
+  const assigneeName=t.assigned_name||'Unassigned';
+  const isUnassigned=!t.assigned_name;
+  // Hours display
+  const estH=parseFloat(t.estimated_hours)||0;
+  const logH=parseFloat(t.logged_hours)||0;
+  const hoursHtml=estH||logH?`<span style="font-size:.68rem;color:var(--mid);white-space:nowrap">⏱ ${logH.toFixed(1)}/${estH||'?'}h</span>`:'';
   return `<div class="pm-card stage-${s.key}" draggable="true"
     ondragstart="event.dataTransfer.setData('taskId','${t.id}');event.dataTransfer.setData('fromStage','${s.key}');event.currentTarget.style.opacity='.45'"
     ondragend="event.currentTarget.style.opacity='1'"
     onclick="_pmOpenTask(${t.id})">
     <div class="pm-card-proj">${escHtml(proj.name)}</div>
     <div class="pm-card-title">${escHtml(t.title)}</div>
+    <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.35rem">
+      <span class="pm-avatar" style="flex-shrink:0" title="${escHtml(assigneeName)}">${initials}</span>
+      <span style="font-size:.75rem;font-weight:${isUnassigned?'400':'500'};color:${isUnassigned?'var(--mid)':'var(--dark)'};flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(assigneeName)}</span>
+      <button class="pm-move-btn" style="padding:.15rem .4rem;font-size:.65rem;flex-shrink:0" title="Quick-assign" onclick="event.stopPropagation();_pmQuickAssign(${t.id})">👤 Assign</button>
+    </div>
     <div class="pm-card-meta">
       <span class="pm-pri-dot" style="background:${priColor}" title="${t.priority} priority"></span>
       <span class="${btCls}">${btLabel}</span>
       <span style="flex:1"></span>
+      ${hoursHtml}
       ${dueTxt?`<span style="font-size:.7rem;${dueColor}">${dueTxt}</span>`:''}
-      <span class="pm-avatar" title="${escHtml(t.assigned_name||'Unassigned')}">${initials}</span>
     </div>
     <div style="display:flex;gap:.35rem;margin-top:.35rem">
       <button class="pm-move-btn" style="flex:1" onclick="event.stopPropagation();_pmMoveModal(${t.id},'${s.key}')">→ Move</button>
       ${s.key!=='done'?`<button class="pm-move-btn" style="color:var(--teal);border-color:var(--teal)" onclick="event.stopPropagation();_pmCompleteTask(${t.id})">✓</button>`:''}
     </div>
   </div>`;
+}
+
+function _pmQuickAssign(taskId){
+  const t=_pm.tasks.find(x=>x.id===taskId); if(!t) return;
+  const opts=EMPS.filter(e=>e.active||e.status==='active').map(e=>`<option value="${e.id}" data-name="${escHtml(e.name)}" ${String(e.id)===String(t.assigned_to)?'selected':''}>${escHtml(e.name)}</option>`).join('');
+  const sel=`<select id="qa-sel" style="width:100%;padding:.5rem;border-radius:7px;border:1px solid var(--border);font-size:.9rem;background:var(--bg);color:var(--dark)">
+    <option value="">— Unassigned —</option>${opts}</select>`;
+  const modal=document.createElement('div');
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML=`<div style="background:var(--bg);border-radius:12px;padding:1.25rem;width:280px;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+    <div style="font-size:.9rem;font-weight:600;color:var(--dark);margin-bottom:.75rem">Assign: ${escHtml(t.title)}</div>
+    ${sel}
+    <div style="display:flex;gap:.5rem;margin-top:.85rem">
+      <button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;padding:.45rem;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--mid);cursor:pointer">Cancel</button>
+      <button onclick="_pmQuickAssignSave(${taskId},document.getElementById('qa-sel'));this.closest('div[style*=fixed]').remove()" style="flex:1;padding:.45rem;border:none;border-radius:7px;background:var(--teal);color:#fff;cursor:pointer;font-weight:500">Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+}
+
+async function _pmQuickAssignSave(taskId,sel){
+  const empId=sel.value;
+  const empName=sel.options[sel.selectedIndex]?.dataset?.name||'';
+  const t=_pm.tasks.find(x=>x.id===taskId); if(!t) return;
+  t.assigned_to=empId||null; t.assigned_name=empName||null;
+  _renderPMBoard();
+  await fetch(`${API_BASE}?action=update_task&id=${taskId}&assigned_to=${empId}&assigned_name=${encodeURIComponent(empName)}&actor_id=${cur.db_id||0}&actor_name=${encodeURIComponent(cur.name||'')}`).catch(()=>{});
 }
 
 function _pmMyTasks(){
@@ -2808,6 +2897,14 @@ function _pmShowTaskPanel(task){
           <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Due Date</label>
           <input id="pm-edit-due" type="date" value="${task.due_date||''}" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
         </div>
+        <div>
+          <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Est. Hours</label>
+          <input id="pm-edit-est-hours" type="number" min="0" step="0.5" value="${task.estimated_hours||''}" placeholder="e.g. 4" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
+        </div>
+        <div>
+          <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Logged Hours</label>
+          <input id="pm-edit-logged-hours" type="number" min="0" step="0.25" value="${task.logged_hours||''}" placeholder="e.g. 2.5" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
+        </div>
         <div style="display:flex;align-items:flex-end">
           <button class="btn btn-primary" style="font-size:.78rem;padding:.35rem .8rem;width:100%" onclick="_pmSaveTaskEdits(${task.id})">Save</button>
         </div>
@@ -2875,17 +2972,21 @@ async function _pmSaveTaskEdits(taskId){
   const assignEl=document.getElementById('pm-edit-assign');
   const priEl=document.getElementById('pm-edit-priority');
   const dueEl=document.getElementById('pm-edit-due');
+  const estHEl=document.getElementById('pm-edit-est-hours');
+  const logHEl=document.getElementById('pm-edit-logged-hours');
   const assignId=assignEl?assignEl.value:'';
   const assignName=assignEl&&assignEl.value?EMPS.find(e=>String(e.id)===assignEl.value)?.name||'':'';
   const priority=priEl?priEl.value:'medium';
   const due=dueEl?dueEl.value:'';
+  const estHours=estHEl?estHEl.value:'';
+  const logHours=logHEl?logHEl.value:'';
   try{
-    const p=new URLSearchParams({action:'update_task',id:taskId,assigned_to:assignId,assigned_name:assignName,priority,due_date:due,actor_id:cur.id,actor_name:cur.name});
+    const p=new URLSearchParams({action:'update_task',id:taskId,assigned_to:assignId,assigned_name:assignName,priority,due_date:due,estimated_hours:estHours,logged_hours:logHours,actor_id:cur.id,actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     // Update local state
     const t=_pm.tasks.find(t=>t.id===taskId);
-    if(t){t.assigned_to=assignId;t.assigned_name=assignName;t.priority=priority;t.due_date=due;}
+    if(t){t.assigned_to=assignId;t.assigned_name=assignName;t.priority=priority;t.due_date=due;t.estimated_hours=estHours||null;t.logged_hours=logHours||null;}
     // Close panel and re-render
     const panel=document.getElementById('pm-task-panel');
     if(panel)panel.remove();
@@ -3337,7 +3438,15 @@ async function saveMember(){
         r=await api({action:"add_manager",name,email,role,password:pw||""});
         if(r.success){EMPS.push({id:r.id,name,email,role,active:true,status:"active",pin_set:false,password_set:!!pw});}
       }
-      if(r.success) showToast(`${name} added as ${role}.`);
+      if(r.success){
+        showToast(`${name} added as ${role}.`);
+        // Fire GHL webhook to notify of new team member
+        if(GHL_WEBHOOK){
+          fetch(GHL_WEBHOOK,{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({event:"new_employee",name,email,role,timestamp:new Date().toISOString()})
+          }).catch(()=>{});
+        }
+      }
     }
     if(r&&r.success){closeMemberModal();renderTeam();}
     else alert(r?.error||"Failed to save.");
