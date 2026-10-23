@@ -3322,6 +3322,8 @@ function _pmTaskModalHTML(){
       </select>
       <label class="pm-lbl">Due Date</label>
       <input id="pm-task-due" type="date" class="pm-inp">
+      <label class="pm-lbl">Est. Hours <span style="color:var(--mid);font-weight:400">(optional)</span></label>
+      <input id="pm-task-est-hours" type="number" min="0" step="0.5" placeholder="e.g. 4" class="pm-inp">
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.5rem">
         <button class="btn btn-outline" onclick="document.getElementById('pm-task-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" onclick="_pmSaveTask()">Add Task</button>
@@ -3342,6 +3344,8 @@ function _pmAddTaskModal(projectId){
   document.getElementById('pm-task-priority').value='medium';
   document.getElementById('pm-task-stage').value='backlog';
   document.getElementById('pm-task-due').value='';
+  const estEl=document.getElementById('pm-task-est-hours');
+  if(estEl) estEl.value='';
   modal.style.display='flex';
   setTimeout(()=>document.getElementById('pm-task-title').focus(),50);
 }
@@ -3356,10 +3360,12 @@ async function _pmSaveTask(){
   const priority=document.getElementById('pm-task-priority').value;
   const stage=document.getElementById('pm-task-stage').value;
   const due=document.getElementById('pm-task-due').value;
+  const estHEl=document.getElementById('pm-task-est-hours');
+  const estHours=estHEl&&estHEl.value?estHEl.value:'';
   if(!projId){alert('No project selected.');return;}
   if(!title){alert('Task title is required.');return;}
   try{
-    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,actor_name:cur.name});
+    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',estimated_hours:estHours,created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     // Add new task to local cache so board re-renders immediately

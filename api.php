@@ -584,6 +584,11 @@ if ($method === 'GET') {
                         FROM timesheet_entries te2
                         JOIN timesheets ts2 ON te2.timesheet_id=ts2.id
                         WHERE te2.deliverable LIKE CONCAT('%',p.name,'%')
+                    ), 0) +
+                    COALESCE((
+                        SELECT SUM(tk2.logged_hours)
+                        FROM tasks tk2
+                        WHERE tk2.project_id = p.id AND tk2.logged_hours IS NOT NULL
                     ), 0) AS logged_hours
                 FROM projects p
                 WHERE p.status != 'archived'
@@ -973,10 +978,12 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         $stage       = in_array($body['stage'] ?? '', ['backlog','todo','inprogress','inreview','done']) ? $body['stage'] : 'backlog';
         $dueDate     = !empty($body['due_date'])   ? $body['due_date'] : null;
         $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : null;
+        $estHours    = isset($body['estimated_hours']) && $body['estimated_hours'] !== '' ? (float)$body['estimated_hours'] : null;
         $createdBy   = (int)($body['created_by']  ?? 0);
         if (!$projectId || !$title || !$createdBy) { echo json_encode(['success'=>false,'error'=>'project_id, title, created_by required']); exit; }
-        $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,due_date,billing_type,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)")
-           ->execute([$projectId,$title,$description,$assignedTo,$assignedName,$priority,$stage,$dueDate,$billingType,$createdBy]);
+        try { $db->exec("ALTER TABLE tasks ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
+        $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,due_date,billing_type,estimated_hours,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+           ->execute([$projectId,$title,$description,$assignedTo,$assignedName,$priority,$stage,$dueDate,$billingType,$estHours,$createdBy]);
         $taskId=(int)$db->lastInsertId();
         // Activity log
         $actorName=trim($body['actor_name']??'') ?: 'Someone';
