@@ -1352,46 +1352,13 @@ function renderDash(){
 
   <!-- SETTINGS PANE -->
   <div id="pane-settings" style="display:none">
-    <div class="dash-top"><div><h2>Settings</h2><p>App configuration</p></div></div>
+    <div class="dash-top"><div><h2>Settings</h2><p>Timecard &amp; HR configuration</p></div></div>
     <div style="max-width:660px;display:flex;flex-direction:column;gap:1.25rem">
-
-      <!-- Webhook URLs -->
-      <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
-        <h3 style="margin:0 0 1rem;font-size:1rem;color:var(--dark)">GHL Webhook URLs</h3>
-        <div style="margin-bottom:.9rem">
-          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Submission Webhook</label>
-          <input id="set-wh-submit" type="url" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="https://services.leadconnectorhq.com/hooks/…">
-        </div>
-        <div style="margin-bottom:.9rem">
-          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Invite Webhook</label>
-          <input id="set-wh-invite" type="url" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="https://services.leadconnectorhq.com/hooks/…">
-        </div>
-        <div style="margin-bottom:1rem">
-          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Notification Webhook</label>
-          <input id="set-wh-notify" type="url" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="https://services.leadconnectorhq.com/hooks/…">
-        </div>
-        <button class="btn btn-primary" onclick="saveSettingsWebhooks()">Save Webhooks</button>
-        <div id="set-wh-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
-      </div>
-
-      <!-- GHL API Integration -->
-      <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
-        <h3 style="margin:0 0 1rem;font-size:1rem;color:var(--dark)">GHL API Integration</h3>
-        <div style="margin-bottom:.9rem">
-          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">API Key</label>
-          <input id="set-ghl-key" type="password" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…">
-        </div>
-        <div style="margin-bottom:1rem">
-          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Location ID</label>
-          <input id="set-ghl-loc" type="text" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="abc123xyz…">
-        </div>
-        <button class="btn btn-primary" onclick="saveSettingsGHL()">Save GHL Settings</button>
-        <div id="set-ghl-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
-      </div>
 
       <!-- Overtime Thresholds -->
       <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
-        <h3 style="margin:0 0 1rem;font-size:1rem;color:var(--dark)">Overtime Rules</h3>
+        <h3 style="margin:0 0 .25rem;font-size:1rem;color:var(--dark)">Overtime Rules</h3>
+        <p style="font-size:.8rem;color:var(--mid);margin:0 0 1rem">Timecard overtime calculation thresholds.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.85rem;margin-bottom:1rem">
           <div>
             <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Weekly Threshold (hrs)</label>
@@ -1406,15 +1373,29 @@ function renderDash(){
         <div id="set-ot-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
       </div>
 
-      <!-- Webhook Secret -->
+      <!-- HR Settings -->
       <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
-        <h3 style="margin:0 0 .5rem;font-size:1rem;color:var(--dark)">Webhook Security</h3>
-        <p style="font-size:.8rem;color:var(--mid);margin:0 0 .85rem">This secret validates incoming GHL webhooks. It must match the <code>?secret=</code> param in your GHL workflow URL.</p>
-        <div style="margin-bottom:1rem">
-          <input id="set-secret" type="text" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box" placeholder="genhead2026ghl">
+        <h3 style="margin:0 0 .25rem;font-size:1rem;color:var(--dark)">HR Settings</h3>
+        <p style="font-size:.8rem;color:var(--mid);margin:0 0 1rem">Timecard approval and pay period configuration.</p>
+        <div style="margin-bottom:.9rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Timecard Approval</label>
+          <select id="set-hr-approval" style="width:100%;background:var(--hover);color:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;font-size:.84rem">
+            <option value="required">Required — HR must approve before payroll</option>
+            <option value="optional">Optional — HR can review but not required</option>
+            <option value="auto">Auto-approve — timecards approved on submission</option>
+          </select>
         </div>
-        <button class="btn btn-primary" onclick="saveSettingsSecret()">Save Secret</button>
-        <div id="set-secret-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+        <div style="margin-bottom:1rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Pay Period</label>
+          <select id="set-hr-period" style="width:100%;background:var(--hover);color:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;font-size:.84rem">
+            <option value="biweekly">Bi-weekly (every 2 weeks)</option>
+            <option value="weekly">Weekly</option>
+            <option value="semimonthly">Semi-monthly (1st &amp; 15th)</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="saveSettingsHR()">Save HR Settings</button>
+        <div id="set-hr-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
       </div>
 
     </div>
@@ -1454,6 +1435,38 @@ function renderDash(){
         </div>
       </div>
     </div>
+    <!-- GHL API + Webhook Secret (moved from Settings) -->
+    <div class="ghl-panel">
+      <div class="ghl-header"><h3>GHL API Integration</h3><span class="ghl-badge">API</span></div>
+      <div class="ghl-body">
+        <div class="ghl-field">
+          <label>API Key</label>
+          <input id="set-ghl-key" type="password" class="ghl-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…">
+        </div>
+        <div class="ghl-field" style="margin-top:.85rem">
+          <label>Location ID</label>
+          <input id="set-ghl-loc" type="text" class="ghl-input" placeholder="abc123xyz…">
+        </div>
+        <div style="display:flex;gap:.65rem;margin-top:.85rem">
+          <button class="btn btn-primary" onclick="saveSettingsGHL()">Save GHL Settings</button>
+        </div>
+        <div id="set-ghl-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+      </div>
+    </div>
+    <div class="ghl-panel">
+      <div class="ghl-header"><h3>Webhook Security</h3><span class="ghl-badge">Security</span></div>
+      <div class="ghl-body">
+        <p style="font-size:.8rem;color:var(--mid);margin:0 0 .85rem">This secret validates incoming GHL webhooks. It must match the <code>?secret=</code> param in your GHL workflow URL.</p>
+        <div class="ghl-field">
+          <input id="set-secret" type="text" class="ghl-input" placeholder="genhead2026ghl">
+        </div>
+        <div style="margin-top:.85rem">
+          <button class="btn btn-primary" onclick="saveSettingsSecret()">Save Secret</button>
+        </div>
+        <div id="set-secret-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+      </div>
+    </div>
+
     <div class="ghl-panel">
       <div class="ghl-header"><h3>Payload sent to GHL on each submission</h3></div>
       <div class="ghl-body">
@@ -3168,27 +3181,36 @@ function escHtml(str){
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────
 function renderSettings(){
-  // Populate inputs from current GHL variables
-  const si=document.getElementById("set-wh-submit");
-  const ii=document.getElementById("set-wh-invite");
-  const ni=document.getElementById("set-wh-notify");
-  if(si) si.value=GHL_WEBHOOK||"";
-  if(ii) ii.value=GHL_INVITE_WEBHOOK||"";
-  if(ni) ni.value=GHL_NOTIFY_WEBHOOK||"";
+  // Populate OT fields from app settings
+  const threshold=document.getElementById("set-ot-threshold");
+  const multiplier=document.getElementById("set-ot-multiplier");
+  if(threshold&&appSettings) threshold.value=appSettings.overtime_weekly_threshold||"40";
+  if(multiplier&&appSettings) multiplier.value=appSettings.overtime_multiplier||"1.5";
+  // Populate HR fields
+  const approval=document.getElementById("set-hr-approval");
+  const period=document.getElementById("set-hr-period");
+  if(approval&&appSettings) approval.value=appSettings.hr_approval_mode||"required";
+  if(period&&appSettings) period.value=appSettings.hr_pay_period||"biweekly";
+  // Also populate GHL setup fields (now in GHL tab but same elements)
+  const ki=document.getElementById("set-ghl-key");
+  const li=document.getElementById("set-ghl-loc");
+  const sec=document.getElementById("set-secret");
+  if(ki&&appSettings) ki.value=appSettings.ghl_api_key||"";
+  if(li&&appSettings) li.value=appSettings.ghl_location_id||"";
+  if(sec&&appSettings) sec.value=appSettings.webhook_secret||"";
 }
 
-async function saveSettingsWebhooks(){
-  const submit=document.getElementById("set-wh-submit").value.trim();
-  const invite=document.getElementById("set-wh-invite").value.trim();
-  const notify=document.getElementById("set-wh-notify").value.trim();
-  GHL_WEBHOOK=submit;GHL_INVITE_WEBHOOK=invite;GHL_NOTIFY_WEBHOOK=notify;
+async function saveSettingsHR(){
+  const approval=document.getElementById("set-hr-approval").value;
+  const period=document.getElementById("set-hr-period").value;
   try{
-    await api({action:"update_settings",ghl_webhook_url:submit,ghl_invite_webhook_url:invite,ghl_notify_webhook_url:notify});
-    const st=document.getElementById("set-wh-status");
-    if(st){st.style.color="#10b981";st.textContent="✓ Webhook URLs saved.";}
-    showToast("Webhook URLs saved.");
+    await api({action:"update_settings",hr_approval_mode:approval,hr_pay_period:period});
+    const st=document.getElementById("set-hr-status");
+    if(st){st.style.color="#10b981";st.textContent="✓ HR settings saved.";}
+    showToast("HR settings saved.");
   }catch(e){alert("Error: "+e.message);}
 }
+
 
 async function saveSettingsGHL(){
   const key=document.getElementById("set-ghl-key").value.trim();
