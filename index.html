@@ -2428,9 +2428,9 @@ async function renderProjects(){
       _pm.followedTaskIds=followedTasks.map(t=>t.id);
     }
     _pm.loading  = false;
-    _pm.view='board';
+    _pm.view='projects';
     _pm.activeProject=null;
-    _renderPMBoard();
+    _pmProjectsView();
   }catch(e){
     root.innerHTML=`<div style="padding:2rem;text-align:center;color:#f87171">Failed to load projects: ${e.message}</div>`;
   }
@@ -2516,8 +2516,7 @@ function _pmProjectsView(clientFilter){
     <div><h2>All Projects</h2><p>${visibleProjects.length} project${visibleProjects.length!==1?'s':''}</p></div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${clientFilterHtml}
-      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pm.view='board';_pm.clientFilter='';_renderPMBoard()">← Board View</button>
-      ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
+      <button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>
     </div>
   </div>`;
 
@@ -2531,7 +2530,7 @@ function _pmProjectsView(clientFilter){
       const pct=total?Math.round(done/total*100):0;
       const billingLabel=(BILLING_TYPES.find(b=>b.key===p.billing_type)||{label:'Billable'}).label;
       const overdue=p.due_date&&new Date(p.due_date)<new Date();
-      h+=`<div class="pm-proj-card" onclick="_pmProjectDetail(${p.id})">
+      h+=`<div class="pm-proj-card" onclick="_pmProjectBoard(${p.id})">
         <div class="pm-proj-card-top">
           <div class="pm-proj-card-name">${escHtml(p.name)}</div>
           ${p.client_name?`<div class="pm-proj-card-client">${escHtml(p.client_name)}</div>`:''}
@@ -2615,6 +2614,55 @@ function _pmMyTasks(){
     });
     h+=`</tbody></table></div>`;
   }
+  h+=_pmMoveModalHTML();
+  root.innerHTML=h;
+}
+
+// ── PER-PROJECT KANBAN BOARD ─────────────────────────────────────────────────
+function _pmProjectBoard(projectId){
+  const proj=_pm.projects.find(p=>p.id===projectId);
+  if(!proj) return;
+  _pm.view='board';
+  _pm.activeProject=proj;
+  const root=pmRoot();
+  const role=cur.role;
+  const canManage=(role==='admin'||role==='manager'||role==='hr');
+  const projTasks=_pm.tasks.filter(t=>parseInt(t.project_id)===parseInt(projectId));
+  const billingLabel=(BILLING_TYPES.find(b=>b.key===proj.billing_type)||{label:'Billable'}).label;
+
+  let h=`
+  <div class="dash-top">
+    <div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.15rem">
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.3rem .7rem" onclick="_pmProjectsView()">← All Projects</button>
+      </div>
+      <h2 style="margin:0">${escHtml(proj.name)}</h2>
+      <p style="margin:.2rem 0 0">${proj.client_name?escHtml(proj.client_name)+' · ':''}<span class="btype-tag bt-${proj.billing_type||'billable'}" style="font-size:.7rem">${billingLabel}</span>${proj.due_date?` · Due ${proj.due_date}`:''}</p>
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+      ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectDetail(${proj.id})">☰ List View</button>`:''}
+      ${canManage?`<button class="btn btn-primary" onclick="_pmAddTaskModal(${proj.id})">+ Add Task</button>`:''}
+    </div>
+  </div>
+  <div class="pm-board">`;
+
+  STAGES.forEach(s=>{
+    const stageTasks=projTasks.filter(t=>t.stage===s.key);
+    h+=`<div class="pm-col">
+      <div class="pm-col-header stage-${s.key}">
+        <span class="pm-col-label stage-${s.key}">${s.label}</span>
+        <span class="pm-col-count">${stageTasks.length}</span>
+      </div>
+      <div class="pm-cards" id="pm-col-${s.key}"
+        ondragover="event.preventDefault();event.currentTarget.style.background='var(--alt)'"
+        ondragleave="event.currentTarget.style.background=''"
+        ondrop="event.currentTarget.style.background='';_pmDragDrop(event,'${s.key}')">`;
+    stageTasks.forEach(t=>{ h+=_pmTaskCard(t,s); });
+    h+=`</div></div>`;
+  });
+  h+=`</div>`;
+  h+=_pmProjectModalHTML();
+  h+=_pmTaskModalHTML();
   h+=_pmMoveModalHTML();
   root.innerHTML=h;
 }
@@ -2913,6 +2961,7 @@ async function _pmDoMove(newStage){
     if(t)t.stage=newStage;
     // Re-render current view
     if(_pm.view==='detail'&&_pm.activeProject) _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='board'&&_pm.activeProject) _pmProjectBoard(_pm.activeProject.id);
     else if(_pm.view==='mytasks') _pmMyTasks();
     else _renderPMBoard();
   }catch(e){alert('Error moving task: '+e.message);}
@@ -2928,6 +2977,7 @@ async function _pmDragDrop(event,toStage){
     const t=_pm.tasks.find(t=>t.id===taskId);
     if(t)t.stage=toStage;
     if(_pm.view==='detail'&&_pm.activeProject) _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='board'&&_pm.activeProject) _pmProjectBoard(_pm.activeProject.id);
     else if(_pm.view==='mytasks') _pmMyTasks();
     else _renderPMBoard();
   }catch(e){alert('Error moving task: '+e.message);}
