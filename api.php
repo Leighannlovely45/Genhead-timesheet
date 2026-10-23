@@ -343,7 +343,7 @@ if ($method === 'GET') {
         $stmt->execute([$dbId, $period]);
         $ts = $stmt->fetch();
         if (!$ts) { echo json_encode(['success' => false, 'record' => null]); exit; }
-        $stmt2 = $db->prepare("SELECT te.*, COALESCE(c.name, te.client_label) as client_name FROM timesheet_entries te
+        $stmt2 = $db->prepare("SELECT te.*, COALESCE(c.name, te.client_label) as client_name, pj.name as project_name FROM timesheet_entries te LEFT JOIN projects pj ON te.project_id = pj.id
             LEFT JOIN clients c ON te.client_id = c.id
             WHERE te.timesheet_id = ? ORDER BY te.day_index, te.row_index");
         $stmt2->execute([$ts['id']]);
@@ -370,7 +370,7 @@ if ($method === 'GET') {
             ORDER BY t.submitted_at DESC");
         $timesheets = $stmt->fetchAll();
         foreach ($timesheets as &$ts) {
-            $stmt2 = $db->prepare("SELECT te.*, COALESCE(c.name, te.client_label) as client_name FROM timesheet_entries te
+            $stmt2 = $db->prepare("SELECT te.*, COALESCE(c.name, te.client_label) as client_name, pj.name as project_name FROM timesheet_entries te LEFT JOIN projects pj ON te.project_id = pj.id
                 LEFT JOIN clients c ON te.client_id = c.id
                 WHERE te.timesheet_id = ? ORDER BY te.day_index, te.row_index");
             $stmt2->execute([$ts['id']]);
@@ -564,7 +564,8 @@ if ($method === 'GET') {
         $marketing     = $byClient('marketing');
         $mkByEmp       = $byEmp('marketing');
 
-        // --- PROJECTIONS (unchanged): projects with estimated_hours vs logged hours
+        // --- PROJECTIONS: hours logged to each project on timesheets + task hours
+        ensureEntryColumns($db);
         try {
             $projStmt = $db->prepare("
                 SELECT p.id, p.name, p.client_name, p.billing_type, p.status,
@@ -572,16 +573,18 @@ if ($method === 'GET') {
                     (SELECT COUNT(*) FROM tasks tk WHERE tk.project_id=p.id) AS task_count,
                     (SELECT COUNT(*) FROM tasks tk WHERE tk.project_id=p.id AND tk.stage='done') AS done_count,
                     COALESCE((
-                        SELECT SUM(te2.hours)
-                        FROM timesheet_entries te2
-                        JOIN timesheets ts2 ON te2.timesheet_id=ts2.id
-                        WHERE te2.deliverable LIKE CONCAT('%',p.name,'%')
+                        SELECT SUM(te2.hours) FROM timesheet_entries te2
+                        WHERE te2.project_id = p.id
                     ), 0) +
                     COALESCE((
                         SELECT SUM(tk2.logged_hours)
                         FROM tasks tk2
                         WHERE tk2.project_id = p.id AND tk2.logged_hours IS NOT NULL
-                    ), 0) AS logged_hours
+                    ), 0) AS logged_hours,
+                    COALESCE((
+                        SELECT SUM(te3.hours) FROM timesheet_entries te3
+                        WHERE p.client_id IS NOT NULL AND te3.client_id = p.client_id AND te3.project_id IS NULL
+                    ), 0) AS client_unassigned_hours
                 FROM projects p
                 WHERE p.status != 'archived'
                 ORDER BY p.due_date IS NULL, p.due_date ASC, p.updated_at DESC");
@@ -948,6 +951,11 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         $name        = trim($body['name']         ?? '');
         $clientId    = (int)($body['client_id']   ?? 0)  ?: null;
         $clientName  = trim($body['client_name']  ?? '') ?: null;
+        if ($clientId && !$clientName) {
+            $cn = $db->prepare("SELECT name FROM clients WHERE id = ? LIMIT 1");
+            $cn->execute([$clientId]);
+            $clientName = $cn->fetchColumn() ?: null;
+        }
         $status      = in_array($body['status'] ?? '', ['active','on_hold','completed']) ? $body['status'] : 'active';
         $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : 'billable';
         $dueDate     = !empty($body['due_date'])  ? $body['due_date'] : null;
@@ -1180,6 +1188,11 @@ if ($method === 'POST') {
         $name        = trim($body['name']         ?? '');
         $clientId    = (int)($body['client_id']   ?? 0)  ?: null;
         $clientName  = trim($body['client_name']  ?? '') ?: null;
+        if ($clientId && !$clientName) {
+            $cn = $db->prepare("SELECT name FROM clients WHERE id = ? LIMIT 1");
+            $cn->execute([$clientId]);
+            $clientName = $cn->fetchColumn() ?: null;
+        }
         $status      = in_array($body['status'] ?? '', ['active','on_hold','completed']) ? $body['status'] : 'active';
         $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : 'billable';
         $dueDate     = !empty($body['due_date'])  ? $body['due_date'] : null;
@@ -1204,6 +1217,15 @@ if ($method === 'POST') {
         if (isset($body['due_date']))     { $fields[]='due_date = ?';     $params[]=$body['due_date']?:null; }
         if (isset($body['description']))  { $fields[]='description = ?';  $params[]=$body['description']?:null; }
         if (isset($body['client_name']))  { $fields[]='client_name = ?';  $params[]=$body['client_name']?:null; }
+        if (isset($body['client_id'])) {
+            $cid = (int)$body['client_id'] ?: null;
+            $fields[]='client_id = ?'; $params[]=$cid;
+            if ($cid && !isset($body['client_name'])) {
+                $cn = $db->prepare("SELECT name FROM clients WHERE id = ? LIMIT 1");
+                $cn->execute([$cid]);
+                $fields[]='client_name = ?'; $params[]=$cn->fetchColumn() ?: null;
+            }
+        }
         if (!$fields) { echo json_encode(['success'=>false,'error'=>'nothing to update']); exit; }
         $params[]=$id;
         $db->prepare("UPDATE projects SET ".implode(',',$fields)." WHERE id=?")->execute($params);
@@ -1760,9 +1782,9 @@ if ($method === 'POST') {
             $tsId = $db->lastInsertId();
         }
 
-        try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN client_label VARCHAR(255) DEFAULT NULL"); } catch(Exception $e) {}
+        ensureEntryColumns($db);
         $db->prepare("DELETE FROM timesheet_entries WHERE timesheet_id = ?")->execute([$tsId]);
-        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($entries as $i => $en) {
             if (empty($en['hrs']) && empty($en['co'])) continue;
             $clientId = null;
@@ -1782,7 +1804,8 @@ if ($method === 'POST') {
             $label  = trim($en['co'] ?? '');
             // Preserve the Chrome-extension tag so its next update edits this line instead of adding a duplicate
             $source = (($en['src'] ?? '') === 'extension') ? 'extension' : null;
-            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source]);
+            $projectId = (int)($en['proj'] ?? 0) ?: null;
+            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId]);
         }
 
         if ($submitted) {
@@ -2150,6 +2173,7 @@ function ensureEntryColumns($db) {
     if ($done) return;
     $done = true;
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN client_label VARCHAR(255) DEFAULT NULL"); } catch (Exception $e) {}
+    try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN project_id INT DEFAULT NULL"); } catch (Exception $e) {}
 }
 
 function fireNotificationWebhook($db, $event, $payload) {

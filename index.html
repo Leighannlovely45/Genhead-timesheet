@@ -103,6 +103,10 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .entry-row input{padding:.32rem .55rem;border:1px solid var(--border);border-radius:5px;font-size:.8rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg);width:100%}
 .entry-row input:focus{outline:none;border-color:var(--teal)}
 .entry-row input[type=number]{text-align:center}
+.entry-row select.ts-sel{padding:.32rem .45rem;border:1px solid var(--border);border-radius:5px;font-size:.78rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg);width:100%;min-width:0}
+.entry-row select.ts-sel:focus{outline:none;border-color:var(--teal)}
+.entry-row select.ts-sel.missing{border-color:#f59e0b}
+.ts-ro{font-size:.78rem;color:var(--dark);padding:.32rem .2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .entry-row{position:relative}
 .entry-row.has-del{padding-right:2rem}
 .del-row-btn{position:absolute;right:.45rem;top:50%;transform:translateY(-50%);background:none;border:none;color:#ef4444;font-size:1.05rem;line-height:1;cursor:pointer;padding:.15rem .3rem;border-radius:4px}
@@ -460,6 +464,18 @@ const PSTARTS=[[2026,3,27],[2026,4,11],[2026,4,25],[2026,5,8],[2026,5,22],[2026,
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 let EMPS=[];    // populated from DB on load
 let CLIENTS=[]; // populated from DB on load
+let PROJECTS=[]; // active projects, for the timesheet Project picker
+async function loadProjectsList(){
+  try{
+    const r=await fetch(`${API_BASE}?action=load_projects&t=${Date.now()}`).then(x=>x.json());
+    if(r.success)PROJECTS=(r.projects||[]).filter(p=>p.status!=="archived"&&p.status!=="completed");
+  }catch(e){}
+}
+function clientByName(n){return CLIENTS.find(c=>c.name===n);}
+function projectsForClient(name){
+  const c=clientByName(name);
+  return c?PROJECTS.filter(p=>String(p.client_id)===String(c.id)):[];
+}
 
 // ── API HELPER ─────────────────────────────────────────────────────────────
 const API_BASE="api.php";
@@ -531,6 +547,7 @@ function entriesFromDB(list){
     if(ei>=MAX_ROWS_PER_DAY)return;
     perDay[day]=ei+1;
     entries.push({day,ei,src:e.source||"",
+      proj:e.project_id?String(e.project_id):"",projName:e.project_name||"",
       co:e.client_name||"",
       del:e.deliverable||"",
       hrs:e.hours!=null?String(parseFloat(e.hours)):"",
@@ -987,6 +1004,7 @@ async function renderApp(){
   if(!cur)return;
   if(cur.role==="manager"||cur.role==="hr"||cur.role==="admin"){await loadDashData();renderDash();return;}
   const uid=cur._vid||cur.id;
+  if(!PROJECTS.length) await loadProjectsList();
   if(!gd(uid,pidx).loaded) await loadDraft(uid,pidx);
   renderTS(uid);
 }
@@ -1059,12 +1077,10 @@ function renderTS(uid){
   const isViewing=!!cur._vid && cur._vid!==cur.id;
   const body=document.getElementById("app-body");
 
-  // Build client datalist once for company autocomplete
-  const clientDatalist=(!isViewing&&CLIENTS.length)
-    ?`<datalist id="cl-clients">${CLIENTS.map(c=>`<option value="${c.name.replace(/"/g,'&quot;')}"></option>`).join('')}</datalist>`
-    :'';
+  const showPayCols=(role==="admin"||role==="hr");
+  const gridCols=showPayCols?"1.35fr 1.25fr 1.7fr 1.05fr .65fr .75fr .75fr":"1.35fr 1.25fr 1.9fr 1.1fr .7fr";
 
-  let h=`${clientDatalist}<div class="emp-info">
+  let h=`<div class="emp-info">
     <div><div class="emp-name">${emp.name}</div><div class="emp-period">${PERIODS[pidx]} &middot; Bi-Weekly Timesheet</div></div>
     ${(role==="admin"||role==="hr")?`<div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" readonly title="Pay rates are set on the Team tab"></div>`:''}
     <div class="ts-save-wrap">
@@ -1089,7 +1105,7 @@ function renderTS(uid){
     d.entries.forEach(e=>{if(e.day>=ws&&e.day<=we){wH+=pfl(e.hrs);wP+=pfl(e.hrs)*pfl(d.rate);}});
     const canSeePay=(role==="admin"||role==="hr");
     h+=`<div class="week-wrap"><div class="week-hdr"><h3>Week ${wk+1}</h3><div class="week-stats"><span class="wstat">Hours: <strong id="wh${wk}">${wH.toFixed(1)}</strong></span>${canSeePay?`<span class="wstat">Pay: <strong id="wp${wk}">${fm(wP)}</strong></span>`:''}</div></div>`;
-    h+=`<div class="col-hdrs"><div class="col-hdr-lbl">Company</div><div class="col-hdr-lbl">Deliverable</div><div class="col-hdr-lbl">Billing Type</div><div class="col-hdr-lbl">Hrs</div>${canSeePay?`<div class="col-hdr-lbl">Rate</div><div class="col-hdr-lbl">Pay</div>`:''}</div>`;
+    h+=`<div class="col-hdrs" style="grid-template-columns:${gridCols}"><div class="col-hdr-lbl">Company</div><div class="col-hdr-lbl">Project <span style="font-weight:400;opacity:.7">(optional)</span></div><div class="col-hdr-lbl">Deliverable</div><div class="col-hdr-lbl">Billing Type</div><div class="col-hdr-lbl">Hrs</div>${canSeePay?`<div class="col-hdr-lbl">Rate</div><div class="col-hdr-lbl">Pay</div>`:''}</div>`;
     for(let di=0;di<7;di++){
       const dayIdx=wk*7+di,dt=pdate(pidx,dayIdx),isWk=di>=5;
       h+=`<div class="day-block"><div class="day-hdr${isWk?" wknd":""}"><span class="day-nm">${DAYS[di]}</span><span class="day-dt">${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span></div>`;
@@ -1100,8 +1116,9 @@ function renderTS(uid){
         const hr=pfl(en.hrs),rt=pfl(d.rate),pay=hr*rt;
         const btVal=en.bt||BT_DEFAULT;
         const ro=isViewing?" readonly":"";
-        h+=`<div class="entry-row${canDel?" has-del":""}" id="er-${dayIdx}-${ei}">
-          <input type="text" placeholder="Company" value="${escHtml(en.co)}" list="${(!isViewing&&CLIENTS.length)?'cl-clients':''}" onchange="upE(${dayIdx},${ei},'co',this.value)"${ro}>
+        h+=`<div class="entry-row${canDel?" has-del":""}" id="er-${dayIdx}-${ei}" style="grid-template-columns:${gridCols}">
+          ${companyCell(dayIdx,ei,en,isViewing)}
+          ${projectCell(dayIdx,ei,en,isViewing)}
           <input type="text" placeholder="Deliverable" value="${escHtml(en.del)}" onchange="upE(${dayIdx},${ei},'del',this.value)"${ro}>
           ${btSelect(dayIdx, ei, btVal, isViewing)}
           <input type="number" placeholder="0" value="${escHtml(en.hrs)}" min="0" max="24" step="0.01" onchange="upE(${dayIdx},${ei},'hrs',this.value)"${ro}>
@@ -1184,6 +1201,48 @@ function upBT(day,ei,val){
   queueAutoSave();
 }
 
+// ── COMPANY + PROJECT PICKERS (fixed lists, no free typing) ─────────────────
+function companyCell(day,ei,en,ro){
+  if(ro)return `<div class="ts-ro" title="${escHtml(en.co)}">${escHtml(en.co)||"—"}</div>`;
+  const known=!en.co||!!clientByName(en.co);
+  const opts=CLIENTS.map(c=>`<option value="${escHtml(c.name)}"${c.name===en.co?" selected":""}>${escHtml(c.name)}</option>`).join("");
+  // A saved name that isn't in the Clients list stays visible (flagged) so no hours are lost
+  const legacy=known?"":`<option value="${escHtml(en.co)}" selected>${escHtml(en.co)} (not in client list)</option>`;
+  return `<select class="ts-sel${known?"":" missing"}" onchange="pickCompany(${day},${ei},this.value)"${known?"":` title="Not in the Clients list — pick a client"`}>
+    <option value=""${en.co?"":" selected"}>— Company —</option>${legacy}${opts}</select>`;
+}
+function projectCell(day,ei,en,ro){
+  if(ro)return `<div class="ts-ro" title="${escHtml(en.projName||"")}">${escHtml(en.projName||"")||"—"}</div>`;
+  const list=projectsForClient(en.co);
+  const hasCur=!en.proj||list.some(p=>String(p.id)===String(en.proj));
+  const extra=hasCur?"":`<option value="${escHtml(en.proj)}" selected>${escHtml(en.projName||"Project #"+en.proj)}</option>`;
+  const disabled=!en.co||(!list.length&&hasCur);
+  const ph=!en.co?"Pick company first":list.length?"— General —":"No projects";
+  return `<select class="ts-sel" onchange="pickProject(${day},${ei},this.value)"${disabled?" disabled":""}>
+    <option value="">${ph}</option>${extra}${list.map(p=>`<option value="${p.id}"${String(p.id)===String(en.proj)?" selected":""}>${escHtml(p.name)}</option>`).join("")}</select>`;
+}
+function pickCompany(day,ei,name){
+  const uid=cur._vid||cur.id;
+  const en=gd(uid,pidx).entries.find(e=>e.day===day&&e.ei===ei);
+  if(!en)return;
+  en.co=name;
+  // Clear a project that belongs to a different company
+  if(en.proj&&!projectsForClient(name).some(p=>String(p.id)===String(en.proj))){en.proj="";en.projName="";}
+  renderTS(uid);
+  queueAutoSave();
+}
+function pickProject(day,ei,pid){
+  const uid=cur._vid||cur.id;
+  const en=gd(uid,pidx).entries.find(e=>e.day===day&&e.ei===ei);
+  if(!en)return;
+  const p=PROJECTS.find(x=>String(x.id)===String(pid));
+  en.proj=pid||"";en.projName=p?p.name:"";
+  // Default the billing type to the project's type (still changeable)
+  if(p&&p.billing_type&&BILLING_TYPES.some(b=>b.key===p.billing_type))en.bt=p.billing_type;
+  renderTS(uid);
+  queueAutoSave();
+}
+
 // ── ADD / DELETE LINES ─────────────────────────────────────────────────────
 function addRow(day){
   const uid=cur._vid||cur.id;
@@ -1263,7 +1322,7 @@ async function saveTimesheet(uid,pi,submit){
   for(let day=0;day<14;day++){
     dayRows(d,day).forEach((en,i)=>{
       if(!(en.hrs||en.co||en.del))return;
-      flat.push({day,dayName:DAYS[day%7],co:en.co||"",del:en.del||"",hrs:en.hrs||"",bt:en.bt||BT_DEFAULT,rowIndex:i,src:en.src||""});
+      flat.push({day,dayName:DAYS[day%7],co:en.co||"",proj:en.proj||"",del:en.del||"",hrs:en.hrs||"",bt:en.bt||BT_DEFAULT,rowIndex:i,src:en.src||""});
       allH+=pfl(en.hrs);
     });
   }
@@ -1938,7 +1997,7 @@ function recDetailHTML(r,showPay){
       const di=parseInt(e.day_index),h=pfl(e.hours);
       const dt=pi>=0?pdate(pi,di).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"";
       const bt=e.billing_type||(String(e.billable)==="0"?"nonbillable":"billable");
-      html+=`<tr><td>${DAYS[di%7].slice(0,3)} ${dt}</td><td>${escHtml(e.client_name||"—")}</td><td>${escHtml(e.deliverable||"—")}</td><td>${btLabel(bt)}</td><td>${h.toFixed(2)}</td>${showPay?`<td>${rate?fm(h*rate):"—"}</td>`:""}</tr>`;
+      html+=`<tr><td>${DAYS[di%7].slice(0,3)} ${dt}</td><td>${escHtml(e.client_name||"—")}${e.project_name?`<div style="font-size:.7rem;color:var(--mid)">${escHtml(e.project_name)}</div>`:""}</td><td>${escHtml(e.deliverable||"—")}</td><td>${btLabel(bt)}</td><td>${h.toFixed(2)}</td>${showPay?`<td>${rate?fm(h*rate):"—"}</td>`:""}</tr>`;
     });
     html+=`</tbody></table>`;
   }
@@ -2454,7 +2513,7 @@ function renderProjectionsTab(d){
     return`<tr>
       <td>
         <strong>${escHtml(p.name)}</strong>
-        ${p.client_name?`<div style="font-size:.72rem;color:var(--mid)">${escHtml(p.client_name)}</div>`:''}
+        ${p.client_name?`<div style="font-size:.72rem;color:var(--mid)">${escHtml(p.client_name)}</div>`:`<div style="font-size:.72rem;color:#d97706">&#9888; No client linked</div>`}
       </td>
       <td><span class="btype-tag bt-${p.billing_type||'billable'}">${(BILLING_TYPES.find(b=>b.key===p.billing_type)||{label:'Billable'}).label}</span></td>
       <td>
@@ -2462,7 +2521,7 @@ function renderProjectionsTab(d){
           style="width:70px;background:var(--hover);border:1px solid var(--border);border-radius:6px;padding:.25rem .5rem;font-size:.8rem;color:var(--dark);text-align:center"
           onchange="setProjectEstHours(${p.id},this.value)" title="Set estimated hours">
       </td>
-      <td style="font-family:'DM Mono',monospace;color:${over?'#ef4444':'var(--dark)'};font-weight:${over?'700':'400'}">${fmt(logged)}</td>
+      <td style="font-family:'DM Mono',monospace;color:${over?'#ef4444':'var(--dark)'};font-weight:${over?'700':'400'}">${fmt(logged)}${parseFloat(p.client_unassigned_hours||0)>0?`<div style="font-size:.66rem;color:var(--mid);font-family:'DM Sans',sans-serif;font-weight:400" title="Hours logged to this client without a project picked">+${fmt(p.client_unassigned_hours)} general client hrs</div>`:''}</td>
       <td>
         ${est?`<div style="display:flex;align-items:center;gap:.4rem">
           <div class="proj-bar-wrap" style="width:80px"><div class="proj-bar" style="width:${pct}%;background:${barColor}"></div></div>
@@ -2480,10 +2539,10 @@ function renderProjectionsTab(d){
   return metricCards([
     {label:'Active Projects',val:projs.length,sub:'Across all clients',color:'#1e293b'},
     {label:'Est. Hours',val:fmt(totalEst),sub:'Total projected workload',color:'#8b5cf6'},
-    {label:'Logged Hours',val:fmt(totalLogged),sub:'Matched to projects',color:'#059669'},
+    {label:'Logged Hours',val:fmt(totalLogged),sub:'Logged to a project',color:'#059669'},
     {label:'Remaining',val:fmt(Math.max(0,totalEst-totalLogged)),sub:'Of estimated',color:'#d97706'},
   ])+
-  `<p style="font-size:.78rem;color:var(--mid);margin:.5rem 0 .75rem">💡 Click the <strong>Est. Hours</strong> field on any project to set your time budget. Turns orange when 75% used, red when over.</p>`+
+  `<p style="font-size:.78rem;color:var(--mid);margin:.5rem 0 .75rem">💡 Hours count toward a project when it's picked in the <strong>Project</strong> column of a timesheet line. Click <strong>Est. Hrs</strong> to set a budget &mdash; orange at 75%, red when over.</p>`+
   rptTblWrap(`<table>
     <thead><tr><th>Project</th><th>Type</th><th>Est. Hrs</th><th>Logged Hrs</th><th>Progress</th><th>Tasks</th><th>Due</th><th>Status</th></tr></thead>
     <tbody>${rows}</tbody>
@@ -2621,6 +2680,7 @@ async function viewEmp(uid){
   const emp=EMPS.find(e=>e.id===uid);
   document.getElementById("tb-name").textContent=uid===prev.id?prev.name:(emp?.name||uid)+" (viewing)";
   // Always load fresh from the DB for this employee + current period
+  if(!PROJECTS.length) await loadProjectsList();
   await loadDraft(uid,pidx);
   renderTS(uid);
 }
@@ -3593,7 +3653,7 @@ function _pmProjectModalHTML(){
       <label class="pm-lbl">Description</label>
       <input id="pm-proj-desc" type="text" placeholder="Optional" class="pm-inp">
       ${clientOpts?`<label class="pm-lbl">Client</label>
-      <select id="pm-proj-client" class="pm-inp"><option value="">— No client —</option>${clientOpts}</select>`
+      <select id="pm-proj-client" class="pm-inp"><option value="">— Select client (required) —</option>${clientOpts}</select>`
       :'<input id="pm-proj-client" type="hidden" value="">'}
       <label class="pm-lbl">Billing Type</label>
       <select id="pm-proj-billing" class="pm-inp">
@@ -3644,6 +3704,7 @@ async function _pmSaveProject(){
   const estEl=document.getElementById('pm-proj-est-hours');
   const estHours=estEl&&estEl.value?estEl.value:'';
   if(!name){alert('Project name is required.');return;}
+  if(clientEl&&clientEl.tagName==='SELECT'&&!clientId){alert('Please pick the client this project is for.');return;}
   try{
     const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',estimated_hours:estHours,created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,client_id:clientId||''});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
