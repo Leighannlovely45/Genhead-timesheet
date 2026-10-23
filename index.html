@@ -958,6 +958,7 @@ function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.
 
 // ── TIMESHEET VIEW ─────────────────────────────────────────────────────────
 function renderTS(uid){
+  const role=cur.role;
   const d=gd(uid,pidx);
   const emp=EMPS.find(e=>e.id===uid);
   const isViewing=!!cur._vid && cur._vid!==cur.id;
@@ -1165,7 +1166,10 @@ function renderDash(){
   let totals={billable:{h:0},nonbillable:{h:0},marketing:{h:0}};
 
   const rows=emps.map(emp=>{
-    const d=gd(emp.id,pidx),h=d.entries.reduce((s,e)=>s+pfl(e.hrs),0),rt=pfl(d.rate),pay=h*rt;
+    const d=gd(emp.id,pidx);
+    // Seed rate from user record if store doesn't have one yet
+    if((d.rate===''||d.rate===null||d.rate===undefined)&&emp.rate) d.rate=emp.rate;
+    const h=d.entries.reduce((s,e)=>s+pfl(e.hrs),0),rt=pfl(d.rate),pay=h*rt;
     tH+=h;if(showPayroll)tP+=pay;if(d.submitted)sub++;
     const bd=calcBreakdown(d);
     BILLING_TYPES.forEach(bt=>{ totals[bt.key].h+=bd[bt.key].h; });
@@ -2228,10 +2232,35 @@ function exportMaster(){
   showToast("Master payroll CSV exported.");
 }
 
-function viewEmp(uid){
+async function viewEmp(uid){
   const prev={...cur};
   cur={...cur,_vid:uid,_prev:prev};
-  document.getElementById("tb-name").textContent=EMPS.find(e=>e.id===uid).name+" (viewing)";
+  const emp=EMPS.find(e=>e.id===uid);
+  document.getElementById("tb-name").textContent=(emp?.name||uid)+" (viewing)";
+  // Load timesheet from DB for this employee + current period
+  try{
+    const r=await fetch(`${API_BASE}?action=load_draft&uid=${uid}&period=${encodeURIComponent(PERIODS[pidx])}`).then(x=>x.json());
+    if(r.success&&r.record){
+      const ts=r.record;
+      const d=gd(uid,pidx);
+      // Seed rate (prefer DB timesheet rate, fall back to user rate)
+      d.rate=ts.pay_rate||ts.employee_rate||emp?.rate||d.rate||"";
+      d.submitted=(ts.status&&ts.status!=='draft');
+      // Map DB entries into store format
+      const blank=()=>({co:"",del:"",hrs:"",bt:BT_DEFAULT});
+      const grid=Array.from({length:14*3},(_,i)=>({day:Math.floor(i/3),ei:i%3,...blank()}));
+      (ts.entries||[]).forEach(e=>{
+        const idx=e.day_index*3+e.row_index;
+        if(idx>=0&&idx<grid.length){
+          grid[idx].co=e.client_name||e.client_id||"";
+          grid[idx].del=e.deliverable||"";
+          grid[idx].hrs=e.hours!=null?String(e.hours):"";
+          grid[idx].bt=e.billing_type||BT_DEFAULT;
+        }
+      });
+      d.entries=grid;
+    }
+  }catch(err){console.warn("load_draft failed",err);}
   renderTS(uid);
 }
 function backDash(){
