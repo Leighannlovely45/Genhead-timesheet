@@ -628,7 +628,18 @@ function renderNameSuggestions(query){
     });
   });
 }
-function selectNameSuggestion(id, label){
+// Select a person when the text is exactly their name, label or email (typed or autofilled)
+function lfMatchName(value,allowEmail){
+  const q=String(value||'').trim().toLowerCase();
+  if(!q||!EMPS.length) return false;
+  let hits=EMPS.filter(e=>buildEmpLabel(e).toLowerCase()===q);
+  if(!hits.length) hits=EMPS.filter(e=>(e.name||'').toLowerCase()===q);
+  if(!hits.length&&allowEmail&&q.includes('@')) hits=EMPS.filter(e=>(e.email||'').toLowerCase()===q);
+  if(hits.length!==1) return false;
+  selectNameSuggestion(hits[0].id, buildEmpLabel(hits[0]), true);
+  return true;
+}
+function selectNameSuggestion(id, label, keepPassword){
   _selectedEmpId=id;
   const inp=document.getElementById('lf-name-input');
   if(inp) inp.value=label;
@@ -637,7 +648,11 @@ function selectNameSuggestion(id, label){
   const hint=document.getElementById('lf-name-hint');
   if(hint) hint.style.display='none';
   const u=EMPS.find(e=>e.id===id);
+  // Keep a password Chrome already filled in while the access level is set up
+  const pwEl=document.getElementById('lf-password');
+  const pw=keepPassword&&pwEl?pwEl.value:'';
   if(u) lfNameChangeById(u); else resetLevelField();
+  if(pw&&pwEl&&!pwEl.value) pwEl.value=pw;
 }
 
 // ── BUILD LOGIN FORM (called once immediately, before EMPS loads) ────────
@@ -645,10 +660,10 @@ function buildLoginForm(){
   // Inject entire form via JS so browser never sees it during initial parse
   document.getElementById('lf-mount').innerHTML=`
     <h2>Sign in to your account</h2>
+    <form id="lf-form" autocomplete="on" action="#" novalidate>
     <div class="lf-group" style="position:relative">
-      <label class="lf-label">Name</label>
-      <input type="text" style="display:none" aria-hidden="true" tabindex="-1" name="fake-name-absorb">
-      <input type="text" class="lf-input" id="lf-name-input" placeholder="Start typing your name…" autocomplete="new-password" autocorrect="off" spellcheck="false" name="search-name">
+      <label class="lf-label" for="lf-name-input">Name</label>
+      <input type="text" class="lf-input" id="lf-name-input" name="username" placeholder="Start typing your name…" autocomplete="username" autocapitalize="words" autocorrect="off" spellcheck="false">
       <div id="lf-name-list" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:#1a2a3a;border:1.5px solid rgba(3,173,143,.5);border-radius:0 0 10px 10px;max-height:220px;overflow-y:auto"></div>
       <div id="lf-name-hint" style="font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.35rem;display:none">Select your name from the list ↑</div>
     </div>
@@ -670,11 +685,11 @@ function buildLoginForm(){
     </div>
     <div class="lf-group" id="lf-pw-group" style="display:none">
       <label class="lf-label" id="lf-pw-label">Password</label>
-      <input type="password" class="lf-input" id="lf-password" placeholder="Enter your password" autocomplete="new-password">
+      <input type="password" class="lf-input" id="lf-password" name="password" placeholder="Enter your password" autocomplete="current-password">
     </div>
     <div class="lf-group" id="lf-pw-confirm-group" style="display:none">
       <label class="lf-label">Confirm Password</label>
-      <input type="password" class="lf-input" id="lf-password-confirm" placeholder="Re-enter your password" autocomplete="new-password">
+      <input type="password" class="lf-input" id="lf-password-confirm" name="password-confirm" placeholder="Re-enter your password" autocomplete="new-password">
     </div>
     <div id="lf-pin-confirm" style="display:none">
       <div class="lf-group">
@@ -688,40 +703,35 @@ function buildLoginForm(){
       </div>
     </div>
     <div id="lf-error" style="color:#f87171;font-size:.78rem;text-align:center;min-height:1.2em;margin:.25rem 0"></div>
-    <button class="btn btn-primary" style="width:100%;margin-top:.25rem" id="lf-submit" disabled>Sign In</button>
+    <button type="submit" class="btn btn-primary" style="width:100%;margin-top:.25rem" id="lf-submit" disabled>Sign In</button>
+    </form>
     <div style="text-align:center;margin-top:.85rem">
       <span id="lf-forgot" style="font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;text-decoration:underline;display:none">Forgot password?</span>
     </div>`;
   // Wire up events after injection
   const nameInp=document.getElementById('lf-name-input');
   nameInp.addEventListener('input',function(){
-    _selectedEmpId=null; resetLevelField(); renderNameSuggestions(this.value);
-    const q=this.value.trim().toLowerCase();
+    // Typing something other than the selected person clears the selection
+    const sel=_selectedEmpId?EMPS.find(e=>e.id===_selectedEmpId):null;
+    if(sel&&buildEmpLabel(sel)!==this.value){_selectedEmpId=null;resetLevelField();}
+    if(!_selectedEmpId&&lfMatchName(this.value,false)) return;
+    renderNameSuggestions(this.value);
     const hint=document.getElementById('lf-name-hint');
-    if(q.length>0){
-      const matches=EMPS.filter(e=>buildEmpLabel(e).toLowerCase().includes(q));
-      if(matches.length===1){
-        selectNameSuggestion(matches[0].id, buildEmpLabel(matches[0]));
-      } else {
-        if(hint) hint.style.display='block';
-      }
-    } else {
-      if(hint) hint.style.display='none';
-    }
+    if(hint) hint.style.display=(this.value.trim()&&!_selectedEmpId)?'block':'none';
   });
-  nameInp.addEventListener('blur',function(){ setTimeout(()=>{ const l=document.getElementById('lf-name-list'); if(l) l.style.display='none'; },150); });
-  // Silently clear autofill if browser inserts an email/password into the name field.
-  // Use a short delay so the user's own typing isn't interrupted mid-keystroke.
-  nameInp.addEventListener('change',function(){
-    if(this.value.includes('@')){
-      // Looks like an email was autofilled — clear silently without resetting the whole form
-      this.value='';
-      const hint=document.getElementById('lf-name-hint'); if(hint) hint.style.display='none';
-    }
+  nameInp.addEventListener('blur',function(){
+    setTimeout(()=>{ const l=document.getElementById('lf-name-list'); if(l) l.style.display='none'; },150);
+    if(!_selectedEmpId) lfMatchName(this.value,true);
   });
-  // animation trick for Chrome autofill — only clear the value, don't reset the whole form
+  nameInp.addEventListener('change',function(){ if(!_selectedEmpId) lfMatchName(this.value,true); });
+  // Chrome autofill: recognise the saved name (or email) instead of erasing it
   nameInp.addEventListener('animationstart',function(e){
-    if(e.animationName==='onAutoFillStart'){ this.value=''; }
+    if(e.animationName==='onAutoFillStart') setTimeout(()=>{ if(!_selectedEmpId) lfMatchName(nameInp.value,true); },0);
+  });
+  document.getElementById('lf-form').addEventListener('submit',function(e){
+    e.preventDefault();
+    if(!_selectedEmpId) lfMatchName(nameInp.value,true);
+    lfSubmit();
   });
   nameInp.addEventListener('keydown',function(e){
     const list=document.getElementById('lf-name-list');
@@ -738,10 +748,7 @@ function buildLoginForm(){
     } else if(e.key==='Escape'){ list.style.display='none'; }
   });
   document.getElementById('lf-level').addEventListener('change', lfLevelChange);
-  document.getElementById('lf-submit').addEventListener('click', lfSubmit);
   document.getElementById('lf-forgot').addEventListener('click', showForgotPin);
-  document.getElementById('lf-password').addEventListener('keydown', e=>{ if(e.key==='Enter') lfSubmit(); });
-  document.getElementById('lf-password-confirm').addEventListener('keydown', e=>{ if(e.key==='Enter') lfSubmit(); });
   [0,1,2,3].forEach(i=>{
     document.getElementById('pin'+i).addEventListener('input', ()=>pinNext(i));
     document.getElementById('pin'+i).addEventListener('keydown', e=>pinKeydown(e,i));
@@ -805,6 +812,7 @@ function lfLevelChange(){
   document.getElementById("lf-submit").disabled=true;
   clearPinInputs();
   _pinMode='enter'; // default; server response may switch to setup
+  document.getElementById("lf-password").setAttribute("autocomplete","current-password");
   if(!level) return;
   if(level==="employee"){
     // Employees use password — same flow as manager/hr/admin
@@ -867,6 +875,7 @@ function lfSubmit(){
             doLogin(u);
           } else if(r.needs_setup){
             _pinMode='setup';
+            document.getElementById("lf-password").setAttribute("autocomplete","new-password");
             document.getElementById("lf-pw-label").textContent="Create your password";
             document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
             document.getElementById("lf-password").value="";
@@ -914,6 +923,7 @@ function lfSubmit(){
           } else if(r.needs_setup){
             // First-time user — switch to setup mode
             _pinMode='setup';
+            document.getElementById("lf-password").setAttribute("autocomplete","new-password");
             document.getElementById("lf-pw-label").textContent="Create your password";
             document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
             document.getElementById("lf-password").value="";
@@ -1065,6 +1075,9 @@ async function renderApp(){
     // Only refresh the dropdown options — never rebuild the whole form.
     // This preserves any name the user has already selected.
     refreshNameDropdown();
+    // If Chrome filled the name before the team list arrived, match it now
+    const ni=document.getElementById('lf-name-input');
+    if(ni&&ni.value&&!_selectedEmpId) lfMatchName(ni.value,true);
 
     // Now handle reset token if present
     if(tok&&uid){
