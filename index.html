@@ -2552,6 +2552,7 @@ function _pmProjectsView(clientFilter){
           <span class="btype-tag bt-${p.billing_type||'billable'}">${billingLabel}</span>
           ${p.due_date?`<span style="font-size:.72rem;color:${overdue?'#f87171':'var(--mid)'}">Due ${p.due_date}</span>`:''}
           ${p.estimated_hours?`<span style="font-size:.72rem;color:var(--teal)">~${parseFloat(p.estimated_hours).toFixed(1)}h est.</span>`:`<button onclick="event.stopPropagation();_pmSetEstHours(${p.id})" style="font-size:.68rem;color:var(--mid);background:none;border:1px dashed var(--border);border-radius:4px;padding:.1rem .4rem;cursor:pointer">+ Est. Hours</button>`}
+          ${canManage?`<button onclick="event.stopPropagation();_pmArchiveProject(${p.id},'${escHtml(p.name)}')" style="margin-left:auto;font-size:.65rem;color:#f87171;background:none;border:1px solid #f87171;border-radius:4px;padding:.1rem .4rem;cursor:pointer;opacity:.6" title="Archive project">Archive</button>`:''}
         </div>
       </div>`;
     });
@@ -3051,6 +3052,16 @@ function _pmAddProjectModal(){
   const csel=modal.querySelector('#pm-proj-client');
   if(csel)csel.value='';
   modal.style.display='flex';
+}
+
+async function _pmArchiveProject(projectId, projectName){
+  if(!confirm(`Archive "${projectName}"? It will be hidden from the projects list.`)) return;
+  try{
+    const r=await fetch(`${API_BASE}?action=archive_project&id=${projectId}`).then(x=>x.json());
+    if(!r.success) throw new Error(r.error||'Failed');
+    _pm.projects=_pm.projects.filter(p=>p.id!==projectId);
+    _pmProjectsView();
+  }catch(e){alert('Error: '+e.message);}
 }
 
 async function _pmSaveProject(){

@@ -872,7 +872,7 @@ if ($action === 'load_followed_tasks') {
     exit;
 }
 
-if ($method === 'GET' && in_array($action, ['add_project','update_project','add_task','update_task','add_task_comment','toggle_task_follower'])) {
+if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','add_task','update_task','add_task_comment','toggle_task_follower'])) {
     $body = $_GET;
     $db = getDB();
 
@@ -1027,6 +1027,15 @@ if ($method === 'POST') {
         if (!$fields) { echo json_encode(['success'=>false,'error'=>'nothing to update']); exit; }
         $params[]=$id;
         $db->prepare("UPDATE projects SET ".implode(',',$fields)." WHERE id=?")->execute($params);
+        echo json_encode(['success'=>true]);
+        exit;
+    }
+
+    // ── ARCHIVE PROJECT ──────────────────────────────────────────────────────
+    if ($action === 'archive_project') {
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) { echo json_encode(['success'=>false,'error'=>'id required']); exit; }
+        $db->prepare("UPDATE projects SET status='archived' WHERE id=?")->execute([$id]);
         echo json_encode(['success'=>true]);
         exit;
     }
