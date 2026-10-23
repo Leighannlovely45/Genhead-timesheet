@@ -333,6 +333,7 @@ if ($method === 'GET') {
 
     if ($action === 'load_draft') {
         $db = getDB();
+        ensureEntryColumns($db);
         $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
         $period = isset($_GET['period']) ? $_GET['period'] : '';
         $dbId = preg_replace('/^e/', '', $uid);
@@ -342,7 +343,7 @@ if ($method === 'GET') {
         $stmt->execute([$dbId, $period]);
         $ts = $stmt->fetch();
         if (!$ts) { echo json_encode(['success' => false, 'record' => null]); exit; }
-        $stmt2 = $db->prepare("SELECT te.*, c.name as client_name FROM timesheet_entries te
+        $stmt2 = $db->prepare("SELECT te.*, COALESCE(c.name, te.client_label) as client_name FROM timesheet_entries te
             LEFT JOIN clients c ON te.client_id = c.id
             WHERE te.timesheet_id = ? ORDER BY te.day_index, te.row_index");
         $stmt2->execute([$ts['id']]);
@@ -360,6 +361,7 @@ if ($method === 'GET') {
 
     if ($action === 'load_timesheets') {
         $db = getDB();
+        ensureEntryColumns($db);
         $stmt = $db->query("SELECT t.*, u.name as employee, u.email,
             a.name as approved_by_name
             FROM timesheets t
@@ -368,7 +370,7 @@ if ($method === 'GET') {
             ORDER BY t.submitted_at DESC");
         $timesheets = $stmt->fetchAll();
         foreach ($timesheets as &$ts) {
-            $stmt2 = $db->prepare("SELECT te.*, c.name as client_name FROM timesheet_entries te
+            $stmt2 = $db->prepare("SELECT te.*, COALESCE(c.name, te.client_label) as client_name FROM timesheet_entries te
                 LEFT JOIN clients c ON te.client_id = c.id
                 WHERE te.timesheet_id = ? ORDER BY te.day_index, te.row_index");
             $stmt2->execute([$ts['id']]);
@@ -453,133 +455,116 @@ if ($method === 'GET') {
         $dateEnd    = trim($_GET['date_end']   ?? '');
         $useCustom  = ($dateStart && $dateEnd);
 
-        // Ensure estimated_hours column exists on projects
         try { $db->exec("ALTER TABLE projects ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
+        try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN client_label VARCHAR(255) DEFAULT NULL"); } catch(Exception $e) {}
 
-        // Build the timesheet JOIN condition — period match OR date range overlap
+        // Line-level filters. Custom ranges count only the days inside the range,
+        // not whole pay periods that happen to overlap it.
         if ($useCustom) {
-            $tsCond   = "t.period_start <= ? AND t.period_end >= ?";
-            $tsParams = [$dateEnd, $dateStart];
+            $lineCond   = "DATE_ADD(t.period_start, INTERVAL te.day_index DAY) BETWEEN ? AND ?";
+            $lineParams = [$dateStart, $dateEnd];
+            $cardCond   = "t.period_start <= ? AND t.period_end >= ?";
+            $cardParams = [$dateEnd, $dateStart];
         } else {
-            $tsCond   = "t.period = ?";
-            $tsParams = [$period];
+            $lineCond   = "t.period = ?";
+            $lineParams = [$period];
+            $cardCond   = "t.period = ?";
+            $cardParams = [$period];
+        }
+        // Billing type: honour legacy rows that only have the billable flag
+        $BT     = "COALESCE(te.billing_type, CASE WHEN te.billable = 0 THEN 'nonbillable' ELSE 'billable' END)";
+        // Pay: the rate saved on the line, else the person's rate (extension lines save 0)
+        $RATE   = "COALESCE(NULLIF(te.pay_rate,0), u.rate, 0)";
+        // Client: matched client, else the name the person typed
+        $CLIENT = "COALESCE(c.name, NULLIF(te.client_label,''), '(No Client)')";
+        $LINES  = "FROM timesheet_entries te
+                   JOIN timesheets t ON te.timesheet_id = t.id
+                   JOIN users u ON t.user_id = u.id
+                   LEFT JOIN clients c ON te.client_id = c.id
+                   WHERE {$lineCond} AND te.hours > 0";
+
+        // --- MASTER: everyone on the team + anyone with hours (any role), pay from lines
+        $hoursStmt = $db->prepare("
+            SELECT u.id AS uid,
+                SUM(te.hours) AS total_hours,
+                SUM(CASE WHEN {$BT}='billable'    THEN te.hours ELSE 0 END) AS billable_hours,
+                SUM(CASE WHEN {$BT}='nonbillable' THEN te.hours ELSE 0 END) AS nonbillable_hours,
+                SUM(CASE WHEN {$BT}='marketing'   THEN te.hours ELSE 0 END) AS marketing_hours,
+                SUM(te.hours * {$RATE}) AS total_pay
+            {$LINES}
+            GROUP BY u.id");
+        $hoursStmt->execute($lineParams);
+        $hoursBy = [];
+        foreach ($hoursStmt->fetchAll(PDO::FETCH_ASSOC) as $h) $hoursBy[$h['uid']] = $h;
+
+        $cardStmt = $db->prepare("SELECT t.user_id, GROUP_CONCAT(DISTINCT t.status) AS statuses FROM timesheets t WHERE {$cardCond} GROUP BY t.user_id");
+        $cardStmt->execute($cardParams);
+        $statusBy = [];
+        foreach ($cardStmt->fetchAll(PDO::FETCH_ASSOC) as $s) $statusBy[$s['user_id']] = $s['statuses'];
+
+        $people = $db->query("SELECT id, name, role, status, rate FROM users ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+        $master = [];
+        foreach ($people as $p) {
+            $uid = $p['id'];
+            $isTeam = ($p['status'] === 'active' && $p['role'] !== 'admin');
+            if (!$isTeam && !isset($hoursBy[$uid]) && !isset($statusBy[$uid])) continue;
+            $h = $hoursBy[$uid] ?? [];
+            $sts = isset($statusBy[$uid]) ? array_values(array_unique(explode(',', $statusBy[$uid]))) : [];
+            $status = count($sts) === 0 ? 'none' : (count($sts) === 1 ? $sts[0] : 'mixed');
+            $master[] = [
+                'employee'          => $p['name'],
+                'role'              => $p['role'],
+                'active'            => $p['status'] === 'active',
+                'total_hours'       => round((float)($h['total_hours'] ?? 0), 2),
+                'billable_hours'    => round((float)($h['billable_hours'] ?? 0), 2),
+                'nonbillable_hours' => round((float)($h['nonbillable_hours'] ?? 0), 2),
+                'marketing_hours'   => round((float)($h['marketing_hours'] ?? 0), 2),
+                'total_pay'         => round((float)($h['total_pay'] ?? 0), 2),
+                'status'            => $status,
+                'statuses'          => $sts,
+            ];
         }
 
-        // --- MASTER: all entries per employee, broken out by billing type
-        $mSql = "
-            SELECT u.name AS employee, u.rate,
-                SUM(te.hours) AS total_hours,
-                SUM(CASE WHEN COALESCE(te.billing_type,'billable')='billable'    THEN te.hours ELSE 0 END) AS billable_hours,
-                SUM(CASE WHEN COALESCE(te.billing_type,'billable')='nonbillable' THEN te.hours ELSE 0 END) AS nonbillable_hours,
-                SUM(CASE WHEN COALESCE(te.billing_type,'billable')='marketing'   THEN te.hours ELSE 0 END) AS marketing_hours,
-                SUM(t.total_pay) AS total_pay,
-                MAX(t.status) AS status
-            FROM users u
-            LEFT JOIN timesheets t ON t.user_id=u.id AND {$tsCond}
-            LEFT JOIN timesheet_entries te ON te.timesheet_id=t.id
-            WHERE u.status='active' AND u.role='employee'
-            GROUP BY u.id ORDER BY u.name";
-        $masterStmt = $db->prepare($mSql);
-        $masterStmt->execute($tsParams);
-        $master = $masterStmt->fetchAll(PDO::FETCH_ASSOC);
+        // --- KPI counts from the same list
+        $submittedStatuses = ['submitted','under_review','approved'];
+        $counts = ['total_employees' => count($master), 'submitted_count' => 0, 'approved_count' => 0];
+        foreach ($master as $m) {
+            if ($m['status'] !== 'none' && $m['status'] !== 'mixed' && in_array($m['status'], $submittedStatuses)) $counts['submitted_count']++;
+            if ($m['status'] === 'approved') $counts['approved_count']++;
+            if ($m['status'] === 'mixed' && !array_diff($m['statuses'], $submittedStatuses)) $counts['submitted_count']++;
+            if ($m['status'] === 'mixed' && $m['statuses'] === ['approved']) $counts['approved_count']++;
+        }
 
-        // --- BILLABLE: by client, with employee breakdown
-        $billableStmt = $db->prepare("
-            SELECT c.name AS client, c.type,
-                SUM(te.hours) AS hours,
-                GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') AS employees,
-                SUM(u.rate * te.hours) AS cost
-            FROM timesheet_entries te
-            JOIN timesheets t ON te.timesheet_id=t.id
-            JOIN clients c ON te.client_id=c.id
-            JOIN users u ON t.user_id=u.id
-            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='billable'
-            GROUP BY c.id ORDER BY hours DESC");
-        $billableStmt->execute($tsParams);
-        $billable = $billableStmt->fetchAll(PDO::FETCH_ASSOC);
+        // --- Per billing type: by client, and by employee × client
+        $byClient = function($type) use ($db, $LINES, $BT, $RATE, $CLIENT, $lineParams) {
+            $st = $db->prepare("
+                SELECT {$CLIENT} AS client, COALESCE(c.type,'') AS type,
+                    SUM(te.hours) AS hours,
+                    GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') AS employees,
+                    SUM(te.hours * {$RATE}) AS cost
+                {$LINES} AND {$BT} = ?
+                GROUP BY {$CLIENT}, COALESCE(c.type,'') ORDER BY hours DESC");
+            $st->execute(array_merge($lineParams, [$type]));
+            return $st->fetchAll(PDO::FETCH_ASSOC);
+        };
+        $byEmp = function($type) use ($db, $LINES, $BT, $RATE, $CLIENT, $lineParams) {
+            $st = $db->prepare("
+                SELECT {$CLIENT} AS client, u.name AS employee,
+                    SUM(te.hours) AS hours,
+                    SUM(te.hours * {$RATE}) AS cost
+                {$LINES} AND {$BT} = ?
+                GROUP BY {$CLIENT}, u.id ORDER BY client, hours DESC");
+            $st->execute(array_merge($lineParams, [$type]));
+            return $st->fetchAll(PDO::FETCH_ASSOC);
+        };
+        $billable      = $byClient('billable');
+        $billableByEmp = $byEmp('billable');
+        $nonbillable   = $byClient('nonbillable');
+        $nbByEmp       = $byEmp('nonbillable');
+        $marketing     = $byClient('marketing');
+        $mkByEmp       = $byEmp('marketing');
 
-        // --- BILLABLE by employee × client (for drilldown)
-        $billableEmpStmt = $db->prepare("
-            SELECT c.name AS client, u.name AS employee,
-                SUM(te.hours) AS hours,
-                u.rate,
-                SUM(u.rate * te.hours) AS cost
-            FROM timesheet_entries te
-            JOIN timesheets t ON te.timesheet_id=t.id
-            JOIN clients c ON te.client_id=c.id
-            JOIN users u ON t.user_id=u.id
-            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='billable'
-            GROUP BY c.id, u.id ORDER BY c.name, hours DESC");
-        $billableEmpStmt->execute($tsParams);
-        $billableByEmp = $billableEmpStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // --- NON-BILLABLE: by client (includes internal)
-        $nbStmt = $db->prepare("
-            SELECT COALESCE(c.name,'(No Client)') AS client, COALESCE(c.type,'') AS type,
-                SUM(te.hours) AS hours,
-                GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') AS employees
-            FROM timesheet_entries te
-            JOIN timesheets t ON te.timesheet_id=t.id
-            LEFT JOIN clients c ON te.client_id=c.id
-            JOIN users u ON t.user_id=u.id
-            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='nonbillable'
-            GROUP BY c.id ORDER BY hours DESC");
-        $nbStmt->execute($tsParams);
-        $nonbillable = $nbStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // --- NON-BILLABLE by employee (for drilldown)
-        $nbEmpStmt = $db->prepare("
-            SELECT u.name AS employee, COALESCE(c.name,'(No Client)') AS client,
-                SUM(te.hours) AS hours
-            FROM timesheet_entries te
-            JOIN timesheets t ON te.timesheet_id=t.id
-            LEFT JOIN clients c ON te.client_id=c.id
-            JOIN users u ON t.user_id=u.id
-            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='nonbillable'
-            GROUP BY u.id, c.id ORDER BY u.name, hours DESC");
-        $nbEmpStmt->execute($tsParams);
-        $nbByEmp = $nbEmpStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // --- MARKETING: by client
-        $mkStmt = $db->prepare("
-            SELECT COALESCE(c.name,'(No Client)') AS client, COALESCE(c.type,'') AS type,
-                SUM(te.hours) AS hours,
-                GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') AS employees
-            FROM timesheet_entries te
-            JOIN timesheets t ON te.timesheet_id=t.id
-            LEFT JOIN clients c ON te.client_id=c.id
-            JOIN users u ON t.user_id=u.id
-            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='marketing'
-            GROUP BY c.id ORDER BY hours DESC");
-        $mkStmt->execute($tsParams);
-        $marketing = $mkStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // --- MARKETING by employee
-        $mkEmpStmt = $db->prepare("
-            SELECT u.name AS employee, COALESCE(c.name,'(No Client)') AS client,
-                SUM(te.hours) AS hours
-            FROM timesheet_entries te
-            JOIN timesheets t ON te.timesheet_id=t.id
-            LEFT JOIN clients c ON te.client_id=c.id
-            JOIN users u ON t.user_id=u.id
-            WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='marketing'
-            GROUP BY u.id, c.id ORDER BY u.name, hours DESC");
-        $mkEmpStmt->execute($tsParams);
-        $mkByEmp = $mkEmpStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // --- SUBMITTED / APPROVED counts for KPI cards
-        $countStmt = $db->prepare("
-            SELECT
-                COUNT(DISTINCT t.user_id) AS total_employees,
-                SUM(CASE WHEN t.status IN ('submitted','approved') THEN 1 ELSE 0 END) AS submitted_count,
-                SUM(CASE WHEN t.status='approved' THEN 1 ELSE 0 END) AS approved_count
-            FROM users u
-            LEFT JOIN timesheets t ON t.user_id=u.id AND {$tsCond}
-            WHERE u.status='active' AND u.role='employee'");
-        $countStmt->execute($tsParams);
-        $counts = $countStmt->fetch(PDO::FETCH_ASSOC) ?: [];
-
-        // --- PROJECTIONS: projects with estimated_hours vs actual logged hours
+        // --- PROJECTIONS (unchanged): projects with estimated_hours vs logged hours
         try {
             $projStmt = $db->prepare("
                 SELECT p.id, p.name, p.client_name, p.billing_type, p.status,
@@ -607,6 +592,7 @@ if ($method === 'GET') {
         }
 
         $payload = ['success' => true, 'report' => [
+            'range'       => $useCustom ? ['start'=>$dateStart,'end'=>$dateEnd] : ['period'=>$period],
             'counts'      => $counts,
             'master'      => $master,
             'billable'    => $billable,
@@ -1774,8 +1760,9 @@ if ($method === 'POST') {
             $tsId = $db->lastInsertId();
         }
 
+        try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN client_label VARCHAR(255) DEFAULT NULL"); } catch(Exception $e) {}
         $db->prepare("DELETE FROM timesheet_entries WHERE timesheet_id = ?")->execute([$tsId]);
-        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index) VALUES (?,?,?,?,?,?,?,?,?)");
+        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($entries as $i => $en) {
             if (empty($en['hrs']) && empty($en['co'])) continue;
             $clientId = null;
@@ -1792,7 +1779,10 @@ if ($method === 'POST') {
             $billable = ($billingType === 'billable') ? 1 : 0;
             $dayIdx   = (int)($en['day'] ?? 0);
             $rowIdx   = (int)($en['rowIndex'] ?? $i);
-            $entryStmt->execute([$tsId, $clientId, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx]);
+            $label  = trim($en['co'] ?? '');
+            // Preserve the Chrome-extension tag so its next update edits this line instead of adding a duplicate
+            $source = (($en['src'] ?? '') === 'extension') ? 'extension' : null;
+            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source]);
         }
 
         if ($submitted) {
@@ -2154,6 +2144,14 @@ function checkOvertime($db, $tsId, $userId, $entries) {
 // Generic notification dispatcher. Sends all timecard events to one GHL
 // webhook URL; GHL branches on the 'event' field.
 // Events: timecard_submitted | timecard_approved | timecard_rejected
+// Adds columns newer code relies on (no-op once they exist)
+function ensureEntryColumns($db) {
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN client_label VARCHAR(255) DEFAULT NULL"); } catch (Exception $e) {}
+}
+
 function fireNotificationWebhook($db, $event, $payload) {
     $url = getSetting('ghl_notify_webhook_url');
     if (!$url) return;

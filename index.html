@@ -530,7 +530,7 @@ function entriesFromDB(list){
     const ei=perDay[day]||0;
     if(ei>=MAX_ROWS_PER_DAY)return;
     perDay[day]=ei+1;
-    entries.push({day,ei,
+    entries.push({day,ei,src:e.source||"",
       co:e.client_name||"",
       del:e.deliverable||"",
       hrs:e.hours!=null?String(parseFloat(e.hours)):"",
@@ -1263,7 +1263,7 @@ async function saveTimesheet(uid,pi,submit){
   for(let day=0;day<14;day++){
     dayRows(d,day).forEach((en,i)=>{
       if(!(en.hrs||en.co||en.del))return;
-      flat.push({day,dayName:DAYS[day%7],co:en.co||"",del:en.del||"",hrs:en.hrs||"",bt:en.bt||BT_DEFAULT,rowIndex:i});
+      flat.push({day,dayName:DAYS[day%7],co:en.co||"",del:en.del||"",hrs:en.hrs||"",bt:en.bt||BT_DEFAULT,rowIndex:i,src:en.src||""});
       allH+=pfl(en.hrs);
     });
   }
@@ -2191,6 +2191,13 @@ function metricCards(cards){
     </div>`).join('')}</div>`;
 }
 
+function rptStatusPill(r){
+  const st=r.status||'none';
+  const label=st==='none'?'No timecard':st==='mixed'?(r.statuses||[]).map(s=>(STATUS_META[s]||{label:s}).label).join(' / '):((STATUS_META[st]||{label:st}).label);
+  const col=st==='approved'?'#4ade80':(st==='submitted'||st==='under_review')?'#fde047':st==='returned'?'#a5b4fc':st==='rejected'?'#fca5a5':'#94a3b8';
+  return `<span style="font-size:.68rem;padding:.15rem .5rem;border-radius:4px;background:${col}22;color:${col}">${escHtml(label)}</span>`;
+}
+function rptRangeWord(d){return d&&d.range&&d.range.start?'Selected dates':'This period';}
 function renderMasterTab(d){
   const rows=d.master||[];
   const counts=d.counts||{};
@@ -2201,8 +2208,10 @@ function renderMasterTab(d){
           pay=parseFloat(r.total_pay||0);
     tH+=h;tB+=b;tNB+=nb;tMK+=mk;tPay+=pay;
     const bPct=h?Math.round(b/h*100):0;
+    const roleTag=r.role&&r.role!=='employee'?`<span style="font-size:.62rem;color:rgba(255,255,255,.45);margin-left:.35rem;text-transform:uppercase">${escHtml(r.role)}</span>`:'';
+    const inactiveTag=r.active===false?`<span style="font-size:.62rem;color:#fca5a5;margin-left:.35rem">inactive</span>`:'';
     return`<tr>
-      <td><strong>${escHtml(r.employee||'—')}</strong></td>
+      <td><strong>${escHtml(r.employee||'—')}</strong>${roleTag}${inactiveTag}</td>
       <td style="font-family:'DM Mono',monospace">${fmt(h)}</td>
       <td style="color:#86efac;font-family:'DM Mono',monospace">${fmt(b)}</td>
       <td style="color:#fde047;font-family:'DM Mono',monospace">${fmt(nb)}</td>
@@ -2214,7 +2223,7 @@ function renderMasterTab(d){
         </div>
       </td>
       <td style="font-family:'DM Mono',monospace;color:#e2e8f0">${r.total_pay?fmtMoney(pay):'—'}</td>
-      <td><span style="font-size:.68rem;padding:.15rem .5rem;border-radius:4px;background:${r.status==='approved'?'rgba(16,185,129,.2)':r.status==='submitted'?'rgba(234,179,8,.2)':'rgba(100,116,139,.15)'};color:${r.status==='approved'?'#4ade80':r.status==='submitted'?'#fde047':'#94a3b8'}">${r.status||'draft'}</span></td>
+      <td>${rptStatusPill(r)}</td>
     </tr>`;
   }).join('');
 
@@ -2264,22 +2273,22 @@ function renderMasterTab(d){
     <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1rem">
       <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:.3rem">Total Hours</div>
       <div style="font-size:1.75rem;font-weight:700;color:#fff;font-family:'DM Mono',monospace;line-height:1">${fmt(tH)}</div>
-      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">This period</div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">${rptRangeWord(d)}</div>
     </div>
     <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1rem">
       <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:.3rem">Total Payroll</div>
       <div style="font-size:1.75rem;font-weight:700;color:#fff;font-family:'DM Mono',monospace;line-height:1">${fmtMoney(tPay)}</div>
-      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">This period</div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">Hours &times; rate, all statuses</div>
     </div>
     <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1rem">
       <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:.3rem">Submitted</div>
       <div style="font-size:1.75rem;font-weight:700;color:#fff;font-family:'DM Mono',monospace;line-height:1">${submittedCount}<span style="font-size:1rem;color:rgba(255,255,255,.4)">/${totalEmp}</span></div>
-      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">Employees</div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">Team members</div>
     </div>
     <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1rem">
       <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:.3rem">Approved</div>
       <div style="font-size:1.75rem;font-weight:700;color:#fff;font-family:'DM Mono',monospace;line-height:1">${approvedCount}<span style="font-size:1rem;color:rgba(255,255,255,.4)">/${totalEmp}</span></div>
-      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">Employees</div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">Team members</div>
     </div>
   </div>
   <!-- CHARTS ROW -->
@@ -2310,7 +2319,7 @@ function renderMasterTab(d){
         <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Pay</th>
         <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Status</th>
       </tr></thead>
-      <tbody>${trs||'<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:rgba(255,255,255,.3)">No timesheet data for this period</td></tr>'}</tbody>
+      <tbody>${trs||'<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:rgba(255,255,255,.3)">No timesheet data for this range</td></tr>'}</tbody>
       <tfoot><tr style="border-top:1px solid rgba(255,255,255,.12)">
         <td style="padding:.5rem .85rem;color:rgba(255,255,255,.6);font-weight:600;font-size:.78rem">TOTAL</td>
         <td style="padding:.5rem .85rem;font-family:'DM Mono',monospace;color:#fff;font-weight:600">${fmt(tH)}</td>
@@ -2346,7 +2355,7 @@ function renderBillableTab(d){
   }).join('');
   return metricCards([
     {label:'Billable Hours',val:fmt(tH),sub:'Client-facing work',color:'#059669'},
-    {label:'Team Cost',val:fmtMoney(tCost),sub:'At employee rates',color:'#0369a1'},
+    {label:'Team Cost',val:fmtMoney(tCost),sub:'Hours × timecard rate',color:'#0369a1'},
     {label:'Clients',val:rows.length,sub:'Active this period',color:'#1e293b'},
   ])+rptTblWrap(`<table>
     <thead><tr><th>Client</th><th>Type</th><th>Hours</th><th>Team Cost</th></tr></thead>
@@ -2496,7 +2505,8 @@ async function exportReportCSV(){
   csvParts.push('MASTER SUMMARY');
   csvParts.push('Employee,Total Hours,Billable,Non-Billable,Marketing,Total Pay,Status');
   (d.master||[]).forEach(r=>{
-    csvParts.push(`"${r.employee}",${fmt(r.total_hours)},${fmt(r.billable_hours)},${fmt(r.nonbillable_hours)},${fmt(r.marketing_hours)},${r.total_pay?fmt(r.total_pay):''},${r.status||'draft'}`);
+    const stLbl=r.status==='none'?'No timecard':r.status==='mixed'?(r.statuses||[]).join('/'):r.status;
+    csvParts.push(`"${r.employee}",${fmt(r.total_hours)},${fmt(r.billable_hours)},${fmt(r.nonbillable_hours)},${fmt(r.marketing_hours)},${r.total_pay?parseFloat(r.total_pay).toFixed(2):''},${stLbl}`);
   });
   csvParts.push('');
   // Billable
