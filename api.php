@@ -863,7 +863,7 @@ if ($action === 'load_followed_tasks') {
     exit;
 }
 
-if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','add_task','update_task','add_task_comment','toggle_task_follower'])) {
+if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
     $body = $_GET;
     $db = getDB();
 
@@ -953,6 +953,15 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
         exit;
     }
+    if ($action === 'delete_task') {
+        $taskId = (int)($body['task_id'] ?? 0);
+        if (!$taskId) { echo json_encode(['success'=>false,'error'=>'task_id required']); exit; }
+        $db->prepare("DELETE FROM task_comments WHERE task_id=?")->execute([$taskId]);
+        $db->prepare("DELETE FROM tasks WHERE id=?")->execute([$taskId]);
+        echo json_encode(['success'=>true]);
+        exit;
+    }
+
     if ($action === 'toggle_task_follower') {
         $taskId = (int)($body['task_id'] ?? 0);
         $userId = (int)($body['user_id'] ?? 0);

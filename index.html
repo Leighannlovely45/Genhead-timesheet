@@ -2705,6 +2705,7 @@ function _pmTaskCard(t,s){
     <div class="pm-card-footer">
       <button class="pm-move-btn" onclick="event.stopPropagation();_pmMoveModal(${t.id},'${s.key}')">→ Move</button>
       ${s.key!=='done'?`<button class="pm-move-btn" style="flex:none;padding:.25rem .55rem;font-weight:700" onclick="event.stopPropagation();_pmCompleteTask(${t.id})" title="Mark done">✓</button>`:''}
+      <button class="pm-move-btn" style="flex:none;padding:.25rem .55rem;color:#ef4444;border-color:rgba(239,68,68,.3)" onclick="event.stopPropagation();_pmDeleteTask(${t.id})" title="Delete task">🗑</button>
     </div>
   </div>`;
 }
@@ -2865,7 +2866,7 @@ async function _pmProjectDetail(projectId){
       h+=`</div></div>`;
     });
     h+=`</div>`;
-    h+=_pmTaskModalHTML(projectId);
+    h+=_pmTaskModalHTML();
     h+=_pmMoveModalHTML();
 
     root.innerHTML=h;
@@ -3241,18 +3242,18 @@ async function _pmSaveProject(){
 }
 
 // ── ADD TASK MODAL ────────────────────────────────────────────────────────
-function _pmTaskModalHTML(projectId){
-  const projOpts=_pm.projects.map(p=>`<option value="${p.id}"${p.id===projectId?' selected':''}>${escHtml(p.name)}</option>`).join('');
+function _pmTaskModalHTML(){
   const empOpts=EMPS.map(e=>`<option value="${e.id}">${escHtml(e.name)}</option>`).join('');
   return `<div id="pm-task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;align-items:center;justify-content:center">
     <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.35);max-height:90vh;overflow-y:auto">
       <h3 style="margin:0 0 1.1rem;color:var(--dark)">Add Task</h3>
+      <input type="hidden" id="pm-task-proj-id">
       <label class="pm-lbl">Project</label>
-      <select id="pm-task-proj" class="pm-inp">${projOpts}</select>
-      <label class="pm-lbl">Task Title</label>
-      <input id="pm-task-title" type="text" placeholder="What needs to be done?" class="pm-inp">
+      <input id="pm-task-proj-name" type="text" placeholder="Project name" class="pm-inp" readonly style="background:var(--hover);cursor:default;opacity:.8">
+      <label class="pm-lbl">Task Title *</label>
+      <input id="pm-task-title" type="text" placeholder="What needs to be done?" class="pm-inp" autofocus>
       <label class="pm-lbl">Description</label>
-      <input id="pm-task-desc" type="text" placeholder="Optional" class="pm-inp">
+      <input id="pm-task-desc" type="text" placeholder="Optional details" class="pm-inp">
       <label class="pm-lbl">Assign To</label>
       <select id="pm-task-assign" class="pm-inp"><option value="">— Unassigned —</option>${empOpts}</select>
       <label class="pm-lbl">Priority</label>
@@ -3278,24 +3279,21 @@ function _pmTaskModalHTML(projectId){
 function _pmAddTaskModal(projectId){
   const modal=document.getElementById('pm-task-modal');
   if(!modal)return;
-  if(projectId){
-    const sel=modal.querySelector('#pm-task-proj');
-    if(sel){
-      for(let i=0;i<sel.options.length;i++){
-        if(parseInt(sel.options[i].value)===projectId){sel.selectedIndex=i;break;}
-      }
-    }
-  }
-  modal.querySelector('#pm-task-title').value='';
-  modal.querySelector('#pm-task-desc').value='';
-  modal.querySelector('#pm-task-assign').value='';
-  modal.querySelector('#pm-task-stage').value='backlog';
-  modal.querySelector('#pm-task-due').value='';
+  const proj=_pm.projects.find(p=>p.id===projectId)||_pm.activeProject;
+  document.getElementById('pm-task-proj-id').value=proj?proj.id:'';
+  document.getElementById('pm-task-proj-name').value=proj?proj.name:'';
+  document.getElementById('pm-task-title').value='';
+  document.getElementById('pm-task-desc').value='';
+  document.getElementById('pm-task-assign').value='';
+  document.getElementById('pm-task-priority').value='medium';
+  document.getElementById('pm-task-stage').value='backlog';
+  document.getElementById('pm-task-due').value='';
   modal.style.display='flex';
+  setTimeout(()=>document.getElementById('pm-task-title').focus(),50);
 }
 
 async function _pmSaveTask(){
-  const projId=parseInt(document.getElementById('pm-task-proj').value);
+  const projId=parseInt(document.getElementById('pm-task-proj-id').value);
   const title=document.getElementById('pm-task-title').value.trim();
   const desc=document.getElementById('pm-task-desc').value.trim();
   const assignSel=document.getElementById('pm-task-assign');
@@ -3304,17 +3302,38 @@ async function _pmSaveTask(){
   const priority=document.getElementById('pm-task-priority').value;
   const stage=document.getElementById('pm-task-stage').value;
   const due=document.getElementById('pm-task-due').value;
-  if(!projId||!title){alert('Project and task title are required.');return;}
+  if(!projId){alert('No project selected.');return;}
+  if(!title){alert('Task title is required.');return;}
   try{
     const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
+    // Add new task to local cache so board re-renders immediately
+    if(r.task){
+      _pm.tasks=_pm.tasks.filter(t=>t.id!==r.task.id);
+      _pm.tasks.push(r.task);
+    }
     document.getElementById('pm-task-modal').style.display='none';
-    // Refresh
-    if(_pm.view==='detail'&&_pm.activeProject) await _pmProjectDetail(_pm.activeProject.id);
-    else if(_pm.view==='board'&&_pm.activeProject) _pmProjectBoard(_pm.activeProject.id);
-    else if(_pm.view==='mytasks') _pmMyTasks();
+    // Re-fetch and refresh the board/view
+    if(_pm.activeProject){
+      const tRes=await fetch(`api.php?action=load_tasks&project_id=${_pm.activeProject.id}`).then(x=>x.json());
+      if(tRes.tasks){_pm.tasks=_pm.tasks.filter(t=>parseInt(t.project_id)!==parseInt(_pm.activeProject.id)).concat(tRes.tasks);}
+      if(_pm.view==='board') _pmProjectBoard(_pm.activeProject.id);
+      else if(_pm.view==='detail') await _pmProjectDetail(_pm.activeProject.id);
+    } else if(_pm.view==='mytasks') _pmMyTasks();
     else await renderProjects();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+async function _pmDeleteTask(taskId){
+  if(!confirm('Delete this task? This cannot be undone.'))return;
+  try{
+    const r=await fetch(API_BASE+'?'+new URLSearchParams({action:'delete_task',task_id:taskId})).then(x=>x.json());
+    if(!r.success)throw new Error(r.error||'Unknown error');
+    _pm.tasks=_pm.tasks.filter(t=>t.id!==taskId);
+    if(_pm.view==='board'&&_pm.activeProject) _pmProjectBoard(_pm.activeProject.id);
+    else if(_pm.view==='detail'&&_pm.activeProject) await _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='mytasks') _pmMyTasks();
   }catch(e){alert('Error: '+e.message);}
 }
 
