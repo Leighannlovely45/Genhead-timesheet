@@ -263,9 +263,13 @@ if ($method === 'GET') {
         $projectId  = (int)($_GET['project_id'] ?? 0);
         $assignedTo = (int)($_GET['assigned_to'] ?? 0);
         $stage      = $_GET['stage'] ?? '';
-        $sql = "SELECT t.*, p.name AS project_name, p.client_name, p.billing_type AS project_billing_type
+        ensureEntryColumns($db);
+        $viewer = (int)preg_replace('/^e/', '', $_GET['viewer'] ?? '');
+        $sql = "SELECT t.*, p.name AS project_name, p.client_name, p.billing_type AS project_billing_type,
+                (SELECT COALESCE(SUM(te.hours),0) FROM timesheet_entries te WHERE te.task_id = t.id) AS ts_logged_hours,
+                (SELECT COALESCE(SUM(te.hours),0) FROM timesheet_entries te JOIN timesheets tsx ON tsx.id = te.timesheet_id WHERE te.task_id = t.id AND tsx.user_id = ?) AS my_logged_hours
                 FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE 1=1";
-        $params = [];
+        $params = [$viewer];
         if ($projectId)  { $sql .= " AND t.project_id = ?";  $params[] = $projectId; }
         if ($assignedTo) { $sql .= " AND t.assigned_to = ?"; $params[] = $assignedTo; }
         if ($stage)      { $sql .= " AND t.stage = ?";       $params[] = $stage; }
@@ -957,7 +961,7 @@ if ($method === 'GET' && $action === 'fire_webhook') {
     exit;
 }
 
-if ($method === 'GET' && in_array($action, ['add_project','archive_project','delete_project','set_project_members','set_project_est_hours','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
+if ($method === 'GET' && in_array($action, ['add_project','archive_project','delete_project','set_project_members','set_project_est_hours','log_task_time','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
     $body = normalizeUserIds($_GET);
     $db = getDB();
     ensureProjectMembers($db);
@@ -1126,6 +1130,78 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
             echo json_encode(['success'=>false,'error'=>'Delete failed: '.$e->getMessage()]); exit;
         }
         echo json_encode(['success'=>true,'tasks_deleted'=>count($ids)]);
+        exit;
+    }
+
+    // ── LOG TIME ON A TASK → adds a line to the person's own timesheet ─────
+    if ($action === 'log_task_time') {
+        $taskId = (int)($body['task_id'] ?? 0);
+        $userId = (int)($body['user_id'] ?? 0);
+        $hours  = round((float)($body['hours'] ?? 0), 2);
+        $date   = trim($body['date'] ?? '') ?: date('Y-m-d');
+        $note   = trim($body['note'] ?? '');
+        if (!$taskId || !$userId) { echo json_encode(['success'=>false,'error'=>'task_id and user_id required']); exit; }
+        if ($hours <= 0 || $hours > 24) { echo json_encode(['success'=>false,'error'=>'Enter hours between 0.01 and 24']); exit; }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) { echo json_encode(['success'=>false,'error'=>'Invalid date']); exit; }
+        ensureEntryColumns($db);
+
+        $st = $db->prepare("SELECT t.id, t.title, t.billing_type, t.project_id, p.name AS project_name, p.client_id,
+                                   COALESCE(p.client_name, (SELECT c.name FROM clients c WHERE c.id = p.client_id)) AS client_name,
+                                   p.billing_type AS project_billing_type
+                            FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ? LIMIT 1");
+        $st->execute([$taskId]);
+        $task = $st->fetch();
+        if (!$task) { echo json_encode(['success'=>false,'error'=>'Task not found']); exit; }
+
+        $us = $db->prepare("SELECT id, name, rate FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $us->execute([$userId]);
+        $user = $us->fetch();
+        if (!$user) { echo json_encode(['success'=>false,'error'=>'User not found']); exit; }
+
+        $per = periodForDate($date);
+        if (!$per) { echo json_encode(['success'=>false,'error'=>'That date is outside the pay periods set up in the timesheet']); exit; }
+
+        // Find or create this person's timesheet for that period
+        $ts = $db->prepare("SELECT id, status FROM timesheets WHERE user_id = ? AND period = ? LIMIT 1");
+        $ts->execute([$userId, $per['period']]);
+        $sheet = $ts->fetch();
+        if ($sheet && in_array($sheet['status'], ['submitted','under_review','approved'])) {
+            echo json_encode(['success'=>false,'error'=>"Your timesheet for {$per['period']} is already ".($sheet['status']==='approved'?'approved':'submitted').". Ask your reviewer to return it to add time."]); exit;
+        }
+        if (!$sheet) {
+            $db->prepare("INSERT INTO timesheets (user_id, period, period_index, period_start, period_end, status, total_hours, total_pay, pay_rate) VALUES (?,?,?,?,?,'draft',0,0,?)")
+               ->execute([$userId, $per['period'], $per['index'], $per['start'], $per['end'], (float)$user['rate']]);
+            $sheetId = (int)$db->lastInsertId();
+        } else {
+            $sheetId = (int)$sheet['id'];
+        }
+
+        $billingType = $task['billing_type'] ?: ($task['project_billing_type'] ?: 'billable');
+        if (!in_array($billingType, ['billable','nonbillable','marketing'])) $billingType = 'billable';
+        $deliverable = $task['title'] . ($note !== '' ? ' — ' . $note : '');
+        $rowSt = $db->prepare("SELECT COALESCE(MAX(row_index),-1)+1 FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ?");
+        $rowSt->execute([$sheetId, $per['day']]);
+        $rowIdx = (int)$rowSt->fetchColumn();
+
+        $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id)
+                      VALUES (?,?,?,?,?,?,?,?,?,?, 'task', ?, ?)")
+           ->execute([$sheetId, $task['client_id'] ?: null, $task['client_name'] ?: null, $deliverable, $hours, (float)$user['rate'],
+                      $billingType === 'billable' ? 1 : 0, $billingType, $per['day'], $rowIdx, $task['project_id'] ?: null, $taskId]);
+
+        $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
+                      total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?), updated_at = NOW() WHERE id = ?")
+           ->execute([$sheetId, $sheetId, $sheetId]);
+
+        $nice = (new DateTime($date))->format('M j');
+        $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
+           ->execute([$taskId, $userId, $user['name'], "Logged {$hours}h on {$nice}".($note !== '' ? " — {$note}" : '')]);
+
+        $tot = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE task_id = ?");
+        $tot->execute([$taskId]);
+        $mine = $db->prepare("SELECT COALESCE(SUM(te.hours),0) FROM timesheet_entries te JOIN timesheets t ON t.id = te.timesheet_id WHERE te.task_id = ? AND t.user_id = ?");
+        $mine->execute([$taskId, $userId]);
+        echo json_encode(['success'=>true, 'period'=>$per['period'], 'period_index'=>$per['index'],
+                          'task_hours'=>round((float)$tot->fetchColumn(),2), 'my_task_hours'=>round((float)$mine->fetchColumn(),2)]);
         exit;
     }
 
@@ -1875,7 +1951,7 @@ if ($method === 'POST') {
 
         ensureEntryColumns($db);
         $db->prepare("DELETE FROM timesheet_entries WHERE timesheet_id = ?")->execute([$tsId]);
-        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($entries as $i => $en) {
             if (empty($en['hrs']) && empty($en['co'])) continue;
             $clientId = null;
@@ -1894,9 +1970,10 @@ if ($method === 'POST') {
             $rowIdx   = (int)($en['rowIndex'] ?? $i);
             $label  = trim($en['co'] ?? '');
             // Preserve the Chrome-extension tag so its next update edits this line instead of adding a duplicate
-            $source = (($en['src'] ?? '') === 'extension') ? 'extension' : null;
+            $source = in_array(($en['src'] ?? ''), ['extension','task']) ? $en['src'] : null;
+            $taskLink = (int)($en['task'] ?? 0) ?: null;
             $projectId = (int)($en['proj'] ?? 0) ?: null;
-            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId]);
+            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId, $taskLink]);
         }
 
         if ($submitted) {
@@ -2296,6 +2373,27 @@ function ensureEntryColumns($db) {
     $done = true;
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN client_label VARCHAR(255) DEFAULT NULL"); } catch (Exception $e) {}
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN project_id INT DEFAULT NULL"); } catch (Exception $e) {}
+    try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN task_id INT DEFAULT NULL"); } catch (Exception $e) {}
+}
+
+// Pay period containing a date (same calendar the timesheet uses)
+function periodForDate($date) {
+    $pStarts = [
+        [2026,4,27],[2026,5,11],[2026,5,25],[2026,6,8],[2026,6,22],[2026,7,6],
+        [2026,7,20],[2026,8,3],[2026,8,17],[2026,8,31],[2026,9,14],[2026,9,28],
+        [2026,10,12],[2026,10,26],[2026,11,9],[2026,11,23],[2026,12,7],[2026,12,21]
+    ];
+    $d = new DateTime($date);
+    foreach ($pStarts as $i => $ps) {
+        $s = new DateTime(sprintf('%04d-%02d-%02d', $ps[0], $ps[1], $ps[2]));
+        $e = clone $s; $e->modify('+13 days');
+        if ($d >= $s && $d <= $e) {
+            return ['period' => $s->format('M d').' - '.$e->format('M d'), 'index' => $i,
+                    'start' => $s->format('Y-m-d'), 'end' => $e->format('Y-m-d'),
+                    'day' => (int)$s->diff($d)->days];
+        }
+    }
+    return null;
 }
 
 function fireNotificationWebhook($db, $event, $payload) {
