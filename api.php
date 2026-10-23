@@ -2168,7 +2168,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period'];
         foreach ($allowed as $key) { if (isset($body[$key])) setSetting($key, $body[$key]); }
         echo json_encode(['success' => true]);
         exit;

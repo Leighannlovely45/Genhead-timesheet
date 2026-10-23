@@ -479,14 +479,16 @@ function projectsForClient(name){
 
 // ── API HELPER ─────────────────────────────────────────────────────────────
 const API_BASE="api.php";
+// POST helper. api.php reads the action from the URL, so it goes there; the rest is
+// sent as JSON so true/false and numbers arrive as real values.
 function api(body){
-  const form=new URLSearchParams();
-  for(const[k,v]of Object.entries(body)) form.append(k,typeof v==="object"?JSON.stringify(v):v);
-  return fetch(API_BASE,{
+  const {action,...rest}=body||{};
+  return fetch(`${API_BASE}?action=${encodeURIComponent(action||"")}`,{
     method:"POST",
-    headers:{"Content-Type":"application/x-www-form-urlencoded"},
-    body:form.toString()
-  }).then(r=>r.json()).then(d=>({...d,ok:d.success===true||d.ok===true}));
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(rest)
+  }).then(r=>r.json()).then(d=>({...d,ok:d.success===true||d.ok===true}))
+    .catch(e=>({success:false,ok:false,error:"Network error: "+e.message}));
 }
 
 let GHL_WEBHOOK=localStorage.getItem("ghl_webhook")||"";
@@ -2590,8 +2592,8 @@ function renderProjectionsTab(d){
 
 async function setProjectEstHours(projId, val){
   const hrs=parseFloat(val)||null;
-  await api({action:'set_project_est_hours',project_id:projId,estimated_hours:hrs});
-  showToast('Estimated hours saved.');
+  const r=await fetch(`${API_BASE}?action=set_project_est_hours&project_id=${projId}&estimated_hours=${hrs??''}`).then(x=>x.json()).catch(()=>({success:false}));
+  showToast(r.success?'Estimated hours saved.':'Could not save estimated hours.');
 }
 
 async function exportReportCSV(){
@@ -3812,6 +3814,33 @@ async function _pmArchiveProject(projectId){
     PROJECTS=PROJECTS.filter(p=>p.id!==projectId);
     _pmProjectsView();
   }catch(e){alert('Error: '+e.message);}
+}
+
+function _pmSetEstHours(projectId){
+  const p=_pm.projects.find(x=>parseInt(x.id)===parseInt(projectId));
+  if(!p)return;
+  let m=document.getElementById("pm-est-modal");
+  if(!m){m=document.createElement("div");m.id="pm-est-modal";m.className="rv-overlay";document.body.appendChild(m);}
+  m.innerHTML=`<div class="rv-card" style="max-width:340px">
+    <h3>Estimated Hours</h3>
+    <div style="font-size:.8rem;color:var(--mid)">${escHtml(p.name)}</div>
+    <input id="pm-est-input" type="number" min="0" step="0.5" value="${p.estimated_hours||''}" placeholder="e.g. 40" style="width:100%;margin-top:.7rem;padding:.55rem .7rem;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--dark);font-size:.9rem;box-sizing:border-box">
+    <div id="pm-est-err" class="rv-err"></div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.5rem">
+      <button class="btn btn-outline" onclick="document.getElementById('pm-est-modal').style.display='none'">Cancel</button>
+      <button class="btn btn-primary" id="pm-est-save">Save</button>
+    </div></div>`;
+  m.onclick=e=>{if(e.target===m)m.style.display="none";};
+  document.getElementById("pm-est-save").onclick=async()=>{
+    const v=document.getElementById("pm-est-input").value;
+    const r=await fetch(`${API_BASE}?action=set_project_est_hours&project_id=${p.id}&estimated_hours=${encodeURIComponent(v)}`).then(x=>x.json()).catch(()=>({success:false}));
+    if(!r.success){document.getElementById("pm-est-err").textContent="Could not save — try again.";return;}
+    p.estimated_hours=v===''?null:parseFloat(v);
+    m.style.display="none";showToast("Estimated hours saved.");
+    if(_pm.view==="board"&&_pm.activeProject)_pmProjectBoard(parseInt(p.id));else _pmProjectsView();
+  };
+  m.style.display="flex";
+  setTimeout(()=>document.getElementById("pm-est-input").focus(),30);
 }
 
 async function _pmDeleteProject(projectId){
