@@ -2580,14 +2580,18 @@ function _pmTaskCard(t,s){
       ${dueTxt?`<span style="font-size:.7rem;${dueColor}">${dueTxt}</span>`:''}
       <span class="pm-avatar" title="${escHtml(t.assigned_name||'Unassigned')}">${initials}</span>
     </div>
-    <button class="pm-move-btn" onclick="event.stopPropagation();_pmMoveModal(${t.id},'${s.key}')">→ Move</button>
+    <div style="display:flex;gap:.35rem;margin-top:.35rem">
+      <button class="pm-move-btn" style="flex:1" onclick="event.stopPropagation();_pmMoveModal(${t.id},'${s.key}')">→ Move</button>
+      ${s.key!=='done'?`<button class="pm-move-btn" style="color:var(--teal);border-color:var(--teal)" onclick="event.stopPropagation();_pmCompleteTask(${t.id})">✓</button>`:''}
+    </div>
   </div>`;
 }
 
 function _pmMyTasks(){
   _pm.view='mytasks';
   const root=pmRoot();
-  const myTasks=_pm.tasks.filter(t=>t.assigned_to==cur.id && t.stage!=='done');
+  const myDbId=cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0;
+  const myTasks=_pm.tasks.filter(t=>parseInt(t.assigned_to)===myDbId && t.stage!=='done');
   let h=`
   <div class="dash-top">
     <div><h2>My Tasks</h2><p>Tasks assigned to you, excluding Done</p></div>
@@ -2817,6 +2821,7 @@ function _pmShowTaskPanel(task){
     </div>
     <div style="padding:.5rem 1.25rem .85rem;display:flex;gap:.5rem;flex-wrap:wrap">
       <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .65rem" onclick="_pmMoveModal(${task.id},'${task.stage}')">→ Move Stage</button>
+      ${task.stage!=='done'?`<button class="btn btn-primary" style="font-size:.75rem;padding:.3rem .65rem;background:var(--teal);border-color:var(--teal)" onclick="_pmCompleteTask(${task.id})">✓ Complete</button>`:''}
       ${String(task.assigned_to)!==String(cur.db_id||cur.id.replace('e',''))?`
       <button id="pm-follow-btn" class="btn ${_pm.taskFollowers&&_pm.taskFollowers.includes(parseInt(cur.db_id||cur.id.replace('e','')))?'btn-primary':'btn-outline'}"
         style="font-size:.75rem;padding:.3rem .65rem"
@@ -2827,6 +2832,22 @@ function _pmShowTaskPanel(task){
   </div>`;
   document.body.appendChild(panel);
   panel.addEventListener('click',function(e){if(e.target===panel)panel.remove();});
+}
+
+async function _pmCompleteTask(taskId){
+  try{
+    const p=new URLSearchParams({action:'update_task',id:taskId,stage:'done',actor_id:cur.id,actor_name:cur.name});
+    const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
+    if(!r.success)throw new Error(r.error||'Unknown error');
+    const t=_pm.tasks.find(t=>t.id===taskId);
+    if(t) t.stage='done';
+    const panel=document.getElementById('pm-task-panel');
+    if(panel) panel.remove();
+    if(_pm.view==='detail'&&_pm.activeProject) _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='board'&&_pm.activeProject) _pmProjectBoard(_pm.activeProject.id);
+    else if(_pm.view==='mytasks') _pmMyTasks();
+    else _renderPMBoard();
+  }catch(e){alert('Error completing task: '+e.message);}
 }
 
 async function _pmSaveTaskEdits(taskId){
@@ -2848,6 +2869,7 @@ async function _pmSaveTaskEdits(taskId){
     const panel=document.getElementById('pm-task-panel');
     if(panel)panel.remove();
     if(_pm.view==='detail'&&_pm.activeProject) _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='board'&&_pm.activeProject) _pmProjectBoard(_pm.activeProject.id);
     else if(_pm.view==='mytasks') _pmMyTasks();
     else _renderPMBoard();
   }catch(e){alert('Error saving: '+e.message);}
@@ -3118,6 +3140,8 @@ async function _pmSaveTask(){
     document.getElementById('pm-task-modal').style.display='none';
     // Refresh
     if(_pm.view==='detail'&&_pm.activeProject) await _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='board'&&_pm.activeProject) _pmProjectBoard(_pm.activeProject.id);
+    else if(_pm.view==='mytasks') _pmMyTasks();
     else await renderProjects();
   }catch(e){alert('Error: '+e.message);}
 }
