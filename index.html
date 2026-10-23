@@ -889,7 +889,7 @@ function doLogin(u){
   badge.className="badge-role"+(u.role==="manager"?" mgr":u.role==="hr"?" hr":u.role==="admin"?" admin":"");
   const sel=document.getElementById("period-sel");
   sel.innerHTML=PERIODS.map((p,i)=>`<option value="${i}">${p}</option>`).join("");
-  pidx=0;sel.value=0;show("s-app");renderApp();
+  pidx=PERIODS.length>0?PERIODS.length-1:0;sel.value=pidx;show("s-app");renderApp();
 }
 
 function logout(){cur=null;showLoginSelect();show("s-login");}
