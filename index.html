@@ -2915,12 +2915,7 @@ function _pmShowTaskPanel(task){
   panel.id='pm-task-panel';
   panel.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;justify-content:flex-end;padding:1rem';
 
-  const commentsHtml=_pm.comments.map(c=>`
-    <div class="${c.is_activity?'pm-activity':'pm-comment'}">
-      <span class="pm-cmt-who">${escHtml(c.user_name)}</span>
-      <span class="pm-cmt-time"> · ${c.created_at?.slice(5,16)||''}</span>
-      <div class="pm-cmt-text">${escHtml(c.comment)}</div>
-    </div>`).join('');
+  const commentsHtml=_pmRenderComments(_pm.comments);
 
   const empOpts=EMPS.map(e=>`<option value="${e.id}"${String(e.id)===String(task.assigned_to)?' selected':''}>${escHtml(e.name)}</option>`).join('');
 
@@ -2984,7 +2979,7 @@ function _pmShowTaskPanel(task){
     <div style="padding:.75rem 1.25rem;border-top:1px solid var(--border);display:flex;gap:.5rem">
       <input id="pm-comment-input" type="text" placeholder="Add a comment…" style="flex:1;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--dark);font-size:.85rem"
         onkeydown="if(event.key==='Enter')_pmSubmitComment(${task.id})">
-      <button class="btn btn-primary" style="font-size:.82rem;padding:.45rem .9rem" onclick="_pmSubmitComment(${task.id})">Send</button>
+      <button class="btn btn-primary" style="font-size:.82rem;padding:.45rem .9rem" onclick="_pmSubmitComment(${task.id})">Save</button>
     </div>
     <div style="padding:.5rem 1.25rem .85rem;display:flex;gap:.5rem;flex-wrap:wrap">
       <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .65rem" onclick="_pmMoveModal(${task.id},'${task.stage}')">→ Move Stage</button>
@@ -3075,27 +3070,49 @@ async function _pmToggleFollow(taskId){
   }catch(e){alert('Error: '+e.message);}
 }
 
+function _pmRenderComments(comments){
+  if(!comments||!comments.length) return '<div style="color:var(--mid);font-size:.82rem">No comments yet.</div>';
+  return comments.map(c=>`
+    <div class="${c.is_activity?'pm-activity':'pm-comment'}" style="${!c.is_activity?'background:var(--hover);border-radius:8px;padding:.5rem .65rem;border-bottom:none;margin-bottom:.4rem':''}">
+      <div style="display:flex;align-items:baseline;gap:.4rem;margin-bottom:.15rem">
+        <span class="pm-cmt-who" style="font-weight:600;font-size:.8rem">${escHtml(c.user_name||'')}</span>
+        <span class="pm-cmt-time" style="font-size:.72rem;opacity:.55">${c.created_at?.slice(5,16)||''}</span>
+      </div>
+      <div class="pm-cmt-text" style="font-size:.84rem">${escHtml(c.comment)}</div>
+    </div>`).join('');
+}
+
 async function _pmSubmitComment(taskId){
   const inp=document.getElementById('pm-comment-input');
   const comment=inp?inp.value.trim():'';
   if(!comment)return;
   inp.value='';
+  inp.focus();
+  // Optimistic: append immediately
+  const list=document.getElementById('pm-comments-list');
+  if(list){
+    const now=new Date();
+    const ts=`${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const tmpDiv=document.createElement('div');
+    tmpDiv.className='pm-comment';
+    tmpDiv.style.cssText='background:var(--hover);border-radius:8px;padding:.5rem .65rem;border-bottom:none;margin-bottom:.4rem;opacity:.65';
+    tmpDiv.innerHTML=`<div style="display:flex;align-items:baseline;gap:.4rem;margin-bottom:.15rem"><span style="font-weight:600;font-size:.8rem">${escHtml(cur.name)}</span><span style="font-size:.72rem;opacity:.55">${ts}</span></div><div style="font-size:.84rem">${escHtml(comment)}</div>`;
+    // Remove "no comments" placeholder if present
+    if(list.children[0]&&list.children[0].textContent.includes('No comments')) list.innerHTML='';
+    list.appendChild(tmpDiv);
+    list.scrollTop=list.scrollHeight;
+  }
   try{
     const cp=new URLSearchParams({action:'add_task_comment',task_id:taskId,user_id:cur.id,user_name:cur.name,comment});
     await fetch(API_BASE+'?'+cp).then(x=>x.json());
-    // Refresh comments
+    // Refresh with real server data
     const cRes=await fetch(`api.php?action=load_task_comments&task_id=${taskId}`).then(r=>r.json());
     _pm.comments=cRes.comments||[];
-    const list=document.getElementById('pm-comments-list');
     if(list){
-      list.innerHTML=_pm.comments.map(c=>`
-        <div class="${c.is_activity?'pm-activity':'pm-comment'}">
-          <span class="pm-cmt-who">${escHtml(c.user_name)}</span>
-          <span class="pm-cmt-time"> · ${c.created_at?.slice(5,16)||''}</span>
-          <div class="pm-cmt-text">${escHtml(c.comment)}</div>
-        </div>`).join('');
+      list.innerHTML=_pmRenderComments(_pm.comments);
+      list.scrollTop=list.scrollHeight;
     }
-  }catch(e){alert('Error: '+e.message);}
+  }catch(e){showToast('Error saving comment: '+e.message);}
 }
 
 // ── MOVE MODAL ────────────────────────────────────────────────────────────
