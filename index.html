@@ -738,33 +738,37 @@ function lfSubmit(){
       if(pw.length<6){errEl.textContent="Password must be at least 6 characters.";return;}
       if(pw!==pwConf){errEl.textContent="Passwords don't match — try again.";document.getElementById("lf-password-confirm").value="";return;}
       submitBtn.disabled=true;
-      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
-        submitBtn.disabled=false;
-        if(r.success){if(u)u.password_set=true;doLogin(u);}
-        else errEl.textContent=r.error||"Error setting password.";
-      }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
+      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`)
+        .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+        .then(r=>{
+          submitBtn.disabled=false;
+          if(r.success){if(u)u.password_set=true;doLogin(u);}
+          else errEl.textContent=r.error||"Error setting password.";
+        }).catch(e=>{submitBtn.disabled=false;errEl.textContent="Error: "+(e.message||"try again");});
     } else {
       submitBtn.disabled=true;
-      fetch(`api.php?action=verify_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
-        submitBtn.disabled=false;
-        if(r.success){
-          if(u)u.password_set=true;
-          doLogin(u);
-        } else if(r.needs_setup){
-          _pinMode='setup';
-          document.getElementById("lf-pw-label").textContent="Create your password";
-          document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
-          document.getElementById("lf-password").value="";
-          document.getElementById("lf-pw-confirm-group").style.display="";
-          document.getElementById("lf-forgot").style.display="none";
-          errEl.textContent="No password set yet — please create one.";
-          setTimeout(()=>document.getElementById("lf-password").focus(),100);
-        } else {
-          errEl.textContent="Incorrect password.";
-          document.getElementById("lf-password").value="";
-          setTimeout(()=>document.getElementById("lf-password").focus(),100);
-        }
-      }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
+      fetch(`api.php?action=verify_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`)
+        .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+        .then(r=>{
+          submitBtn.disabled=false;
+          if(r.success){
+            if(u)u.password_set=true;
+            doLogin(u);
+          } else if(r.needs_setup){
+            _pinMode='setup';
+            document.getElementById("lf-pw-label").textContent="Create your password";
+            document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
+            document.getElementById("lf-password").value="";
+            document.getElementById("lf-pw-confirm-group").style.display="";
+            document.getElementById("lf-forgot").style.display="none";
+            errEl.textContent="No password set yet — please create one.";
+            setTimeout(()=>document.getElementById("lf-password").focus(),100);
+          } else {
+            errEl.textContent="Incorrect password.";
+            document.getElementById("lf-password").value="";
+            setTimeout(()=>document.getElementById("lf-password").focus(),100);
+          }
+        }).catch(e=>{submitBtn.disabled=false;errEl.textContent="Error: "+(e.message||"try again");});
     }
 
   } else {
@@ -778,36 +782,40 @@ function lfSubmit(){
       if(pw.length<6){errEl.textContent="Password must be at least 6 characters.";return;}
       if(pw!==pwConf){errEl.textContent="Passwords don't match — try again.";document.getElementById("lf-password-confirm").value="";return;}
       submitBtn.disabled=true;
-      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
-        submitBtn.disabled=false;
-        if(r.success){if(u)u.password_set=true;doLogin(u);}
-        else errEl.textContent=r.error||"Error setting password.";
-      }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
+      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`)
+        .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+        .then(r=>{
+          submitBtn.disabled=false;
+          if(r.success){if(u)u.password_set=true;doLogin(u);}
+          else errEl.textContent=r.error||"Error setting password.";
+        }).catch(e=>{submitBtn.disabled=false;errEl.textContent="Error: "+(e.message||"try again");});
 
     } else {
       // Normal login — submit password; server tells us if setup is needed
       submitBtn.disabled=true;
-      fetch(`api.php?action=verify_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`).then(r=>r.json()).then(r=>{
-        submitBtn.disabled=false;
-        if(r.success){
-          if(u)u.password_set=true;
-          doLogin(u);
-        } else if(r.needs_setup){
-          // First-time user — switch to setup mode
-          _pinMode='setup';
-          document.getElementById("lf-pw-label").textContent="Create your password";
-          document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
-          document.getElementById("lf-password").value="";
-          document.getElementById("lf-pw-confirm-group").style.display="";
-          document.getElementById("lf-forgot").style.display="none";
-          errEl.textContent="No password set yet — please create one.";
-          setTimeout(()=>document.getElementById("lf-password").focus(),100);
-        } else {
-          errEl.textContent="Incorrect password.";
-          document.getElementById("lf-password").value="";
-          setTimeout(()=>document.getElementById("lf-password").focus(),100);
-        }
-      }).catch(()=>{submitBtn.disabled=false;errEl.textContent="Network error — try again.";});
+      fetch(`api.php?action=verify_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`)
+        .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+        .then(r=>{
+          submitBtn.disabled=false;
+          if(r.success){
+            if(u)u.password_set=true;
+            doLogin(u);
+          } else if(r.needs_setup){
+            // First-time user — switch to setup mode
+            _pinMode='setup';
+            document.getElementById("lf-pw-label").textContent="Create your password";
+            document.getElementById("lf-password").placeholder="Choose a password (min 6 chars)";
+            document.getElementById("lf-password").value="";
+            document.getElementById("lf-pw-confirm-group").style.display="";
+            document.getElementById("lf-forgot").style.display="none";
+            errEl.textContent="No password set yet — please create one.";
+            setTimeout(()=>document.getElementById("lf-password").focus(),100);
+          } else {
+            errEl.textContent="Incorrect password.";
+            document.getElementById("lf-password").value="";
+            setTimeout(()=>document.getElementById("lf-password").focus(),100);
+          }
+        }).catch(e=>{submitBtn.disabled=false;errEl.textContent="Error: "+(e.message||"try again");});
     }
   }
 }
@@ -1673,7 +1681,7 @@ function renderTeam(){
 
 async function assignManager(empId,mgrId){
   try{
-    const r=await api({action:"assign_manager",employee_id:empId,manager_id:mgrId||""});
+    const r=await fetch(API_BASE+'?'+new URLSearchParams({action:"assign_manager",employee_id:empId,manager_id:mgrId||""})).then(x=>x.json());
     if(r.success){
       const emp=EMPS.find(e=>e.id===empId);
       if(emp) emp.manager_id=mgrId?mgrId.replace("e",""):null;
@@ -3491,7 +3499,11 @@ async function saveMember(){
       // Add new
       if(role==="employee"){
         r=await apiGet({action:"add_employee",name,email,pin:pin||""});
-        if(r.success){EMPS.push({...r.employee,role:"employee",active:true,status:"active",password_set:false});}
+        if(r.success){
+          // API returns {success,id,name} or {success,employee:{...}}
+          const emp=r.employee||{id:r.id,name:r.name||name,email};
+          EMPS.push({...emp,role:"employee",active:true,status:"active",password_set:false,pin_set:!!(pin||emp.pin_set)});
+        }
       } else {
         const p={action:"add_manager",name,email,role};
         if(pw) p.pw=pw;
