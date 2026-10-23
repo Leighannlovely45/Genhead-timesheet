@@ -957,7 +957,7 @@ if ($method === 'GET' && $action === 'fire_webhook') {
     exit;
 }
 
-if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','delete_project','set_project_members','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
+if ($method === 'GET' && in_array($action, ['add_project','archive_project','delete_project','set_project_members','set_project_est_hours','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
     $body = normalizeUserIds($_GET);
     $db = getDB();
     ensureProjectMembers($db);
