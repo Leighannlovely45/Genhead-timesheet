@@ -1243,6 +1243,36 @@ function pickProject(day,ei,pid){
   queueAutoSave();
 }
 
+// ── IN-PAGE CONFIRM (browser confirm() is blocked in embedded/preview browsers) ──
+function uiConfirm(message,{title="Please confirm",ok="Confirm",danger=false}={}){
+  return new Promise(resolve=>{
+    let m=document.getElementById("ui-confirm");
+    if(!m){
+      m=document.createElement("div");
+      m.id="ui-confirm";m.className="rv-overlay";
+      m.innerHTML=`<div class="rv-card" role="dialog" aria-modal="true">
+        <h3 id="ui-confirm-title"></h3>
+        <div id="ui-confirm-msg" style="font-size:.84rem;color:var(--dark);line-height:1.5;margin-top:.5rem;white-space:pre-line"></div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.1rem">
+          <button class="btn btn-outline" id="ui-confirm-cancel">Cancel</button>
+          <button class="btn btn-primary" id="ui-confirm-ok"></button>
+        </div></div>`;
+      document.body.appendChild(m);
+    }
+    document.getElementById("ui-confirm-title").textContent=title;
+    document.getElementById("ui-confirm-msg").textContent=message;
+    const okB=document.getElementById("ui-confirm-ok"),noB=document.getElementById("ui-confirm-cancel");
+    okB.textContent=ok;okB.style.background=danger?"#ef4444":"";okB.style.borderColor=danger?"#ef4444":"";
+    const done=v=>{m.style.display="none";okB.onclick=noB.onclick=m.onclick=null;document.removeEventListener("keydown",key);resolve(v);};
+    const key=e=>{if(e.key==="Escape")done(false);if(e.key==="Enter")done(true);};
+    okB.onclick=()=>done(true);noB.onclick=()=>done(false);
+    m.onclick=e=>{if(e.target===m)done(false);};
+    document.addEventListener("keydown",key);
+    m.style.display="flex";
+    setTimeout(()=>okB.focus(),30);
+  });
+}
+
 // ── ADD / DELETE LINES ─────────────────────────────────────────────────────
 function addRow(day){
   const uid=cur._vid||cur.id;
@@ -2938,7 +2968,7 @@ async function saveClient(){
 }
 
 async function deactivateClient(id,name){
-  if(!confirm(`Remove client "${name}"? This won't delete historical timecard entries.`)) return;
+  if(!(await uiConfirm(`Remove client "${name}"? This won't delete historical timecard entries.`,{title:"Remove client",ok:"Remove",danger:true}))) return;
   try{
     const r=await api({action:"update_client",id:parseInt(id),active:0});
     if(r.success){showToast(`"${name}" removed.`);renderClients();}
@@ -3695,7 +3725,7 @@ function _pmAddProjectModal(){
 
 async function _pmArchiveProject(projectId){
   const p=_pm.projects.find(x=>x.id===projectId)||{};
-  if(!confirm(`Archive "${p.name||'this project'}"? It will be hidden from the projects list and the timesheet Project picker.`)) return;
+  if(!(await uiConfirm(`Archive "${p.name||'this project'}"? It will be hidden from the projects list and the timesheet Project picker.`,{title:"Archive project",ok:"Archive"}))) return;
   try{
     const r=await fetch(`${API_BASE}?action=archive_project&id=${projectId}`).then(x=>x.json());
     if(!r.success) throw new Error(r.error||'Failed');
@@ -3708,10 +3738,10 @@ async function _pmArchiveProject(projectId){
 async function _pmDeleteProject(projectId){
   const p=_pm.projects.find(x=>x.id===projectId)||{};
   const tasks=parseInt(p.task_count||0);
-  const msg=`Permanently delete "${p.name||'this project'}"?\n\n`+
+  const msg=`Permanently delete "${p.name||'this project'}"${p.client_name?" ("+p.client_name+")":" (no client)"}?\n\n`+
     (tasks?`- Its ${tasks} task${tasks===1?'':'s'} (and their comments) will be deleted.\n`:'')+
     `- Timesheet hours are kept. Lines tagged to this project become general hours for ${p.client_name||'the client'}.\n\nThis can't be undone. To just hide it, use Archive instead.`;
-  if(!confirm(msg)) return;
+  if(!(await uiConfirm(msg,{title:"Delete project",ok:"Delete project",danger:true}))) return;
   try{
     const r=await fetch(`${API_BASE}?action=delete_project&id=${projectId}&actor_id=${encodeURIComponent(myDbId())}`).then(x=>x.json());
     if(!r.success) throw new Error(r.error||'Failed');
@@ -3833,7 +3863,7 @@ async function _pmSaveTask(){
 }
 
 async function _pmDeleteTask(taskId){
-  if(!confirm('Delete this task? This cannot be undone.'))return;
+  if(!(await uiConfirm('Delete this task? This cannot be undone.',{title:"Delete task",ok:"Delete",danger:true})))return;
   try{
     const r=await fetch(API_BASE+'?'+new URLSearchParams({action:'delete_task',task_id:taskId})).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
@@ -4026,7 +4056,7 @@ async function saveMember(){
 async function toggleMemberActive(uid,isActive){
   const emp=EMPS.find(e=>e.id===uid);
   const action=isActive?"deactivate":"reactivate";
-  if(!confirm(`${isActive?"Deactivate":"Reactivate"} ${emp?.name||"this member"}?`)) return;
+  if(!(await uiConfirm(`${isActive?"Deactivate":"Reactivate"} ${emp?.name||"this member"}?`,{title:isActive?"Deactivate member":"Reactivate member",ok:isActive?"Deactivate":"Reactivate",danger:isActive}))) return;
   try{
     const r=await api({action:"update_employee",id:uid,active:!isActive});
     if(r.success){
