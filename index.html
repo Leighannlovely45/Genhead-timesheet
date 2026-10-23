@@ -3123,7 +3123,7 @@ function _pmProjectsView(clientFilter){
           ${p.due_date?`<span style="font-size:.72rem;color:${overdue?'#f87171':'var(--mid)'}">Due ${p.due_date}</span>`:''}
           ${p.estimated_hours?`<span style="font-size:.72rem;color:var(--teal)">~${parseFloat(p.estimated_hours).toFixed(1)}h est.</span>`:`<button onclick="event.stopPropagation();_pmSetEstHours(${p.id})" style="font-size:.68rem;color:var(--mid);background:none;border:1px dashed var(--border);border-radius:4px;padding:.1rem .4rem;cursor:pointer">+ Est. Hours</button>`}
           ${canManage?`<button onclick="event.stopPropagation();_pmArchiveProject(${p.id})" style="margin-left:auto;font-size:.65rem;color:#f87171;background:none;border:1px solid #f87171;border-radius:4px;padding:.1rem .4rem;cursor:pointer;opacity:.6" title="Archive project (hide it)">Archive</button>`:''}
-          ${(role==='admin'||role==='hr')?`<button onclick="event.stopPropagation();_pmDeleteProject(${p.id})" style="font-size:.65rem;color:#fff;background:#ef4444;border:1px solid #ef4444;border-radius:4px;padding:.1rem .45rem;cursor:pointer" title="Delete project permanently">Delete</button>`:''}
+          ${canManage?`<button onclick="event.stopPropagation();_pmDeleteProject(${p.id})" style="font-size:.65rem;color:#fff;background:#ef4444;border:1px solid #ef4444;border-radius:4px;padding:.1rem .45rem;cursor:pointer" title="Delete project permanently">Delete</button>`:''}
         </div>
       </div>`;
     });

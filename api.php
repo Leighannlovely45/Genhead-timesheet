@@ -1057,7 +1057,7 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         if (!$id) { echo json_encode(['success'=>false,'error'=>'id required']); exit; }
         $role = $db->prepare("SELECT role FROM users WHERE id = ? AND status = 'active' LIMIT 1");
         $role->execute([$actorId]);
-        if (!in_array($role->fetchColumn(), ['admin','hr'])) { echo json_encode(['success'=>false,'error'=>'Only Admin or HR can delete projects']); exit; }
+        if (!in_array($role->fetchColumn(), ['admin','hr','manager'])) { echo json_encode(['success'=>false,'error'=>'Only Managers, HR or Admin can delete projects']); exit; }
         ensureEntryColumns($db);
         $ids = [];
         $db->beginTransaction();
