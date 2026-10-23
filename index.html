@@ -111,6 +111,25 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .add-line-btn:hover{background:rgba(20,184,166,.08)}
 .ts-save-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:.35rem}
 .ts-save-note{font-size:.68rem;color:var(--teal);min-height:.9rem}
+.st-badge{display:inline-block;padding:.2rem .55rem;border-radius:5px;font-size:.74rem;font-weight:600;white-space:nowrap}
+.ts-review-note{border-radius:10px;padding:.75rem 1rem;margin-bottom:.9rem;font-size:.82rem;line-height:1.45}
+.ts-review-note strong{display:block;margin-bottom:.15rem}
+.rec-filters{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem}
+.rec-filters select{background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:7px;padding:.4rem .75rem;font-size:.82rem;max-width:220px}
+.rec-actions{display:flex;gap:.3rem;flex-wrap:wrap}
+.rec-actions .btn{padding:.22rem .55rem;font-size:.72rem}
+.rec-detail td{background:var(--alt);padding:0!important}
+.rec-detail-inner{padding:.8rem 1rem}
+.rec-wk{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mid);margin:.6rem 0 .3rem}
+.rec-lines{width:100%;border-collapse:collapse;font-size:.78rem}
+.rec-lines th{text-align:left;font-weight:600;color:var(--mid);padding:.3rem .45rem;border-bottom:1px solid var(--border);background:transparent}
+.rec-lines td{padding:.3rem .45rem;border-bottom:1px solid var(--border);color:var(--dark);background:transparent}
+.rec-comment{font-size:.78rem;padding:.4rem .6rem;border-left:3px solid var(--border);margin:.35rem 0;color:var(--dark)}
+.rv-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:none;align-items:center;justify-content:center}
+.rv-card{background:var(--bg);border-radius:14px;padding:1.5rem;max-width:440px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.rv-card h3{margin:0 0 .3rem;color:var(--dark)}
+.rv-card textarea{width:100%;min-height:90px;margin-top:.7rem;padding:.6rem .7rem;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--dark);font-family:'DM Sans',sans-serif;font-size:.84rem;box-sizing:border-box}
+.rv-err{color:#ef4444;font-size:.78rem;min-height:1rem;margin-top:.35rem}
 .btype-sel{padding:.3rem .45rem;border:1px solid var(--border);border-radius:5px;font-size:.72rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg);width:100%;cursor:pointer}
 .btype-sel:focus{outline:none;border-color:var(--teal)}
 .btype-sel.bt-billable{background:#f0fdf4;border-color:#86efac;color:#166534}
@@ -479,6 +498,57 @@ function pfl(v){const n=parseFloat(v);return isNaN(n)?0:n;}
 // Rows for one day, in display order
 function dayRows(d,day){return d.entries.filter(e=>e.day===day).sort((a,b)=>a.ei-b.ei);}
 const MAX_ROWS_PER_DAY=15;
+
+// ── TIMECARD STATUS + REVIEW HELPERS ──────────────────────────────────────
+const STATUS_META={
+  draft:       {label:"In Progress",  color:"#94a3b8"},
+  submitted:   {label:"Needs Review", color:"#f59e0b"},
+  under_review:{label:"Needs Review", color:"#f59e0b"},
+  approved:    {label:"Approved",     color:"#10b981"},
+  rejected:    {label:"Declined",     color:"#ef4444"},
+  returned:    {label:"Returned for Fixes", color:"#6366f1"}
+};
+function statusBadge(st){
+  const m=STATUS_META[st||"draft"]||{label:st,color:"#94a3b8"};
+  return `<span class="st-badge" style="background:${m.color}22;color:${m.color}">${m.label}</span>`;
+}
+function myDbId(){return String(cur?.db_id||String(cur?.id||"").replace(/^e/,""));}
+function canSeePay(){return cur&&(cur.role==="hr"||cur.role==="admin");}
+// Who this reviewer is allowed to see: HR/Admin = everyone but themselves; Manager = direct reports
+function reviewScope(){
+  const me=myDbId();
+  if(cur.role==="hr"||cur.role==="admin") return EMPS.filter(e=>e.role!=="admin"&&String(e.id).replace(/^e/,"")!==me);
+  if(cur.role==="manager") return EMPS.filter(e=>String(e.manager_id||"")===me);
+  return [];
+}
+// Turn DB entries into store rows (variable lines per day, blank line on empty days)
+function entriesFromDB(list){
+  const entries=[],perDay={};
+  (list||[]).forEach(e=>{
+    const day=parseInt(e.day_index);
+    if(isNaN(day)||day<0||day>13)return;
+    const ei=perDay[day]||0;
+    if(ei>=MAX_ROWS_PER_DAY)return;
+    perDay[day]=ei+1;
+    entries.push({day,ei,
+      co:e.client_name||"",
+      del:e.deliverable||"",
+      hrs:e.hours!=null?String(parseFloat(e.hours)):"",
+      bt:e.billing_type||(String(e.billable)==="0"?"nonbillable":BT_DEFAULT)});
+  });
+  for(let day=0;day<14;day++){
+    if(!perDay[day])entries.push({day,ei:0,co:"",del:"",hrs:"",bt:BT_DEFAULT});
+  }
+  return entries;
+}
+// Approve / Decline / Return — the API fires the matching GHL webhook
+// (timecard_approved / timecard_rejected / timecard_returned)
+async function reviewTimecard(action,tsId,comment){
+  const actionMap={approve:"approve_timesheet",reject:"reject_timesheet",return:"return_timesheet"};
+  const body={timesheet_id:tsId,approver_id:parseInt(myDbId())||null,approver_name:cur.name||cur.role,comment:comment||""};
+  const r=await fetch(`${API_BASE}?action=${actionMap[action]}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(x=>x.json());
+  return r||{success:false};
+}
 function fm(n){return"$"+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/,",");}
 function pdate(pi,offset){const[y,m,d]=PSTARTS[pi];const dt=new Date(y,m,d);dt.setDate(dt.getDate()+offset);return dt;}
 
@@ -909,7 +979,7 @@ function logout(){cur=null;showLoginSelect();show("s-login");}
 function changePeriod(){pidx=parseInt(document.getElementById("period-sel").value);renderApp();window.scrollTo({top:0,behavior:"instant"});}
 async function renderApp(){
   if(!cur)return;
-  if(cur.role==="manager"||cur.role==="hr"||cur.role==="admin"){renderDash();return;}
+  if(cur.role==="manager"||cur.role==="hr"||cur.role==="admin"){await loadDashData();renderDash();return;}
   const uid=cur._vid||cur.id;
   if(!gd(uid,pidx).loaded) await loadDraft(uid,pidx);
   renderTS(uid);
@@ -992,11 +1062,20 @@ function renderTS(uid){
     <div><div class="emp-name">${emp.name}</div><div class="emp-period">${PERIODS[pidx]} &middot; Bi-Weekly Timesheet</div></div>
     ${(role==="admin"||role==="hr")?`<div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" onchange="upRate(this.value)"${isViewing?" readonly":""}></div>`:''}
     <div class="ts-save-wrap">
-      ${d.submitted?'<span class="badge b-sub">&#10003; Submitted</span>':'<span class="badge b-pend">Pending</span>'}
+      ${statusBadge(d.status||(d.submitted?"submitted":"draft"))}
       ${isViewing?'':'<button class="btn btn-primary" style="padding:.32rem .85rem;font-size:.78rem" onclick="manualSave()">&#128190; Save Draft</button>'}
       <span id="save-confirm" class="ts-save-note">${(!isViewing&&d.submitted)?'Already submitted &mdash; edits save when you Resubmit':''}</span>
     </div>
   </div>`;
+  if(d.status==="returned"||d.status==="rejected"){
+    const note=(d.comments||[])[0];
+    const m=STATUS_META[d.status];
+    h+=`<div class="ts-review-note" style="background:${m.color}14;border:1px solid ${m.color}55">
+      <strong style="color:${m.color}">${d.status==="returned"?"Returned for fixes":"Declined"}${note&&note.author?" by "+escHtml(note.author):""}</strong>
+      ${note&&note.comment?escHtml(note.comment):"No reason was given."}
+      ${isViewing?"":`<div style="margin-top:.35rem;color:var(--mid);font-size:.76rem">Make your corrections below, then click <b>Resubmit</b>.</div>`}
+    </div>`;
+  }
 
   for(let wk=0;wk<2;wk++){
     const ws=wk*7,we=ws+6;
@@ -1136,25 +1215,9 @@ async function loadDraft(uid,pi){
       d.rate=ts.pay_rate||ts.employee_rate||emp?.rate||d.rate||"";
       d.status=ts.status||"draft";
       d.submitted=(d.status!=="draft");
-      const entries=[];
-      const perDay={};
-      (ts.entries||[]).forEach(e=>{
-        const day=parseInt(e.day_index);
-        if(isNaN(day)||day<0||day>13)return;
-        const ei=perDay[day]||0;
-        if(ei>=MAX_ROWS_PER_DAY)return;
-        perDay[day]=ei+1;
-        entries.push({day,ei,
-          co:e.client_name||"",
-          del:e.deliverable||"",
-          hrs:e.hours!=null?String(parseFloat(e.hours)):"",
-          bt:e.billing_type||(String(e.billable)==="0"?"nonbillable":BT_DEFAULT)});
-      });
-      // Every day keeps at least one (blank) line to type into
-      for(let day=0;day<14;day++){
-        if(!perDay[day])entries.push({day,ei:0,co:"",del:"",hrs:"",bt:BT_DEFAULT});
-      }
-      d.entries=entries;
+      d.tsId=ts.id?parseInt(ts.id):null;
+      d.comments=ts.comments||[];
+      d.entries=entriesFromDB(ts.entries);
     }else if(!d.rate&&emp?.rate){
       d.rate=emp.rate;
     }
@@ -1322,10 +1385,28 @@ function getTabsForRole(role){
   return tabs;
 }
 
+// Load this period's timecards from the DB into the store for everyone in scope
+let _recCache=null;
+async function loadDashData(){
+  try{
+    const r=await fetch(`${API_BASE}?action=load_timesheets&t=${Date.now()}`).then(x=>x.json());
+    _recCache=r.success?(r.records||[]):[];
+  }catch(e){_recCache=_recCache||[];}
+  reviewScope().forEach(emp=>{
+    const d=gd(emp.id,pidx);
+    const rec=_recCache.find(t=>String(t.user_id)===String(emp.id).replace(/^e/,"")&&t.period===PERIODS[pidx]);
+    d.rate=(rec&&rec.pay_rate)||emp.rate||"";
+    d.status=rec?(rec.status||"draft"):"draft";
+    d.submitted=d.status!=="draft";
+    d.tsId=rec?parseInt(rec.id):null;
+    d.entries=entriesFromDB(rec?rec.entries:[]);
+  });
+}
+
 function renderDash(){
   const role=cur.role;
   const body=document.getElementById("app-body");
-  const emps=EMPS.filter(e=>e.role==="employee");
+  const emps=reviewScope();
   const showPayroll=(role==="hr"||role==="admin");
   let tH=0,tP=0,sub=0;
   let totals={billable:{h:0},nonbillable:{h:0},marketing:{h:0}};
@@ -1335,12 +1416,12 @@ function renderDash(){
     // Seed rate from user record if store doesn't have one yet
     if((d.rate===''||d.rate===null||d.rate===undefined)&&emp.rate) d.rate=emp.rate;
     const h=d.entries.reduce((s,e)=>s+pfl(e.hrs),0),rt=pfl(d.rate),pay=h*rt;
-    tH+=h;if(showPayroll)tP+=pay;if(d.submitted)sub++;
+    tH+=h;if(showPayroll)tP+=pay;if(d.status==="submitted"||d.status==="under_review")sub++;
     const bd=calcBreakdown(d);
     BILLING_TYPES.forEach(bt=>{ totals[bt.key].h+=bd[bt.key].h; });
-    const st=d.submitted?'<span class="badge b-sub">Submitted</span>':h>0?'<span class="badge b-prog">In Progress</span>':'<span class="badge b-pend">Pending</span>';
+    const st=statusBadge(d.status);
     return `<tr>
-      <td><strong>${emp.name}</strong></td>
+      <td><strong>${escHtml(emp.name)}</strong></td>
       <td>${h.toFixed(1)}</td>
       <td style="color:#166534;font-weight:500">${bd.billable.h.toFixed(1)}</td>
       <td style="color:#854d0e;font-weight:500">${bd.nonbillable.h.toFixed(1)}</td>
@@ -1369,7 +1450,7 @@ function renderDash(){
     <div class="metrics">
       <div class="mc accent"><div class="ml">Total Hours</div><div class="mv">${tH.toFixed(1)}</div><div class="ms">This period</div></div>
       ${showPayroll?`<div class="mc accent"><div class="ml">Total Payroll</div><div class="mv">${fm(tP)}</div><div class="ms">This period</div></div>`:""}
-      <div class="mc"><div class="ml">Submitted</div><div class="mv">${sub}/${emps.length}</div><div class="ms">Employees</div></div>
+      <div class="mc" style="cursor:pointer" onclick="switchTab('records')" title="Open Records to review"><div class="ml">Needs Review</div><div class="mv">${sub}/${emps.length}</div><div class="ms">Review in Records &rarr;</div></div>
       <div class="mc"><div class="ml">Avg Hours</div><div class="mv">${emps.length?(tH/emps.length).toFixed(1):"0.0"}</div><div class="ms">Per employee</div></div>
     </div>
 
@@ -1399,17 +1480,24 @@ function renderDash(){
 
   <!-- RECORDS PANE -->
   <div id="pane-records" style="display:none">
-    <div class="dash-top"><div><h2>Records</h2><p>All employee timecards</p></div></div>
-    <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.5rem;margin-bottom:1rem">
-      <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem">
-        <select id="rec-emp-filter" class="lf-select" style="background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:7px;padding:.4rem .75rem;font-size:.82rem;max-width:200px" onchange="renderRecords()">
-          <option value="">All Employees</option>
-          ${emps.map(e=>`<option value="${e.id}">${e.name}</option>`).join("")}
-        </select>
-        <select id="rec-status-filter" class="lf-select" style="background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:7px;padding:.4rem .75rem;font-size:.82rem;max-width:180px" onchange="renderRecords()">
+    <div class="dash-top"><div><h2>Records</h2><p>${role==="manager"?"Review your team's timecards":"Review and approve timecards"} ${showPayroll?'&nbsp;<span class="conf">Confidential</span>':''}</p></div></div>
+    <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.25rem;margin-bottom:1rem">
+      <div class="rec-filters">
+        <select id="rec-status-filter" onchange="renderRecords(false)">
+          <option value="review" selected>Needs Review</option>
+          <option value="approved">Approved</option>
+          <option value="returned">Returned for Fixes</option>
+          <option value="rejected">Declined</option>
+          <option value="draft">In Progress (not submitted)</option>
           <option value="">All Statuses</option>
-          <option value="submitted">Submitted</option>
-          <option value="pending">Pending / In Progress</option>
+        </select>
+        <select id="rec-period-filter" onchange="renderRecords(false)">
+          <option value="">All Periods</option>
+          ${PERIODS.map(p=>`<option value="${p}">${p}</option>`).join("")}
+        </select>
+        <select id="rec-emp-filter" onchange="renderRecords(false)">
+          <option value="">${role==="manager"?"All My Reports":"All Team Members"}</option>
+          ${reviewScope().map(e=>`<option value="${e.id}">${escHtml(e.name)}</option>`).join("")}
         </select>
       </div>
       <div id="records-table-wrap"></div>
@@ -1753,48 +1841,162 @@ function switchTab(tab){
   if(tab==="ghl") renderSettings(); // populate API key/secret fields in GHL tab
 }
 
-function renderRecords(){
+// ── RECORDS: timecard review & approval hub ──────────────────────────────
+let _recOpen={};
+async function renderRecords(refetch=true){
   const wrap=document.getElementById("records-table-wrap");
   if(!wrap) return;
-  const showPayroll=(cur.role==="hr"||cur.role==="admin");
-  const empFilter=document.getElementById("rec-emp-filter")?document.getElementById("rec-emp-filter").value:"";
-  const statusFilter=document.getElementById("rec-status-filter")?document.getElementById("rec-status-filter").value:"";
-  const emps=EMPS.filter(e=>e.role==="employee"&&(!empFilter||e.id==empFilter));
-  let rows="";
-  PERIODS.forEach((period,pi)=>{
-    emps.forEach(emp=>{
-      const d=gd(emp.id,pi);
-      const h=d.entries.reduce((s,e)=>s+pfl(e.hrs),0);
-      if(h===0&&!d.submitted) return;
-      const status=d.submitted?"submitted":"pending";
-      if(statusFilter&&statusFilter==="submitted"&&!d.submitted) return;
-      if(statusFilter&&statusFilter==="pending"&&d.submitted) return;
-      const rt=pfl(d.rate),pay=h*rt;
-      const bd=calcBreakdown(d);
-      const st=d.submitted?'<span class="badge b-sub">Submitted</span>':h>0?'<span class="badge b-prog">In Progress</span>':'<span class="badge b-pend">Pending</span>';
-      rows+=`<tr>
-        <td><strong>${emp.name}</strong></td>
-        <td style="font-size:.78rem;color:var(--mid)">${period}</td>
-        <td>${h.toFixed(1)}</td>
-        <td style="color:#166534">${bd.billable.h.toFixed(1)}</td>
-        <td style="color:#854d0e">${bd.nonbillable.h.toFixed(1)}</td>
-        <td style="color:#3730a3">${bd.marketing.h.toFixed(1)}</td>
-        ${showPayroll?`<td style="color:var(--teal);font-weight:600">${pay?fm(pay):"-"}</td>`:""}
-        <td>${st}</td>
-        <td><button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem" onclick="viewEmp('${emp.id}')">View</button></td>
-      </tr>`;
-    });
-  });
-  if(!rows){wrap.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">No records found.</div>';return;}
+  if(refetch||!_recCache){
+    wrap.innerHTML='<div style="padding:2rem;text-align:center;color:var(--mid)">Loading timecards…</div>';
+    try{
+      const r=await fetch(`${API_BASE}?action=load_timesheets&t=${Date.now()}`).then(x=>x.json());
+      _recCache=r.success?(r.records||[]):[];
+    }catch(e){wrap.innerHTML='<div style="padding:2rem;color:#ef4444">Could not load timecards. Check your connection and try again.</div>';return;}
+  }
+  const showPay=canSeePay();
+  const me=myDbId();
+  const scopeIds=new Set(reviewScope().map(e=>String(e.id).replace(/^e/,"")));
+  const statusF=document.getElementById("rec-status-filter")?.value??"review";
+  const periodF=document.getElementById("rec-period-filter")?.value||"";
+  const empF=(document.getElementById("rec-emp-filter")?.value||"").replace(/^e/,"");
+
+  const recs=_recCache.filter(r=>{
+    const uid=String(r.user_id);
+    if(!scopeIds.has(uid))return false;
+    if(empF&&uid!==empF)return false;
+    if(periodF&&r.period!==periodF)return false;
+    if(statusF==="review")return r.status==="submitted"||r.status==="under_review";
+    if(statusF)return r.status===statusF;
+    return true;
+  }).sort((a,b)=>(PERIODS.indexOf(b.period)-PERIODS.indexOf(a.period))||String(a.employee).localeCompare(String(b.employee)));
+
+  if(!recs.length){
+    wrap.innerHTML=`<div style="padding:2rem;text-align:center;color:var(--mid)">${statusF==="review"?"Nothing waiting for review. &#10003;":"No timecards match these filters."}</div>`;
+    return;
+  }
+  const cols=showPay?10:9;
+  const rows=recs.map(r=>{
+    const bd={billable:0,nonbillable:0,marketing:0};let tot=0;
+    (r.entries||[]).forEach(e=>{const h=pfl(e.hours);tot+=h;const bt=e.billing_type||(String(e.billable)==="0"?"nonbillable":"billable");bd[bt]=(bd[bt]||0)+h;});
+    const subAt=r.submitted_at?new Date(r.submitted_at.replace(" ","T")).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"—";
+    const reviewed=r.approved_by_name?escHtml(r.approved_by_name):"—";
+    const own=String(r.user_id)===me;
+    const canAct=!own&&(r.status==="submitted"||r.status==="under_review");
+    const name=escHtml(r.employee||"—");
+    const open=!!_recOpen[r.id];
+    const actions=`<div class="rec-actions">
+      <button class="btn btn-outline" onclick="toggleRecDetail(${r.id})">${open?"Hide":"Review"}</button>
+      ${canAct?`<button class="btn btn-outline" style="color:#10b981;border-color:#10b98155" onclick="openReview('approve',${r.id})">Approve</button>
+      <button class="btn btn-outline" style="color:#6366f1;border-color:#6366f155" onclick="openReview('return',${r.id})">Return</button>
+      <button class="btn btn-outline" style="color:#ef4444;border-color:#ef444455" onclick="openReview('reject',${r.id})">Decline</button>`:""}
+    </div>`;
+    let row=`<tr>
+      <td><strong>${name}</strong></td>
+      <td style="font-size:.78rem;color:var(--mid)">${escHtml(r.period||"—")}</td>
+      <td>${tot.toFixed(2)}</td>
+      <td style="color:#166534">${(bd.billable||0).toFixed(2)}</td>
+      <td style="color:#854d0e">${(bd.nonbillable||0).toFixed(2)}</td>
+      <td style="color:#3730a3">${(bd.marketing||0).toFixed(2)}</td>
+      ${showPay?`<td style="color:var(--teal);font-weight:600">${pfl(r.total_pay)?fm(pfl(r.total_pay)):"-"}</td>`:""}
+      <td>${statusBadge(r.status)}</td>
+      <td style="font-size:.74rem;color:var(--mid)">${subAt}<br>${r.status==="draft"?"":"Reviewed: "+reviewed}</td>
+      <td>${actions}</td>
+    </tr>`;
+    if(open) row+=`<tr class="rec-detail"><td colspan="${cols}">${recDetailHTML(r,showPay)}</td></tr>`;
+    return row;
+  }).join("");
   wrap.innerHTML=`<div class="billing-tbl"><table>
     <thead><tr>
       <th>Employee</th><th>Period</th><th>Total Hrs</th>
       <th style="color:#86efac">Billable</th><th style="color:#fde047">Non-Bill.</th><th style="color:#a5b4fc">Marketing</th>
-      ${showPayroll?`<th>Total Pay</th>`:""}
-      <th>Status</th><th>Action</th>
+      ${showPay?`<th>Total Pay</th>`:""}
+      <th>Status</th><th>Submitted</th><th>Actions</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
+}
+function toggleRecDetail(id){_recOpen[id]=!_recOpen[id];renderRecords(false);}
+function recDetailHTML(r,showPay){
+  const pi=PERIODS.indexOf(r.period);
+  const rate=pfl(r.pay_rate);
+  const lines=[...(r.entries||[])].sort((a,b)=>a.day_index-b.day_index||a.row_index-b.row_index);
+  let html=`<div class="rec-detail-inner">`;
+  if(showPay) html+=`<div style="font-size:.78rem;color:var(--mid);margin-bottom:.3rem">Pay rate: <b style="color:var(--dark)">${rate?fm(rate)+"/hr":"—"}</b> &middot; Total pay: <b style="color:var(--dark)">${pfl(r.total_pay)?fm(pfl(r.total_pay)):"—"}</b></div>`;
+  for(let wk=0;wk<2;wk++){
+    const wl=lines.filter(e=>Math.floor(parseInt(e.day_index)/7)===wk&&pfl(e.hours)>0);
+    const wh=wl.reduce((s,e)=>s+pfl(e.hours),0);
+    html+=`<div class="rec-wk">Week ${wk+1} &middot; ${wh.toFixed(2)} hrs</div>`;
+    if(!wl.length){html+=`<div style="font-size:.78rem;color:var(--mid)">No hours logged.</div>`;continue;}
+    html+=`<table class="rec-lines"><thead><tr><th>Day</th><th>Company</th><th>Deliverable</th><th>Type</th><th>Hrs</th>${showPay?"<th>Pay</th>":""}</tr></thead><tbody>`;
+    wl.forEach(e=>{
+      const di=parseInt(e.day_index),h=pfl(e.hours);
+      const dt=pi>=0?pdate(pi,di).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"";
+      const bt=e.billing_type||(String(e.billable)==="0"?"nonbillable":"billable");
+      html+=`<tr><td>${DAYS[di%7].slice(0,3)} ${dt}</td><td>${escHtml(e.client_name||"—")}</td><td>${escHtml(e.deliverable||"—")}</td><td>${btLabel(bt)}</td><td>${h.toFixed(2)}</td>${showPay?`<td>${rate?fm(h*rate):"—"}</td>`:""}</tr>`;
+    });
+    html+=`</tbody></table>`;
+  }
+  const cm=r.comments||[];
+  if(cm.length){
+    html+=`<div class="rec-wk">Review history</div>`;
+    cm.forEach(c=>{
+      const when=c.created_at?new Date(c.created_at.replace(" ","T")).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"";
+      html+=`<div class="rec-comment"><b>${escHtml(c.author||"")}</b> <span style="color:var(--mid)">${escHtml(c.type||"")} &middot; ${when}</span><br>${escHtml(c.comment||"")}</div>`;
+    });
+  }
+  return html+`</div>`;
+}
+
+// Review modal (Approve / Return / Decline)
+let _rv={action:null,tsId:null};
+function ensureReviewModal(){
+  if(document.getElementById("rv-modal"))return;
+  const m=document.createElement("div");
+  m.id="rv-modal";m.className="rv-overlay";
+  m.innerHTML=`<div class="rv-card">
+    <h3 id="rv-title"></h3>
+    <div id="rv-info" style="font-size:.8rem;color:var(--mid)"></div>
+    <div id="rv-sub" style="font-size:.78rem;color:var(--mid);margin-top:.5rem"></div>
+    <textarea id="rv-comment"></textarea>
+    <div id="rv-err" class="rv-err"></div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.6rem">
+      <button class="btn btn-outline" onclick="closeReview()">Cancel</button>
+      <button class="btn btn-primary" id="rv-confirm" onclick="confirmReview()"></button>
+    </div></div>`;
+  m.addEventListener("click",e=>{if(e.target===m)closeReview();});
+  document.body.appendChild(m);
+}
+function openReview(action,tsId){
+  ensureReviewModal();
+  _rv={action,tsId};
+  const r=(_recCache||[]).find(x=>String(x.id)===String(tsId))||{};
+  const meta={
+    approve:{t:"Approve Timecard",s:"Optional note to the employee.",b:"Approve",c:"#10b981",ph:"Optional note…"},
+    return: {t:"Return for Fixes",s:"Tell the employee what to correct. Required — they'll be notified and can resubmit.",b:"Return",c:"#6366f1",ph:"What needs to be fixed?"},
+    reject: {t:"Decline Timecard",s:"Reason is required. The employee will be notified.",b:"Decline",c:"#ef4444",ph:"Reason for declining…"}
+  }[action];
+  document.getElementById("rv-title").textContent=meta.t;
+  document.getElementById("rv-info").textContent=`${r.employee||""} · ${r.period||""} · ${pfl(r.total_hours).toFixed(2)} hrs`;
+  document.getElementById("rv-sub").textContent=meta.s;
+  const ta=document.getElementById("rv-comment");ta.value="";ta.placeholder=meta.ph;
+  document.getElementById("rv-err").textContent="";
+  const b=document.getElementById("rv-confirm");b.textContent=meta.b;b.style.background=meta.c;b.style.borderColor=meta.c;b.disabled=false;
+  document.getElementById("rv-modal").style.display="flex";
+  setTimeout(()=>ta.focus(),50);
+}
+function closeReview(){const m=document.getElementById("rv-modal");if(m)m.style.display="none";}
+async function confirmReview(){
+  const comment=document.getElementById("rv-comment").value.trim();
+  const err=document.getElementById("rv-err");
+  if(_rv.action!=="approve"&&!comment){err.textContent="A reason is required.";return;}
+  const b=document.getElementById("rv-confirm");b.disabled=true;
+  try{
+    const r=await reviewTimecard(_rv.action,_rv.tsId,comment);
+    if(!r.success){err.textContent=r.error||"That didn't go through. Please try again.";b.disabled=false;return;}
+    closeReview();
+    showToast(_rv.action==="approve"?"Timecard approved.":_rv.action==="return"?"Returned to employee for fixes.":"Timecard declined.");
+    await renderRecords(true);
+  }catch(e){err.textContent="Network error — please try again.";b.disabled=false;}
 }
 
 function renderTeam(){
@@ -2505,11 +2707,8 @@ function hrmAction(action,tsId,employee,period,hours){
 async function confirmHRMAction(){
   const comment=document.getElementById("hrm-modal-comment").value.trim();
   if(_hrmAction==="reject"&&!comment){alert("Please enter a reason for rejection.");return;}
-  const approverId=cur.id?parseInt(cur.id.replace(/^e/,''),10):null;
-  const approverName=cur.name||"HR";
-  const payload={timesheet_id:_hrmTsId,approver_id:approverId,approver_name:approverName,comment};
   try{
-    const r=await api({action:_hrmAction==="approve"?"approve_timesheet":"reject_timesheet",...payload});
+    const r=await reviewTimecard(_hrmAction==="approve"?"approve":"reject",_hrmTsId,comment);
     if(r.success){
       closeHRMModal();
       showToast(_hrmAction==="approve"?"Timecard approved!":"Timecard rejected.");

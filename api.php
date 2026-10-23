@@ -300,7 +300,6 @@ if ($method === 'GET') {
                 'name'           => $e['name'],
                 'email'          => $e['email'],
                 'role'           => $e['role'],
-                'pin'            => $e['pin'],
                 'pin_set'        => (bool)$e['pin_set'],
                 'password_set'   => (bool)$e['password_set'],
                 'rate'           => $e['rate'],
@@ -347,6 +346,11 @@ if ($method === 'GET') {
         $entries = $stmt2->fetchAll();
         $ts['entries'] = $entries;
         $ts['submitted'] = $ts['status'] !== 'draft';
+        $stmt3 = $db->prepare("SELECT tc.type, tc.comment, tc.created_at, u.name as author FROM timesheet_comments tc
+            LEFT JOIN users u ON tc.user_id = u.id
+            WHERE tc.timesheet_id = ? ORDER BY tc.created_at DESC");
+        $stmt3->execute([$ts['id']]);
+        $ts['comments'] = $stmt3->fetchAll();
         echo json_encode(['success' => true, 'record' => $ts]);
         exit;
     }
