@@ -908,6 +908,39 @@ if ($method === 'GET' && $action === 'forgot_pin') {
     exit;
 }
 
+// ── INTERNAL: fire a raw POST to any webhook URL (for GHL mapping reference setup) ──
+if ($method === 'GET' && $action === 'fire_webhook') {
+    $secret = $_GET['secret'] ?? '';
+    if ($secret !== 'genhead2026ghl') { echo json_encode(['success' => false, 'error' => 'Unauthorized']); exit; }
+    $url  = trim($_GET['url'] ?? '');
+    if (!$url) { echo json_encode(['success' => false, 'error' => 'url required']); exit; }
+    $payload = [
+        'event'          => 'password_reset',
+        'action'         => 'password_reset',
+        'employee_name'  => 'Test Employee',
+        'employee_email' => 'test@example.com',
+        'employee_id'    => 'e1',
+        'role'           => 'employee',
+        'reset_url'      => 'https://stagging.timesheet.genhead.com/timesheet/?reset_token=abc123&uid=1',
+        'expires_in'     => '1 hour',
+        'timestamp'      => date('c'),
+    ];
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST          => true,
+        CURLOPT_POSTFIELDS    => json_encode($payload),
+        CURLOPT_HTTPHEADER    => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER=> true,
+        CURLOPT_TIMEOUT       => 15,
+    ]);
+    $resp     = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err      = curl_error($ch);
+    curl_close($ch);
+    echo json_encode(['success' => $httpCode >= 200 && $httpCode < 300, 'http_code' => $httpCode, 'response' => $resp, 'curl_error' => $err]);
+    exit;
+}
+
 if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
     $body = $_GET;
     $db = getDB();
