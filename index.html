@@ -199,49 +199,90 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 /* PROJECT BOARD */
 /* ── Stage color tokens ─────────────────────────────────────── */
 :root{
-  --stage-backlog:#94a3b8;   --stage-backlog-bg:rgba(148,163,184,.08);
-  --stage-todo:#6366f1;      --stage-todo-bg:rgba(99,102,241,.08);
-  --stage-inprogress:#f59e0b;--stage-inprogress-bg:rgba(245,158,11,.08);
-  --stage-inreview:#a855f7;  --stage-inreview-bg:rgba(168,85,247,.08);
-  --stage-done:#10b981;      --stage-done-bg:rgba(16,185,129,.08);
+  --stage-backlog:#94a3b8;    --stage-backlog-bg:#f1f5f9;    --stage-backlog-card:#e2e8f0;
+  --stage-todo:#6366f1;       --stage-todo-bg:#eef2ff;        --stage-todo-card:#e0e7ff;
+  --stage-inprogress:#d97706; --stage-inprogress-bg:#fffbeb;  --stage-inprogress-card:#fde68a;
+  --stage-inreview:#9333ea;   --stage-inreview-bg:#faf5ff;    --stage-inreview-card:#e9d5ff;
+  --stage-done:#059669;       --stage-done-bg:#ecfdf5;        --stage-done-card:#a7f3d0;
 }
-.pm-board{display:grid;grid-template-columns:repeat(5,1fr);gap:.65rem;align-items:start;overflow-x:auto;padding-bottom:.5rem}
-@media(max-width:900px){.pm-board{grid-template-columns:repeat(3,minmax(180px,1fr));}}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --stage-backlog-bg:#1e293b; --stage-backlog-card:#334155;
+    --stage-todo-bg:#1e1b4b;    --stage-todo-card:#312e81;
+    --stage-inprogress-bg:#1c1400;--stage-inprogress-card:#78350f;
+    --stage-inreview-bg:#2e1065;--stage-inreview-card:#581c87;
+    --stage-done-bg:#022c22;    --stage-done-card:#064e3b;
+  }
+}
+:root[data-theme="dark"]{
+  --stage-backlog-bg:#1e293b; --stage-backlog-card:#334155;
+  --stage-todo-bg:#1e1b4b;    --stage-todo-card:#312e81;
+  --stage-inprogress-bg:#1c1400;--stage-inprogress-card:#78350f;
+  --stage-inreview-bg:#2e1065;--stage-inreview-card:#581c87;
+  --stage-done-bg:#022c22;    --stage-done-card:#064e3b;
+}
+.pm-board{display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem;align-items:start;overflow-x:auto;padding-bottom:.75rem}
+@media(max-width:900px){.pm-board{grid-template-columns:repeat(3,minmax(190px,1fr));}}
 @media(max-width:600px){.pm-board{grid-template-columns:repeat(2,minmax(160px,1fr));}}
-.pm-col{background:var(--hover);border-radius:10px;padding:.6rem;min-height:160px}
-.pm-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.55rem;padding:.45rem .5rem .45rem .7rem;border-radius:7px;margin:-0.1rem -.1rem .55rem}
-.pm-col-header.stage-backlog  {background:var(--stage-backlog-bg);  border-left:3px solid var(--stage-backlog);}
-.pm-col-header.stage-todo     {background:var(--stage-todo-bg);      border-left:3px solid var(--stage-todo);}
-.pm-col-header.stage-inprogress{background:var(--stage-inprogress-bg);border-left:3px solid var(--stage-inprogress);}
-.pm-col-header.stage-inreview {background:var(--stage-inreview-bg);  border-left:3px solid var(--stage-inreview);}
-.pm-col-header.stage-done     {background:var(--stage-done-bg);      border-left:3px solid var(--stage-done);}
-.pm-col-label{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+/* Column lanes */
+.pm-col{border-radius:12px;padding:.65rem;min-height:240px;transition:background .15s}
+.pm-col.stage-backlog  {background:var(--stage-backlog-bg);}
+.pm-col.stage-todo     {background:var(--stage-todo-bg);}
+.pm-col.stage-inprogress{background:var(--stage-inprogress-bg);}
+.pm-col.stage-inreview {background:var(--stage-inreview-bg);}
+.pm-col.stage-done     {background:var(--stage-done-bg);}
+.pm-col.drag-over{filter:brightness(.93);outline:2px dashed currentColor;outline-offset:-4px}
+/* Column headers */
+.pm-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.65rem;padding:.3rem .1rem}
+.pm-col-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
 .pm-col-label.stage-backlog  {color:var(--stage-backlog);}
 .pm-col-label.stage-todo     {color:var(--stage-todo);}
 .pm-col-label.stage-inprogress{color:var(--stage-inprogress);}
 .pm-col-label.stage-inreview {color:var(--stage-inreview);}
 .pm-col-label.stage-done     {color:var(--stage-done);}
-.pm-col-count{font-size:.72rem;color:var(--mid);background:var(--bg);border-radius:20px;padding:.1rem .45rem;border:1px solid var(--border)}
-.pm-cards{display:flex;flex-direction:column;gap:.5rem}
-.pm-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.65rem .7rem .65rem .85rem;cursor:pointer;position:relative;transition:box-shadow .15s,border-color .15s;border-left-width:3px}
-.pm-card.stage-backlog  {border-left-color:var(--stage-backlog);}
-.pm-card.stage-todo     {border-left-color:var(--stage-todo);}
-.pm-card.stage-inprogress{border-left-color:var(--stage-inprogress);}
-.pm-card.stage-inreview {border-left-color:var(--stage-inreview);}
-.pm-card.stage-done     {border-left-color:var(--stage-done);}
-.pm-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.1)}
-.pm-card.stage-backlog:hover  {box-shadow:0 2px 10px rgba(148,163,184,.2);}
-.pm-card.stage-todo:hover     {box-shadow:0 2px 10px rgba(99,102,241,.18);}
-.pm-card.stage-inprogress:hover{box-shadow:0 2px 10px rgba(245,158,11,.18);}
-.pm-card.stage-inreview:hover {box-shadow:0 2px 10px rgba(168,85,247,.18);}
-.pm-card.stage-done:hover     {box-shadow:0 2px 10px rgba(16,185,129,.18);}
-.pm-card:hover .pm-move-btn{opacity:1}
-.pm-card-proj{font-size:.68rem;color:var(--mid);margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pm-card-title{font-size:.82rem;font-weight:500;color:var(--dark);line-height:1.35;margin-bottom:.45rem}
+.pm-col-count{font-size:.7rem;font-weight:600;padding:.1rem .45rem;border-radius:20px}
+.pm-col-count.stage-backlog  {background:var(--stage-backlog-card);color:var(--stage-backlog);}
+.pm-col-count.stage-todo     {background:var(--stage-todo-card);color:var(--stage-todo);}
+.pm-col-count.stage-inprogress{background:var(--stage-inprogress-card);color:var(--stage-inprogress);}
+.pm-col-count.stage-inreview {background:var(--stage-inreview-card);color:var(--stage-inreview);}
+.pm-col-count.stage-done     {background:var(--stage-done-card);color:var(--stage-done);}
+/* Cards — sticky-note style */
+.pm-cards{display:flex;flex-direction:column;gap:.55rem}
+.pm-card{border-radius:10px;padding:.75rem .8rem;cursor:grab;position:relative;transition:transform .15s,box-shadow .15s;border:none;user-select:none}
+.pm-card:active{cursor:grabbing}
+.pm-card.stage-backlog  {background:var(--stage-backlog-card);}
+.pm-card.stage-todo     {background:var(--stage-todo-card);}
+.pm-card.stage-inprogress{background:var(--stage-inprogress-card);}
+.pm-card.stage-inreview {background:var(--stage-inreview-card);}
+.pm-card.stage-done     {background:var(--stage-done-card);}
+.pm-card:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.14)}
+.pm-card.dragging{opacity:.35;transform:rotate(2deg);box-shadow:0 10px 30px rgba(0,0,0,.2)}
+/* Card inner elements */
+.pm-card-proj{display:inline-block;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.65;margin-bottom:.35rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pm-card-title{font-size:.87rem;font-weight:600;color:rgba(0,0,0,.85);line-height:1.35;margin-bottom:.5rem}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .pm-card-title{color:rgba(255,255,255,.9)}
+  :root:not([data-theme="light"]) .pm-card{box-shadow:0 2px 8px rgba(0,0,0,.3)}
+}
+:root[data-theme="dark"] .pm-card-title{color:rgba(255,255,255,.9)}
+:root[data-theme="dark"] .pm-card{box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .pm-card-meta{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
-.pm-pri-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.pm-avatar{width:22px;height:22px;border-radius:50%;background:var(--teal);color:#fff;font-size:.62rem;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.pm-move-btn{position:absolute;top:.5rem;right:.5rem;opacity:0;background:var(--navy);color:#fff;border:none;border-radius:5px;font-size:.68rem;padding:.2rem .45rem;cursor:pointer;transition:opacity .15s}
+.pm-pri-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+/* Assignee row */
+.pm-assignee-row{display:flex;align-items:center;gap:.45rem;margin-bottom:.45rem;padding:.35rem .45rem;background:rgba(0,0,0,.07);border-radius:7px}
+:root[data-theme="dark"] .pm-assignee-row,:root:not([data-theme="light"]) .pm-assignee-row{background:rgba(255,255,255,.1)}
+.pm-avatar{width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.25);color:#fff;font-size:.65rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:2px solid rgba(255,255,255,.4)}
+.pm-assignee-name{font-size:.78rem;font-weight:600;color:rgba(0,0,0,.7);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:root[data-theme="dark"] .pm-assignee-name,:root:not([data-theme="light"]) .pm-assignee-name{color:rgba(255,255,255,.8)}
+/* Quick-assign inline button */
+.pm-assign-btn{font-size:.65rem;padding:.15rem .42rem;border-radius:5px;border:1px solid rgba(0,0,0,.18);background:rgba(0,0,0,.08);color:rgba(0,0,0,.6);cursor:pointer;flex-shrink:0;transition:background .12s;white-space:nowrap}
+.pm-assign-btn:hover{background:rgba(0,0,0,.15)}
+:root[data-theme="dark"] .pm-assign-btn,:root:not([data-theme="light"]) .pm-assign-btn{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}
+/* Move/done buttons in card footer */
+.pm-card-footer{display:flex;gap:.35rem;margin-top:.45rem}
+.pm-move-btn{flex:1;font-size:.68rem;padding:.25rem .4rem;border-radius:6px;border:1px solid rgba(0,0,0,.18);background:rgba(0,0,0,.06);color:rgba(0,0,0,.6);cursor:pointer;transition:background .12s;text-align:center}
+.pm-move-btn:hover{background:rgba(0,0,0,.14)}
+:root[data-theme="dark"] .pm-move-btn,:root:not([data-theme="light"]) .pm-move-btn{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:rgba(255,255,255,.7)}
 .pm-detail-grid{display:flex;flex-direction:column;gap:.75rem}
 .pm-detail-section{background:var(--hover);border-radius:10px;padding:.65rem}
 .pm-activity{padding:.4rem 0;border-bottom:1px solid var(--border);opacity:.7}
@@ -2540,15 +2581,15 @@ function _renderPMBoard(){
 
   STAGES.forEach(s=>{
     const stageTasks=visibleTasks.filter(t=>t.stage===s.key);
-    h+=`<div class="pm-col">
-      <div class="pm-col-header stage-${s.key}">
+    h+=`<div class="pm-col stage-${s.key}" id="pm-lane-${s.key}"
+      ondragover="event.preventDefault();document.getElementById('pm-lane-${s.key}').classList.add('drag-over')"
+      ondragleave="document.getElementById('pm-lane-${s.key}').classList.remove('drag-over')"
+      ondrop="document.getElementById('pm-lane-${s.key}').classList.remove('drag-over');_pmDragDrop(event,'${s.key}')">
+      <div class="pm-col-header">
         <span class="pm-col-label stage-${s.key}">${s.label}</span>
-        <span class="pm-col-count">${stageTasks.length}</span>
+        <span class="pm-col-count stage-${s.key}">${stageTasks.length}</span>
       </div>
-      <div class="pm-cards" id="pm-col-${s.key}"
-        ondragover="event.preventDefault();event.currentTarget.style.background='var(--alt)'"
-        ondragleave="event.currentTarget.style.background=''"
-        ondrop="event.currentTarget.style.background='';_pmDragDrop(event,'${s.key}')">`;
+      <div class="pm-cards" id="pm-col-${s.key}">`;
     stageTasks.forEach(t=>{
       h+=_pmTaskCard(t,s);
     });
@@ -2633,38 +2674,37 @@ function _pmProjectsView(clientFilter){
 function _pmTaskCard(t,s){
   const proj=_pm.projects.find(p=>p.id===t.project_id)||{name:''};
   const initials=t.assigned_name?t.assigned_name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2):'?';
-  const dueColor=t.due_date&&new Date(t.due_date)<new Date()?'color:#f87171':'color:var(--mid)';
-  const dueTxt=t.due_date?t.due_date.slice(5):''; // MM-DD
-  const btCls=t.billing_type?`btype-tag bt-${t.billing_type}`:'btype-tag bt-billable';
+  const dueStr=t.due_date?t.due_date.slice(5):'';
+  const isOverdue=t.due_date&&new Date(t.due_date)<new Date()&&s.key!=='done';
   const btLabel=t.billing_type?(BILLING_TYPES.find(b=>b.key===t.billing_type)||{label:t.billing_type}).label:'Billable';
-  const priColor=t.priority==='high'?'#f87171':t.priority==='medium'?'#fb923c':'#4ade80';
+  const priColor=t.priority==='high'?'#ef4444':t.priority==='medium'?'#f59e0b':'#10b981';
+  const priLabel=t.priority==='high'?'🔴':t.priority==='medium'?'🟡':'🟢';
   const assigneeName=t.assigned_name||'Unassigned';
   const isUnassigned=!t.assigned_name;
-  // Hours display
   const estH=parseFloat(t.estimated_hours)||0;
   const logH=parseFloat(t.logged_hours)||0;
-  const hoursHtml=estH||logH?`<span style="font-size:.68rem;color:var(--mid);white-space:nowrap">⏱ ${logH.toFixed(1)}/${estH||'?'}h</span>`:'';
+  const hoursHtml=estH||logH?`<span style="font-size:.67rem;opacity:.7;white-space:nowrap">⏱ ${logH.toFixed(1)}/${estH||'?'}h</span>`:'';
   return `<div class="pm-card stage-${s.key}" draggable="true"
-    ondragstart="event.dataTransfer.setData('taskId','${t.id}');event.dataTransfer.setData('fromStage','${s.key}');event.currentTarget.style.opacity='.45'"
-    ondragend="event.currentTarget.style.opacity='1'"
+    ondragstart="event.dataTransfer.setData('taskId','${t.id}');event.dataTransfer.setData('fromStage','${s.key}');event.currentTarget.classList.add('dragging')"
+    ondragend="event.currentTarget.classList.remove('dragging')"
     onclick="_pmOpenTask(${t.id})">
-    <div class="pm-card-proj">${escHtml(proj.name)}</div>
+    ${proj.name?`<div class="pm-card-proj">${escHtml(proj.name)}</div>`:''}
     <div class="pm-card-title">${escHtml(t.title)}</div>
-    <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.35rem">
-      <span class="pm-avatar" style="flex-shrink:0" title="${escHtml(assigneeName)}">${initials}</span>
-      <span style="font-size:.75rem;font-weight:${isUnassigned?'400':'500'};color:${isUnassigned?'var(--mid)':'var(--dark)'};flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(assigneeName)}</span>
-      <button class="pm-move-btn" style="padding:.15rem .4rem;font-size:.65rem;flex-shrink:0" title="Quick-assign" onclick="event.stopPropagation();_pmQuickAssign(${t.id})">👤 Assign</button>
+    <div class="pm-assignee-row">
+      <span class="pm-avatar" title="${escHtml(assigneeName)}">${initials}</span>
+      <span class="pm-assignee-name" style="${isUnassigned?'opacity:.5':''}">${escHtml(assigneeName)}</span>
+      <button class="pm-assign-btn" onclick="event.stopPropagation();_pmQuickAssign(${t.id})">👤 Assign</button>
     </div>
     <div class="pm-card-meta">
-      <span class="pm-pri-dot" style="background:${priColor}" title="${t.priority} priority"></span>
-      <span class="${btCls}">${btLabel}</span>
+      <span title="${t.priority||'low'} priority">${priLabel}</span>
+      <span style="font-size:.67rem;opacity:.65;font-weight:600">${btLabel}</span>
       <span style="flex:1"></span>
       ${hoursHtml}
-      ${dueTxt?`<span style="font-size:.7rem;${dueColor}">${dueTxt}</span>`:''}
+      ${dueStr?`<span style="font-size:.68rem;font-weight:600;${isOverdue?'color:#ef4444':'opacity:.65'}">${isOverdue?'⚠ ':''}${dueStr}</span>`:''}
     </div>
-    <div style="display:flex;gap:.35rem;margin-top:.35rem">
-      <button class="pm-move-btn" style="flex:1" onclick="event.stopPropagation();_pmMoveModal(${t.id},'${s.key}')">→ Move</button>
-      ${s.key!=='done'?`<button class="pm-move-btn" style="color:var(--teal);border-color:var(--teal)" onclick="event.stopPropagation();_pmCompleteTask(${t.id})">✓</button>`:''}
+    <div class="pm-card-footer">
+      <button class="pm-move-btn" onclick="event.stopPropagation();_pmMoveModal(${t.id},'${s.key}')">→ Move</button>
+      ${s.key!=='done'?`<button class="pm-move-btn" style="flex:none;padding:.25rem .55rem;font-weight:700" onclick="event.stopPropagation();_pmCompleteTask(${t.id})" title="Mark done">✓</button>`:''}
     </div>
   </div>`;
 }
@@ -2762,15 +2802,15 @@ function _pmProjectBoard(projectId){
 
   STAGES.forEach(s=>{
     const stageTasks=projTasks.filter(t=>t.stage===s.key);
-    h+=`<div class="pm-col">
-      <div class="pm-col-header stage-${s.key}">
+    h+=`<div class="pm-col stage-${s.key}" id="pm-lane-${s.key}"
+      ondragover="event.preventDefault();document.getElementById('pm-lane-${s.key}').classList.add('drag-over')"
+      ondragleave="document.getElementById('pm-lane-${s.key}').classList.remove('drag-over')"
+      ondrop="document.getElementById('pm-lane-${s.key}').classList.remove('drag-over');_pmDragDrop(event,'${s.key}')">
+      <div class="pm-col-header">
         <span class="pm-col-label stage-${s.key}">${s.label}</span>
-        <span class="pm-col-count">${stageTasks.length}</span>
+        <span class="pm-col-count stage-${s.key}">${stageTasks.length}</span>
       </div>
-      <div class="pm-cards" id="pm-col-${s.key}"
-        ondragover="event.preventDefault();event.currentTarget.style.background='var(--alt)'"
-        ondragleave="event.currentTarget.style.background=''"
-        ondrop="event.currentTarget.style.background='';_pmDragDrop(event,'${s.key}')">`;
+      <div class="pm-cards" id="pm-col-${s.key}">`;
     stageTasks.forEach(t=>{ h+=_pmTaskCard(t,s); });
     h+=`</div></div>`;
   });
