@@ -858,7 +858,7 @@ function showForgotPin(){
 function sendForgotPin(){
   const email=document.getElementById("forgot-email").value.trim();
   if(!email){document.getElementById("forgot-msg").style.color="#f87171";document.getElementById("forgot-msg").textContent="Please enter your email.";return;}
-  api({action:"forgot_pin",email}).then(()=>{
+  fetch(API_BASE+'?'+new URLSearchParams({action:"forgot_pin",email})).then(r=>r.json()).then(()=>{
     document.getElementById("forgot-msg").style.color="#4ade80";
     document.getElementById("forgot-msg").textContent="If that email is on file, a reset link is on its way!";
   }).catch(()=>{

@@ -209,7 +209,7 @@ if ($method === 'GET') {
         $db      = getDB();
         $key     = trim($_GET['key']   ?? '');
         $value   = trim($_GET['value'] ?? '');
-        $allowed = ['ghl_invite_webhook_url', 'ghl_webhook_url', 'ghl_notify_webhook_url'];
+        $allowed = ['ghl_invite_webhook_url', 'ghl_webhook_url', 'ghl_notify_webhook_url', 'ghl_reset_webhook_url'];
         if (!in_array($key, $allowed, true)) {
             echo json_encode(['success' => false, 'error' => 'Key not allowed']); exit;
         }
@@ -860,6 +860,51 @@ if ($action === 'load_followed_tasks') {
     } catch (Exception $e) {
         echo json_encode(['success' => true, 'tasks' => []]);
     }
+    exit;
+}
+
+// ── FORGOT PASSWORD (GET, fires GHL reset webhook) ───────────────────────
+if ($method === 'GET' && $action === 'forgot_pin') {
+    $db    = getDB();
+    $email = trim($_GET['email'] ?? '');
+    if (!$email) { echo json_encode(['success' => false, 'error' => 'Email required']); exit; }
+    $stmt = $db->prepare("SELECT id, name, role FROM users WHERE email = ? AND status = 'active' LIMIT 1");
+    $stmt->execute([$email]);
+    $user = $stmt->fetch();
+    if ($user) {
+        $token   = bin2hex(random_bytes(20));
+        $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
+        $key     = 'pin_reset_' . $user['id'];
+        $val     = json_encode(['token' => $token, 'expires' => $expires]);
+        $db->prepare("INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=?")->execute([$key, $val, $val]);
+        // Use production URL (stagging subdomain redirects there)
+        $resetUrl = 'https://stagging.timesheet.genhead.com/timesheet/?reset_token=' . $token . '&uid=' . $user['id'];
+        // Fire GHL reset webhook — reuse ghl_invite_webhook_url or ghl_notify_webhook_url
+        $webhookUrl = getSetting('ghl_reset_webhook_url') ?: getSetting('ghl_invite_webhook_url');
+        if ($webhookUrl) {
+            $payload = [
+                'event'          => 'password_reset',
+                'action'         => 'password_reset',
+                'employee_name'  => $user['name'],
+                'employee_email' => $email,
+                'employee_id'    => 'e' . $user['id'],
+                'role'           => $user['role'],
+                'reset_url'      => $resetUrl,
+                'expires_in'     => '1 hour',
+                'timestamp'      => date('c'),
+            ];
+            $ch = curl_init($webhookUrl);
+            curl_setopt_array($ch, [CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($payload),CURLOPT_HTTPHEADER=>['Content-Type: application/json'],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10]);
+            curl_exec($ch);
+            curl_close($ch);
+        } else {
+            // Fallback: PHP mail if no webhook configured
+            $subject = 'Genhead Timesheet — Reset Your Password';
+            $message = "Hi {$user['name']},\n\nClick the link below to reset your password (expires in 1 hour):\n\n{$resetUrl}\n\n— Genhead Team";
+            mail($email, $subject, $message, "From: noreply@genhead.com");
+        }
+    }
+    echo json_encode(['success' => true, 'message' => 'If that email is on file, a reset link is on its way!']);
     exit;
 }
 
@@ -1969,7 +2014,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier'];
         foreach ($allowed as $key) { if (isset($body[$key])) setSetting($key, $body[$key]); }
         echo json_encode(['success' => true]);
         exit;
