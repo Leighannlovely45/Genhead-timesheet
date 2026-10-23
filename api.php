@@ -433,6 +433,19 @@ if ($method === 'GET') {
         exit;
     }
 
+    // ── LOAD PERIODS (distinct periods with timesheet data) ────────────────────
+    if ($action === 'load_periods') {
+        try {
+            $db = getDB();
+            $stmt = $db->query("SELECT DISTINCT period FROM timesheets WHERE period IS NOT NULL AND period != '' ORDER BY period_start DESC, period DESC LIMIT 26");
+            $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            echo json_encode(['success'=>true,'periods'=>$rows]);
+        } catch(Exception $e) {
+            echo json_encode(['success'=>false,'error'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
     // ── RICH REPORT v2 ──────────────────────────────────────────────────────────
     if ($action === 'load_report_v2') {
         try {
@@ -556,6 +569,18 @@ if ($method === 'GET') {
         $mkEmpStmt->execute($tsParams);
         $mkByEmp = $mkEmpStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // --- SUBMITTED / APPROVED counts for KPI cards
+        $countStmt = $db->prepare("
+            SELECT
+                COUNT(DISTINCT t.user_id) AS total_employees,
+                SUM(CASE WHEN t.status IN ('submitted','approved') THEN 1 ELSE 0 END) AS submitted_count,
+                SUM(CASE WHEN t.status='approved' THEN 1 ELSE 0 END) AS approved_count
+            FROM users u
+            LEFT JOIN timesheets t ON t.user_id=u.id AND {$tsCond}
+            WHERE u.status='active' AND u.role='employee'");
+        $countStmt->execute($tsParams);
+        $counts = $countStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
         // --- PROJECTIONS: projects with estimated_hours vs actual logged hours
         try {
             $projStmt = $db->prepare("
@@ -579,6 +604,7 @@ if ($method === 'GET') {
         }
 
         $payload = ['success' => true, 'report' => [
+            'counts'      => $counts,
             'master'      => $master,
             'billable'    => $billable,
             'billableEmp' => $billableByEmp,

@@ -1603,6 +1603,17 @@ async function loadClientReport(){
   // Inject range controls above content if not already there
   let rangeBar=document.getElementById('rpt-range-bar');
   if(!rangeBar){
+    // Fetch real periods from DB first
+    let dbPeriods=[];
+    try{
+      const pr=await fetch(`${API_BASE}?action=load_periods`).then(x=>x.json());
+      dbPeriods=pr.periods||[];
+    }catch(e){}
+    // Merge: DB periods first, then PERIODS array for any not yet in DB
+    const merged=[...dbPeriods];
+    PERIODS.forEach(p=>{ if(!merged.includes(p)) merged.push(p); });
+    const periodOpts=merged.map((p,i)=>`<option value="${p}"${i===0?' selected':''}>${p}</option>`).join('');
+
     rangeBar=document.createElement('div');
     rangeBar.id='rpt-range-bar';
     rangeBar.style.cssText='display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;padding:.75rem 1rem;background:var(--bg);border:1px solid var(--border);border-radius:10px';
@@ -1614,7 +1625,7 @@ async function loadClientReport(){
       </select>
       <div id="rpt-period-sel" style="display:flex;gap:.4rem;align-items:center">
         <select id="rpt-period-pick" style="background:var(--hover);border:1px solid var(--border);border-radius:7px;padding:.35rem .7rem;font-size:.82rem;color:var(--dark)" onchange="loadClientReport()">
-          ${PERIODS.map((p,i)=>`<option value="${p}"${i===pidx?' selected':''}>${p}</option>`).join('')}
+          ${periodOpts}
         </select>
       </div>
       <div id="rpt-custom-sel" style="display:none;gap:.4rem;align-items:center;flex-wrap:wrap">
@@ -1689,6 +1700,7 @@ function metricCards(cards){
 
 function renderMasterTab(d){
   const rows=d.master||[];
+  const counts=d.counts||{};
   let tH=0,tB=0,tNB=0,tMK=0,tPay=0;
   const trs=rows.map(r=>{
     const h=parseFloat(r.total_hours||0),b=parseFloat(r.billable_hours||0),
@@ -1699,30 +1711,126 @@ function renderMasterTab(d){
     return`<tr>
       <td><strong>${escHtml(r.employee||'—')}</strong></td>
       <td style="font-family:'DM Mono',monospace">${fmt(h)}</td>
-      <td style="color:#059669;font-family:'DM Mono',monospace">${fmt(b)}</td>
-      <td style="color:#d97706;font-family:'DM Mono',monospace">${fmt(nb)}</td>
-      <td style="color:#6366f1;font-family:'DM Mono',monospace">${fmt(mk)}</td>
+      <td style="color:#86efac;font-family:'DM Mono',monospace">${fmt(b)}</td>
+      <td style="color:#fde047;font-family:'DM Mono',monospace">${fmt(nb)}</td>
+      <td style="color:#a5b4fc;font-family:'DM Mono',monospace">${fmt(mk)}</td>
       <td>
         <div style="display:flex;align-items:center;gap:.4rem">
-          <div class="proj-bar-wrap" style="width:60px"><div class="proj-bar" style="width:${bPct}%;background:#059669"></div></div>
-          <span style="font-size:.72rem;color:var(--mid)">${bPct}%</span>
+          <div class="proj-bar-wrap" style="width:60px"><div class="proj-bar" style="width:${bPct}%;background:#03AD8F"></div></div>
+          <span style="font-size:.72rem;color:rgba(255,255,255,.55)">${bPct}%</span>
         </div>
       </td>
-      <td style="font-family:'DM Mono',monospace;color:var(--dark)">${r.total_pay?fmtMoney(pay):'—'}</td>
-      <td><span style="font-size:.68rem;padding:.15rem .5rem;border-radius:4px;background:${r.status==='approved'?'#dcfce7':r.status==='submitted'?'#fef9c3':'#f1f5f9'};color:${r.status==='approved'?'#166534':r.status==='submitted'?'#854d0e':'#64748b'}">${r.status||'draft'}</span></td>
+      <td style="font-family:'DM Mono',monospace;color:#e2e8f0">${r.total_pay?fmtMoney(pay):'—'}</td>
+      <td><span style="font-size:.68rem;padding:.15rem .5rem;border-radius:4px;background:${r.status==='approved'?'rgba(16,185,129,.2)':r.status==='submitted'?'rgba(234,179,8,.2)':'rgba(100,116,139,.15)'};color:${r.status==='approved'?'#4ade80':r.status==='submitted'?'#fde047':'#94a3b8'}">${r.status||'draft'}</span></td>
     </tr>`;
   }).join('');
-  return metricCards([
-    {label:'Total Hours',val:fmt(tH),sub:'All employees',color:'#1e293b'},
-    {label:'Billable',val:fmt(tB),sub:`${tH?Math.round(tB/tH*100):0}% of hours`,color:'#059669'},
-    {label:'Non-Billable',val:fmt(tNB),sub:'Internal / overhead',color:'#d97706'},
-    {label:'Marketing',val:fmt(tMK),sub:'Marketing activities',color:'#6366f1'},
-    {label:'Total Payroll',val:fmtMoney(tPay),sub:'This period',color:'#0369a1'},
-  ])+rptTblWrap(`<table>
-    <thead><tr><th>Employee</th><th>Total Hrs</th><th style="color:#86efac">Billable</th><th style="color:#fde047">Non-Bill.</th><th style="color:#a5b4fc">Marketing</th><th>Billable %</th><th>Pay</th><th>Status</th></tr></thead>
-    <tbody>${trs}</tbody>
-    <tfoot><tr><td>TOTAL</td><td style="font-family:'DM Mono',monospace">${fmt(tH)}</td><td style="color:#059669;font-family:'DM Mono',monospace">${fmt(tB)}</td><td style="color:#d97706;font-family:'DM Mono',monospace">${fmt(tNB)}</td><td style="color:#6366f1;font-family:'DM Mono',monospace">${fmt(tMK)}</td><td></td><td style="font-family:'DM Mono',monospace">${fmtMoney(tPay)}</td><td></td></tr></tfoot>
-  </table>`);
+
+  const totalEmp=parseInt(counts.total_employees||rows.length)||1;
+  const submittedCount=parseInt(counts.submitted_count||0);
+  const approvedCount=parseInt(counts.approved_count||0);
+
+  // SVG bar chart — hours by employee
+  const barData=rows.map(r=>({name:(r.employee||'?').split(' ')[0],h:parseFloat(r.total_hours||0),b:parseFloat(r.billable_hours||0)})).filter(r=>r.h>0);
+  const maxH=Math.max(...barData.map(r=>r.h),1);
+  const bW=Math.max(Math.floor(220/Math.max(barData.length,1))-6,12);
+  const barSvg=barData.length?`<svg viewBox="0 0 ${Math.max(barData.length*(bW+6)+10,60)} 80" style="width:100%;height:80px">
+    ${barData.map((r,i)=>{
+      const bH=Math.round((r.h/maxH)*68);
+      const bBH=Math.round((r.b/maxH)*68);
+      const x=i*(bW+6)+5;
+      return`<rect x="${x}" y="${80-bH-8}" width="${bW}" height="${bH}" fill="rgba(255,255,255,.18)" rx="3"/>
+        <rect x="${x}" y="${80-bBH-8}" width="${bW}" height="${bBH}" fill="#03AD8F" rx="3"/>
+        <text x="${x+bW/2}" y="78" text-anchor="middle" font-size="7" fill="rgba(255,255,255,.6)">${r.name}</text>`;
+    }).join('')}
+  </svg>`:'<div style="color:rgba(255,255,255,.4);font-size:.78rem;padding:.5rem 0">No data</div>';
+
+  // SVG donut chart — billable hours by client
+  const billRows=(d.billable||[]).filter(c=>parseFloat(c.hours)>0).slice(0,8);
+  const donutColors=['#03AD8F','#6366f1','#f59e0b','#ec4899','#0ea5e9','#84cc16','#f87171','#a78bfa'];
+  const donutTotal=billRows.reduce((s,c)=>s+parseFloat(c.hours||0),0)||1;
+  let cumulAngle=0;
+  const cx=56,cy=56,r2=42,r3=26;
+  const donutPaths=billRows.map((c,i)=>{
+    const pct=parseFloat(c.hours||0)/donutTotal;
+    const a1=cumulAngle,a2=cumulAngle+pct*360-0.3;
+    cumulAngle+=pct*360;
+    const toRad=a=>a*Math.PI/180;
+    const x1=cx+r2*Math.sin(toRad(a1)),y1=cy-r2*Math.cos(toRad(a1));
+    const x2=cx+r2*Math.sin(toRad(a2)),y2=cy-r2*Math.cos(toRad(a2));
+    const x3=cx+r3*Math.sin(toRad(a2)),y3=cy-r3*Math.cos(toRad(a2));
+    const x4=cx+r3*Math.sin(toRad(a1)),y4=cy-r3*Math.cos(toRad(a1));
+    const lg=pct>.5?1:0;
+    return`<path d="M${x1},${y1} A${r2},${r2} 0 ${lg},1 ${x2},${y2} L${x3},${y3} A${r3},${r3} 0 ${lg},0 ${x4},${y4} Z" fill="${donutColors[i%donutColors.length]}" opacity=".92"/>`;
+  }).join('');
+  const donutLegend=billRows.map((c,i)=>`<div style="display:flex;align-items:center;gap:.35rem;margin-bottom:.2rem"><div style="width:8px;height:8px;border-radius:2px;background:${donutColors[i%donutColors.length]};flex-shrink:0"></div><span style="font-size:.7rem;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.client)} ${fmt(c.hours)}h</span></div>`).join('');
+  const donutSvg=billRows.length?`<svg viewBox="0 0 112 112" style="width:110px;height:110px;flex-shrink:0">${donutPaths}<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="9" fill="rgba(255,255,255,.5)">Billable</text><text x="${cx}" y="${cy+8}" text-anchor="middle" font-size="10" font-weight="600" fill="#fff">${fmt(donutTotal)}h</text></svg>`:'';
+
+  return`<div style="background:#0f172a;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem">
+  <!-- KPI CARDS -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1.25rem">
+    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1rem">
+      <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:.3rem">Total Hours</div>
+      <div style="font-size:1.75rem;font-weight:700;color:#fff;font-family:'DM Mono',monospace;line-height:1">${fmt(tH)}</div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">This period</div>
+    </div>
+    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1rem">
+      <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:.3rem">Total Payroll</div>
+      <div style="font-size:1.75rem;font-weight:700;color:#fff;font-family:'DM Mono',monospace;line-height:1">${fmtMoney(tPay)}</div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">This period</div>
+    </div>
+    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1rem">
+      <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:.3rem">Submitted</div>
+      <div style="font-size:1.75rem;font-weight:700;color:#fff;font-family:'DM Mono',monospace;line-height:1">${submittedCount}<span style="font-size:1rem;color:rgba(255,255,255,.4)">/${totalEmp}</span></div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">Employees</div>
+    </div>
+    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1rem">
+      <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:.3rem">Approved</div>
+      <div style="font-size:1.75rem;font-weight:700;color:#fff;font-family:'DM Mono',monospace;line-height:1">${approvedCount}<span style="font-size:1rem;color:rgba(255,255,255,.4)">/${totalEmp}</span></div>
+      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.25rem">Employees</div>
+    </div>
+  </div>
+  <!-- CHARTS ROW -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1.25rem">
+    <div style="background:rgba(255,255,255,.05);border-radius:10px;padding:.9rem 1rem">
+      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.4);margin-bottom:.6rem">Hours by Employee</div>
+      ${barSvg}
+    </div>
+    <div style="background:rgba(255,255,255,.05);border-radius:10px;padding:.9rem 1rem">
+      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.4);margin-bottom:.6rem">Billable Hours by Client</div>
+      <div style="display:flex;gap:.75rem;align-items:center">
+        ${donutSvg}
+        <div style="flex:1;min-width:0">${donutLegend||'<div style="color:rgba(255,255,255,.3);font-size:.75rem">No billable data</div>'}</div>
+      </div>
+    </div>
+  </div>
+  <!-- PAYROLL TABLE -->
+  <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.4);margin-bottom:.5rem">Payroll Summary</div>
+  <div style="background:rgba(255,255,255,.04);border-radius:8px;overflow:hidden">
+    <table style="width:100%;border-collapse:collapse;font-size:.79rem">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.1)">
+        <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Employee</th>
+        <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Total Hrs</th>
+        <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Billable</th>
+        <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Non-Bill.</th>
+        <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Marketing</th>
+        <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Bill %</th>
+        <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Pay</th>
+        <th style="padding:.5rem .85rem;text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:.63rem;text-transform:uppercase;letter-spacing:.04em">Status</th>
+      </tr></thead>
+      <tbody>${trs||'<tr><td colspan="8" style="padding:1.5rem;text-align:center;color:rgba(255,255,255,.3)">No timesheet data for this period</td></tr>'}</tbody>
+      <tfoot><tr style="border-top:1px solid rgba(255,255,255,.12)">
+        <td style="padding:.5rem .85rem;color:rgba(255,255,255,.6);font-weight:600;font-size:.78rem">TOTAL</td>
+        <td style="padding:.5rem .85rem;font-family:'DM Mono',monospace;color:#fff;font-weight:600">${fmt(tH)}</td>
+        <td style="padding:.5rem .85rem;font-family:'DM Mono',monospace;color:#86efac;font-weight:600">${fmt(tB)}</td>
+        <td style="padding:.5rem .85rem;font-family:'DM Mono',monospace;color:#fde047;font-weight:600">${fmt(tNB)}</td>
+        <td style="padding:.5rem .85rem;font-family:'DM Mono',monospace;color:#a5b4fc;font-weight:600">${fmt(tMK)}</td>
+        <td></td>
+        <td style="padding:.5rem .85rem;font-family:'DM Mono',monospace;color:#fff;font-weight:600">${fmtMoney(tPay)}</td>
+        <td></td>
+      </tr></tfoot>
+    </table>
+  </div>
+</div>`;
 }
 
 function renderBillableTab(d){
@@ -2370,7 +2478,10 @@ function _renderPMBoard(){
         <span class="pm-col-label stage-${s.key}">${s.label}</span>
         <span class="pm-col-count">${stageTasks.length}</span>
       </div>
-      <div class="pm-cards" id="pm-col-${s.key}">`;
+      <div class="pm-cards" id="pm-col-${s.key}"
+        ondragover="event.preventDefault();event.currentTarget.style.background='var(--alt)'"
+        ondragleave="event.currentTarget.style.background=''"
+        ondrop="event.currentTarget.style.background='';_pmDragDrop(event,'${s.key}')">`;
     stageTasks.forEach(t=>{
       h+=_pmTaskCard(t,s);
     });
@@ -2440,6 +2551,7 @@ function _pmProjectsView(clientFilter){
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
           <span class="btype-tag bt-${p.billing_type||'billable'}">${billingLabel}</span>
           ${p.due_date?`<span style="font-size:.72rem;color:${overdue?'#f87171':'var(--mid)'}">Due ${p.due_date}</span>`:''}
+          ${p.estimated_hours?`<span style="font-size:.72rem;color:var(--teal)">~${parseFloat(p.estimated_hours).toFixed(1)}h est.</span>`:`<button onclick="event.stopPropagation();_pmSetEstHours(${p.id})" style="font-size:.68rem;color:var(--mid);background:none;border:1px dashed var(--border);border-radius:4px;padding:.1rem .4rem;cursor:pointer">+ Est. Hours</button>`}
         </div>
       </div>`;
     });
@@ -2459,7 +2571,10 @@ function _pmTaskCard(t,s){
   const btCls=t.billing_type?`btype-tag bt-${t.billing_type}`:'btype-tag bt-billable';
   const btLabel=t.billing_type?(BILLING_TYPES.find(b=>b.key===t.billing_type)||{label:t.billing_type}).label:'Billable';
   const priColor=t.priority==='high'?'#f87171':t.priority==='medium'?'#fb923c':'#4ade80';
-  return `<div class="pm-card stage-${s.key}" onclick="_pmOpenTask(${t.id})">
+  return `<div class="pm-card stage-${s.key}" draggable="true"
+    ondragstart="event.dataTransfer.setData('taskId','${t.id}');event.dataTransfer.setData('fromStage','${s.key}');event.currentTarget.style.opacity='.45'"
+    ondragend="event.currentTarget.style.opacity='1'"
+    onclick="_pmOpenTask(${t.id})">
     <div class="pm-card-proj">${escHtml(proj.name)}</div>
     <div class="pm-card-title">${escHtml(t.title)}</div>
     <div class="pm-card-meta">
@@ -2540,11 +2655,15 @@ async function _pmProjectDetail(projectId){
       const sTasks=tasks.filter(t=>t.stage===s.key);
       if(!sTasks.length && s.key==='done') return; // hide empty Done column in detail
       h+=`<div class="pm-detail-section">
-        <div class="pm-col-header stage-${s.key}"><span class="pm-col-label stage-${s.key}">${s.label}</span><span class="pm-col-count">${sTasks.length}</span></div>`;
+        <div class="pm-col-header stage-${s.key}"><span class="pm-col-label stage-${s.key}">${s.label}</span><span class="pm-col-count">${sTasks.length}</span></div>
+        <div class="pm-cards"
+          ondragover="event.preventDefault();event.currentTarget.style.background='var(--alt)'"
+          ondragleave="event.currentTarget.style.background=''"
+          ondrop="event.currentTarget.style.background='';_pmDragDrop(event,'${s.key}')">`;
       sTasks.forEach(t=>{
         h+=_pmTaskCard(t,s);
       });
-      h+=`</div>`;
+      h+=`</div></div>`;
     });
     h+=`</div>`;
     h+=_pmTaskModalHTML(projectId);
@@ -2802,6 +2921,21 @@ async function _pmDoMove(newStage){
   }catch(e){alert('Error moving task: '+e.message);}
 }
 
+async function _pmDragDrop(event,toStage){
+  const taskId=parseInt(event.dataTransfer.getData('taskId'));
+  const fromStage=event.dataTransfer.getData('fromStage');
+  if(!taskId||fromStage===toStage)return;
+  try{
+    const mp=new URLSearchParams({action:'update_task',id:taskId,stage:toStage,actor_id:cur.id,actor_name:cur.name});
+    await fetch(API_BASE+'?'+mp).then(x=>x.json());
+    const t=_pm.tasks.find(t=>t.id===taskId);
+    if(t)t.stage=toStage;
+    if(_pm.view==='detail'&&_pm.activeProject) _pmProjectDetail(_pm.activeProject.id);
+    else if(_pm.view==='mytasks') _pmMyTasks();
+    else _renderPMBoard();
+  }catch(e){alert('Error moving task: '+e.message);}
+}
+
 // ── ADD PROJECT MODAL ─────────────────────────────────────────────────────
 function _pmProjectModalHTML(){
   const clientOpts=CLIENTS.length
@@ -2823,6 +2957,8 @@ function _pmProjectModalHTML(){
       </select>
       <label class="pm-lbl">Due Date</label>
       <input id="pm-proj-due" type="date" class="pm-inp">
+      <label class="pm-lbl">Estimated Hours <span style="color:var(--mid);font-weight:400">(optional)</span></label>
+      <input id="pm-proj-est-hours" type="number" min="0" step="0.5" placeholder="e.g. 40" class="pm-inp">
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.5rem">
         <button class="btn btn-outline" onclick="document.getElementById('pm-proj-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" onclick="_pmSaveProject()">Create Project</button>
@@ -2837,6 +2973,8 @@ function _pmAddProjectModal(){
   modal.querySelector('#pm-proj-name').value='';
   modal.querySelector('#pm-proj-desc').value='';
   modal.querySelector('#pm-proj-due').value='';
+  const eh=modal.querySelector('#pm-proj-est-hours');
+  if(eh)eh.value='';
   const csel=modal.querySelector('#pm-proj-client');
   if(csel)csel.value='';
   modal.style.display='flex';
@@ -2849,9 +2987,11 @@ async function _pmSaveProject(){
   const due=document.getElementById('pm-proj-due').value;
   const clientEl=document.getElementById('pm-proj-client');
   const clientId=clientEl?clientEl.value:'';
+  const estEl=document.getElementById('pm-proj-est-hours');
+  const estHours=estEl&&estEl.value?estEl.value:'';
   if(!name){alert('Project name is required.');return;}
   try{
-    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,client_id:clientId||''});
+    const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',estimated_hours:estHours,created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,client_id:clientId||''});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     document.getElementById('pm-proj-modal').style.display='none';
