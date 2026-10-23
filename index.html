@@ -558,16 +558,18 @@ function buildLoginForm(){
     }
   });
   nameInp.addEventListener('blur',function(){ setTimeout(()=>{ const l=document.getElementById('lf-name-list'); if(l) l.style.display='none'; },150); });
-  // Chrome ignores autocomplete="off" — detect autofill (contains @ or looks like email) and clear it
+  // Silently clear autofill if browser inserts an email/password into the name field.
+  // Use a short delay so the user's own typing isn't interrupted mid-keystroke.
   nameInp.addEventListener('change',function(){
-    if(this.value.includes('@')||this.value.includes('.')){
-      this.value=''; _selectedEmpId=null; resetLevelField();
+    if(this.value.includes('@')){
+      // Looks like an email was autofilled — clear silently without resetting the whole form
+      this.value='';
       const hint=document.getElementById('lf-name-hint'); if(hint) hint.style.display='none';
     }
   });
-  // Also watch for autofill via animation trick
+  // animation trick for Chrome autofill — only clear the value, don't reset the whole form
   nameInp.addEventListener('animationstart',function(e){
-    if(e.animationName==='onAutoFillStart'){ this.value=''; _selectedEmpId=null; resetLevelField(); }
+    if(e.animationName==='onAutoFillStart'){ this.value=''; }
   });
   nameInp.addEventListener('keydown',function(e){
     const list=document.getElementById('lf-name-list');
