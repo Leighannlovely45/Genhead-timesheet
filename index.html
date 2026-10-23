@@ -919,7 +919,7 @@ function renderTS(uid){
 
   let h=`${clientDatalist}<div class="emp-info">
     <div><div class="emp-name">${emp.name}</div><div class="emp-period">${PERIODS[pidx]} &middot; Bi-Weekly Timesheet</div></div>
-    <div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" onchange="upRate(this.value)"${isViewing?" readonly":""}></div>
+    ${(role==="admin"||role==="hr")?`<div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" onchange="upRate(this.value)"${isViewing?" readonly":""}></div>`:''}
     <div style="text-align:right">${d.submitted?'<span class="badge b-sub">&#10003; Submitted</span>':'<span class="badge b-pend">Pending</span>'}</div>
   </div>`;
 
@@ -927,8 +927,9 @@ function renderTS(uid){
     const ws=wk*7,we=ws+6;
     let wH=0,wP=0;
     d.entries.forEach(e=>{if(e.day>=ws&&e.day<=we){wH+=pfl(e.hrs);wP+=pfl(e.hrs)*pfl(d.rate);}});
-    h+=`<div class="week-wrap"><div class="week-hdr"><h3>Week ${wk+1}</h3><div class="week-stats"><span class="wstat">Hours: <strong id="wh${wk}">${wH.toFixed(1)}</strong></span><span class="wstat">Pay: <strong id="wp${wk}">${fm(wP)}</strong></span></div></div>`;
-    h+=`<div class="col-hdrs"><div class="col-hdr-lbl">Company</div><div class="col-hdr-lbl">Deliverable</div><div class="col-hdr-lbl">Billing Type</div><div class="col-hdr-lbl">Hrs</div><div class="col-hdr-lbl">Rate</div><div class="col-hdr-lbl">Pay</div></div>`;
+    const canSeePay=(role==="admin"||role==="hr");
+    h+=`<div class="week-wrap"><div class="week-hdr"><h3>Week ${wk+1}</h3><div class="week-stats"><span class="wstat">Hours: <strong id="wh${wk}">${wH.toFixed(1)}</strong></span>${canSeePay?`<span class="wstat">Pay: <strong id="wp${wk}">${fm(wP)}</strong></span>`:''}</div></div>`;
+    h+=`<div class="col-hdrs"><div class="col-hdr-lbl">Company</div><div class="col-hdr-lbl">Deliverable</div><div class="col-hdr-lbl">Billing Type</div><div class="col-hdr-lbl">Hrs</div>${canSeePay?`<div class="col-hdr-lbl">Rate</div><div class="col-hdr-lbl">Pay</div>`:''}</div>`;
     for(let di=0;di<7;di++){
       const dayIdx=wk*7+di,dt=pdate(pidx,dayIdx),isWk=di>=5;
       h+=`<div class="day-block"><div class="day-hdr${isWk?" wknd":""}"><span class="day-nm">${DAYS[di]}</span><span class="day-dt">${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span></div>`;
@@ -942,8 +943,7 @@ function renderTS(uid){
           <input type="text" placeholder="Deliverable" value="${en.del}" onchange="upE(${dayIdx},${ei},'del',this.value)"${ro}>
           ${btSelect(dayIdx, ei, btVal, isViewing)}
           <input type="number" placeholder="0" value="${en.hrs}" min="0" max="24" step="0.5" onchange="upE(${dayIdx},${ei},'hrs',this.value)"${ro}>
-          <div class="dpay dim">${rt?fm(rt):"-"}</div>
-          <div class="dpay">${(hr&&rt)?fm(pay):"-"}</div>
+          ${canSeePay?`<div class="dpay dim">${rt?fm(rt):"-"}</div><div class="dpay">${(hr&&rt)?fm(pay):"-"}</div>`:''}
         </div>`;
       }
       h+=`</div>`;
@@ -961,7 +961,7 @@ function renderTS(uid){
       <div class="grand-lbl">${PERIODS[pidx]}</div>
       <div class="grand-vals">
         <div class="gv"><div class="val" id="gh">${allH.toFixed(1)} hrs</div><div class="lbl">Total Hours</div></div>
-        <div class="gv"><div class="val" id="gp">${fm(allP)}</div><div class="lbl">Total Paycheck</div></div>
+        ${(role==="admin"||role==="hr")?`<div class="gv"><div class="val" id="gp">${fm(allP)}</div><div class="lbl">Total Paycheck</div></div>`:''}
       </div>
     </div>
   </div>
@@ -969,17 +969,17 @@ function renderTS(uid){
     <div class="bb-card bb-bill">
       <div class="bb-lbl">&#9679; Billable</div>
       <div class="bb-val" id="bb-billable-h">${breakdown.billable.h.toFixed(1)} hrs</div>
-      <div class="bb-sub" id="bb-billable-p">${rt?fm(breakdown.billable.h*rt):""}</div>
+      ${(role==="admin"||role==="hr")?`<div class="bb-sub" id="bb-billable-p">${rt?fm(breakdown.billable.h*rt):""}</div>`:''}
     </div>
     <div class="bb-card bb-nb">
       <div class="bb-lbl">&#9632; Non-Billable</div>
       <div class="bb-val" id="bb-nonbillable-h">${breakdown.nonbillable.h.toFixed(1)} hrs</div>
-      <div class="bb-sub" id="bb-nonbillable-p">${rt?fm(breakdown.nonbillable.h*rt):""}</div>
+      ${(role==="admin"||role==="hr")?`<div class="bb-sub" id="bb-nonbillable-p">${rt?fm(breakdown.nonbillable.h*rt):""}</div>`:''}
     </div>
     <div class="bb-card bb-mkt">
       <div class="bb-lbl">&#9670; Marketing</div>
       <div class="bb-val" id="bb-marketing-h">${breakdown.marketing.h.toFixed(1)} hrs</div>
-      <div class="bb-sub" id="bb-marketing-p">${rt?fm(breakdown.marketing.h*rt):""}</div>
+      ${(role==="admin"||role==="hr")?`<div class="bb-sub" id="bb-marketing-p">${rt?fm(breakdown.marketing.h*rt):""}</div>`:''}
     </div>
   </div>`;
 
