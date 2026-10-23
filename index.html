@@ -977,7 +977,12 @@ function doLogin(u){
 }
 
 function logout(){cur=null;showLoginSelect();show("s-login");}
-function changePeriod(){pidx=parseInt(document.getElementById("period-sel").value);renderApp();window.scrollTo({top:0,behavior:"instant"});}
+async function changePeriod(){
+  pidx=parseInt(document.getElementById("period-sel").value);
+  if(cur&&cur._vid){await loadDraft(cur._vid,pidx);renderTS(cur._vid);}
+  else await renderApp();
+  window.scrollTo({top:0,behavior:"instant"});
+}
 async function renderApp(){
   if(!cur)return;
   if(cur.role==="manager"||cur.role==="hr"||cur.role==="admin"){await loadDashData();renderDash();return;}
@@ -1061,7 +1066,7 @@ function renderTS(uid){
 
   let h=`${clientDatalist}<div class="emp-info">
     <div><div class="emp-name">${emp.name}</div><div class="emp-period">${PERIODS[pidx]} &middot; Bi-Weekly Timesheet</div></div>
-    ${(role==="admin"||role==="hr")?`<div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" onchange="upRate(this.value)"${isViewing?" readonly":""}></div>`:''}
+    ${(role==="admin"||role==="hr")?`<div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" readonly title="Pay rates are set on the Team tab"></div>`:''}
     <div class="ts-save-wrap">
       ${statusBadge(d.status||(d.submitted?"submitted":"draft"))}
       ${isViewing?'':'<button class="btn btn-primary" style="padding:.32rem .85rem;font-size:.78rem" onclick="manualSave()">&#128190; Save Draft</button>'}
@@ -1350,7 +1355,7 @@ async function doSubmit(){
   } else {
     showToast("Submitted! Add your GHL webhook URL in the GHL Setup tab to auto-notify manager.");
   }
-  renderApp();
+  if(cur._vid)renderTS(cur._vid);else renderApp();
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────
@@ -1371,11 +1376,11 @@ function doExport(){
 function getTabsForRole(role){
   const tabs=[];
   tabs.push({id:"dash",label:"Dashboard"});
+  if(role==="manager"||role==="hr"||role==="admin") tabs.push({id:"mytime",label:"My Timesheet"});
   if(role==="manager") tabs.push({id:"records",label:"Records"});
   if(role==="hr"||role==="admin"){
     tabs.push({id:"records",label:"Records"});
     tabs.push({id:"team",label:"Team"});
-    tabs.push({id:"hrm",label:"HR Management"});
     tabs.push({id:"auditlog",label:"Audit Log"});
     tabs.push({id:"reports",label:"Reports"});
   }
@@ -1434,7 +1439,7 @@ function renderDash(){
   }).join("");
 
   const tabs=getTabsForRole(role);
-  const tabBar=tabs.map(t=>`<button class="tab${t.id==='dash'?' active':''}" id="tab-${t.id}" onclick="switchTab('${t.id}')">${t.label}</button>`).join("");
+  const tabBar=tabs.map(t=>`<button class="tab${t.id==='dash'?' active':''}" id="tab-${t.id}" onclick="${t.id==='mytime'?`viewEmp('${cur.id}')`:`switchTab('${t.id}')`}">${t.label}</button>`).join("");
   const allTabIds=tabs.map(t=>t.id);
 
   body.innerHTML=`
@@ -2019,14 +2024,14 @@ function renderTeam(){
     const isActive=e.active!==false&&e.status!=="inactive";
     const statusDot=isActive?'<span style="color:#10b981;font-size:.78rem">● Active</span>':'<span style="color:#ef4444;font-size:.78rem">● Inactive</span>';
     const credential=e.password_set?'<span style="color:#10b981;font-size:.75rem">Password set</span>':'<span style="color:#f59e0b;font-size:.75rem">No password yet</span>';
-    // Manager assignment dropdown (only for employees)
+    // "Reports To" dropdown — every team member can be assigned a reviewer
     let mgrCell='<span style="color:var(--mid);font-size:.78rem">—</span>';
-    if(e.role==="employee"){
-      // manager_id in DB is numeric; EMPS ids are "eN" format
+    {
+      // manager_id in DB is numeric; EMPS ids are "eN" format. Everyone can be assigned a reviewer.
       const curMgrNumId=e.manager_id?String(e.manager_id):"";
       mgrCell=`<select style="background:var(--hover);color:var(--dark);border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem;font-size:.78rem;max-width:160px" onchange="assignManager('${e.id}',this.value)">
         <option value="">Unassigned</option>
-        ${managers.map(m=>{const mNumId=String(m.id).replace(/^e/,'');return`<option value="${m.id}"${mNumId===curMgrNumId?' selected':''}>${escHtml(m.name)}</option>`;}).join("")}
+        ${managers.filter(m=>m.id!==e.id).map(m=>{const mNumId=String(m.id).replace(/^e/,'');return`<option value="${m.id}"${mNumId===curMgrNumId?' selected':''}>${escHtml(m.name)}</option>`;}).join("")}
       </select>`;
     }
     return `<tr>
@@ -2604,7 +2609,7 @@ async function viewEmp(uid){
   const prev={...cur};
   cur={...cur,_vid:uid,_prev:prev};
   const emp=EMPS.find(e=>e.id===uid);
-  document.getElementById("tb-name").textContent=(emp?.name||uid)+" (viewing)";
+  document.getElementById("tb-name").textContent=uid===prev.id?prev.name:(emp?.name||uid)+" (viewing)";
   // Always load fresh from the DB for this employee + current period
   await loadDraft(uid,pidx);
   renderTS(uid);
