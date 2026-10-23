@@ -93,9 +93,12 @@ if ($method === 'GET') {
         if (!$id || strlen($password) < 6) {
             echo json_encode(['success' => false, 'error' => 'Password must be at least 6 characters']); exit;
         }
-        $stmt = $db->prepare("SELECT id, role FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $stmt = $db->prepare("SELECT id, role, password_set FROM users WHERE id = ? AND status = 'active' LIMIT 1");
         $stmt->execute([$id]);
-        if (!$stmt->fetch()) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        $u = $stmt->fetch();
+        if (!$u) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        // First-time setup only. Changing an existing password must go through the emailed reset link.
+        if ($u['password_set']) { echo json_encode(['success' => false, 'error' => 'A password is already set for this account. Use "Forgot password" to reset it.']); exit; }
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $id]);
         echo json_encode(['success' => true]);
@@ -1448,9 +1451,12 @@ if ($method === 'POST') {
         if (!$id || strlen($password) < 6) {
             echo json_encode(['success' => false, 'error' => 'Password must be at least 6 characters']); exit;
         }
-        $stmt = $db->prepare("SELECT id, role FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $stmt = $db->prepare("SELECT id, role, password_set FROM users WHERE id = ? AND status = 'active' LIMIT 1");
         $stmt->execute([$id]);
-        if (!$stmt->fetch()) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        $u = $stmt->fetch();
+        if (!$u) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
+        // First-time setup only. Changing an existing password must go through the emailed reset link.
+        if ($u['password_set']) { echo json_encode(['success' => false, 'error' => 'A password is already set for this account. Use "Forgot password" to reset it.']); exit; }
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $id]);
         echo json_encode(['success' => true]);

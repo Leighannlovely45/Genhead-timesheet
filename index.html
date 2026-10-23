@@ -958,8 +958,9 @@ function submitResetPin(){
   const conf=document.getElementById("rreset-pw-conf").value;
   if(pw.length<6){document.getElementById("rpin-error").textContent="Password must be at least 6 characters.";return;}
   if(pw!==conf){document.getElementById("rpin-error").textContent="Passwords don't match.";return;}
-  api({action:"reset_pin",uid:_resetUid,token:_resetToken,password:pw}).then(r=>{
-    if(r.ok){ window.history.replaceState({},"",window.location.pathname); if(u)doLogin(u);else showLoginSelect(); }
+  fetch(`${API_BASE}?action=reset_pin`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({uid:_resetUid,token:_resetToken,password:pw})})
+  .then(x=>x.json()).catch(()=>({success:false,error:"Network error — please try again."})).then(r=>{
+    if(r.success){ window.history.replaceState({},"",window.location.pathname); if(u)doLogin(u);else showLoginSelect(); }
     else { document.getElementById("rpin-error").textContent=r.error||"Reset failed. Link may have expired."; }
   });
 }
@@ -1737,7 +1738,7 @@ function renderDash(){
 
         <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
           <label style="font-weight:600">New Employee Invite Webhook URL</label>
-          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">When a GHL tag adds someone to the timesheet system, this webhook fires back to GHL so you can send them a welcome email with their login link and PIN setup instructions.</p>
+          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">When a GHL tag adds someone to the timesheet system, this webhook fires back to GHL so you can send them a welcome email with their login link and password setup instructions.</p>
           <input class="ghl-input" id="wh-invite-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${GHL_INVITE_WEBHOOK}" onchange="saveInviteWH(this.value)">
         </div>
         <div id="wh-invite-status" class="ghl-status ${GHL_INVITE_WEBHOOK?'ghl-ok':'ghl-warn'}" style="margin-top:.45rem">
@@ -1815,7 +1816,7 @@ function renderDash(){
         <p style="margin-top:.4rem"><strong>Action 1 — Update Contact:</strong> Map <code>{{trigger.period}}</code>, <code>{{trigger.totalHours}}</code>, <code>{{trigger.billableHours}}</code>, <code>{{trigger.nonBillableHours}}</code>, <code>{{trigger.marketingHours}}</code>, <code>{{trigger.submittedAt}}</code> to their respective custom fields.</p>
         <p style="margin-top:.4rem"><strong>Action 2 — Send Email:</strong> Set To: manager's email. Use this subject:</p>
         <div class="code-block">Timesheet Submitted: {{trigger.employee}} &mdash; {{trigger.period}}</div></div></div>
-        <div class="step"><div class="step-num">5</div><div><h4>Host the app on your subdomain</h4><p>Upload this HTML file to <code>timesheet.genhead.com</code>. Once uploaded, employees log in with their PIN and the timesheet is live.</p></div></div>
+        <div class="step"><div class="step-num">5</div><div><h4>Host the app on your subdomain</h4><p>Upload this HTML file to <code>timesheet.genhead.com</code>. Once uploaded, everyone logs in with their password and the timesheet is live.</p></div></div>
       </div>
     </div>
     <div style="margin-bottom:1.5rem"><button class="btn btn-outline" onclick="switchTab('ghl')">&#8592; Back to Config</button></div>
@@ -2017,7 +2018,7 @@ function renderTeam(){
     const roleBadge=e.role==="manager"?'<span class="badge-role mgr">Manager</span>':e.role==="hr"?'<span class="badge-role hr">HR</span>':'<span class="badge-role">Employee</span>';
     const isActive=e.active!==false&&e.status!=="inactive";
     const statusDot=isActive?'<span style="color:#10b981;font-size:.78rem">● Active</span>':'<span style="color:#ef4444;font-size:.78rem">● Inactive</span>';
-    const credential=e.role==="employee"?(e.pin_set?'<span style="color:#10b981;font-size:.75rem">PIN set</span>':'<span style="color:#f59e0b;font-size:.75rem">No PIN</span>'):(e.password_set?'<span style="color:#10b981;font-size:.75rem">PW set</span>':'<span style="color:#f59e0b;font-size:.75rem">No PW</span>');
+    const credential=e.password_set?'<span style="color:#10b981;font-size:.75rem">Password set</span>':'<span style="color:#f59e0b;font-size:.75rem">No password yet</span>';
     // Manager assignment dropdown (only for employees)
     let mgrCell='<span style="color:var(--mid);font-size:.78rem">—</span>';
     if(e.role==="employee"){
