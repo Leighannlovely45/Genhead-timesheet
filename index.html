@@ -3122,7 +3122,8 @@ function _pmProjectsView(clientFilter){
           <span class="btype-tag bt-${p.billing_type||'billable'}">${billingLabel}</span>
           ${p.due_date?`<span style="font-size:.72rem;color:${overdue?'#f87171':'var(--mid)'}">Due ${p.due_date}</span>`:''}
           ${p.estimated_hours?`<span style="font-size:.72rem;color:var(--teal)">~${parseFloat(p.estimated_hours).toFixed(1)}h est.</span>`:`<button onclick="event.stopPropagation();_pmSetEstHours(${p.id})" style="font-size:.68rem;color:var(--mid);background:none;border:1px dashed var(--border);border-radius:4px;padding:.1rem .4rem;cursor:pointer">+ Est. Hours</button>`}
-          ${canManage?`<button onclick="event.stopPropagation();_pmArchiveProject(${p.id},'${escHtml(p.name)}')" style="margin-left:auto;font-size:.65rem;color:#f87171;background:none;border:1px solid #f87171;border-radius:4px;padding:.1rem .4rem;cursor:pointer;opacity:.6" title="Archive project">Archive</button>`:''}
+          ${canManage?`<button onclick="event.stopPropagation();_pmArchiveProject(${p.id})" style="margin-left:auto;font-size:.65rem;color:#f87171;background:none;border:1px solid #f87171;border-radius:4px;padding:.1rem .4rem;cursor:pointer;opacity:.6" title="Archive project (hide it)">Archive</button>`:''}
+          ${(role==='admin'||role==='hr')?`<button onclick="event.stopPropagation();_pmDeleteProject(${p.id})" style="font-size:.65rem;color:#fff;background:#ef4444;border:1px solid #ef4444;border-radius:4px;padding:.1rem .45rem;cursor:pointer" title="Delete project permanently">Delete</button>`:''}
         </div>
       </div>`;
     });
@@ -3692,12 +3693,31 @@ function _pmAddProjectModal(){
   modal.style.display='flex';
 }
 
-async function _pmArchiveProject(projectId, projectName){
-  if(!confirm(`Archive "${projectName}"? It will be hidden from the projects list.`)) return;
+async function _pmArchiveProject(projectId){
+  const p=_pm.projects.find(x=>x.id===projectId)||{};
+  if(!confirm(`Archive "${p.name||'this project'}"? It will be hidden from the projects list and the timesheet Project picker.`)) return;
   try{
     const r=await fetch(`${API_BASE}?action=archive_project&id=${projectId}`).then(x=>x.json());
     if(!r.success) throw new Error(r.error||'Failed');
     _pm.projects=_pm.projects.filter(p=>p.id!==projectId);
+    PROJECTS=PROJECTS.filter(p=>p.id!==projectId);
+    _pmProjectsView();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+async function _pmDeleteProject(projectId){
+  const p=_pm.projects.find(x=>x.id===projectId)||{};
+  const tasks=parseInt(p.task_count||0);
+  const msg=`Permanently delete "${p.name||'this project'}"?\n\n`+
+    (tasks?`- Its ${tasks} task${tasks===1?'':'s'} (and their comments) will be deleted.\n`:'')+
+    `- Timesheet hours are kept. Lines tagged to this project become general hours for ${p.client_name||'the client'}.\n\nThis can't be undone. To just hide it, use Archive instead.`;
+  if(!confirm(msg)) return;
+  try{
+    const r=await fetch(`${API_BASE}?action=delete_project&id=${projectId}&actor_id=${encodeURIComponent(myDbId())}`).then(x=>x.json());
+    if(!r.success) throw new Error(r.error||'Failed');
+    _pm.projects=_pm.projects.filter(x=>x.id!==projectId);
+    PROJECTS=PROJECTS.filter(x=>x.id!==projectId);
+    showToast('Project deleted.');
     _pmProjectsView();
   }catch(e){alert('Error: '+e.message);}
 }

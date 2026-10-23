@@ -942,7 +942,7 @@ if ($method === 'GET' && $action === 'fire_webhook') {
     exit;
 }
 
-if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
+if ($method === 'GET' && in_array($action, ['add_project','update_project','archive_project','delete_project','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
     $body = $_GET;
     $db = getDB();
 
@@ -1039,6 +1039,49 @@ if ($method === 'GET' && in_array($action, ['add_project','update_project','arch
         echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
         exit;
     }
+    // ── ARCHIVE PROJECT (GET — the page sends it this way) ─────────────────
+    if ($action === 'archive_project') {
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) { echo json_encode(['success'=>false,'error'=>'id required']); exit; }
+        $db->prepare("UPDATE projects SET status='archived' WHERE id=?")->execute([$id]);
+        echo json_encode(['success'=>true]);
+        exit;
+    }
+
+    // ── DELETE PROJECT ─────────────────────────────────────────────────────
+    // Removes the project and its tasks. Timesheet hours are kept: lines tagged
+    // to this project are un-tagged and count as general hours for the client.
+    if ($action === 'delete_project') {
+        $id      = (int)($body['id'] ?? 0);
+        $actorId = (int)($body['actor_id'] ?? 0);
+        if (!$id) { echo json_encode(['success'=>false,'error'=>'id required']); exit; }
+        $role = $db->prepare("SELECT role FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $role->execute([$actorId]);
+        if (!in_array($role->fetchColumn(), ['admin','hr'])) { echo json_encode(['success'=>false,'error'=>'Only Admin or HR can delete projects']); exit; }
+        ensureEntryColumns($db);
+        $ids = [];
+        $db->beginTransaction();
+        try {
+            $taskIds = $db->prepare("SELECT id FROM tasks WHERE project_id = ?");
+            $taskIds->execute([$id]);
+            $ids = $taskIds->fetchAll(PDO::FETCH_COLUMN);
+            if ($ids) {
+                $in = implode(',', array_map('intval', $ids));
+                $db->exec("DELETE FROM task_comments WHERE task_id IN ($in)");
+                try { $db->exec("DELETE FROM task_followers WHERE task_id IN ($in)"); } catch (Exception $e) {}
+                $db->exec("DELETE FROM tasks WHERE id IN ($in)");
+            }
+            $db->prepare("UPDATE timesheet_entries SET project_id = NULL WHERE project_id = ?")->execute([$id]);
+            $db->prepare("DELETE FROM projects WHERE id = ?")->execute([$id]);
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            echo json_encode(['success'=>false,'error'=>'Delete failed: '.$e->getMessage()]); exit;
+        }
+        echo json_encode(['success'=>true,'tasks_deleted'=>count($ids)]);
+        exit;
+    }
+
     if ($action === 'delete_task') {
         $taskId = (int)($body['task_id'] ?? 0);
         if (!$taskId) { echo json_encode(['success'=>false,'error'=>'task_id required']); exit; }
