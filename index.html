@@ -1230,6 +1230,10 @@ function renderDash(){
           <input id="member-modal-pw" type="password" placeholder="Min 6 characters" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
         </div>
         <input id="member-modal-pin" type="hidden" value="">
+        <div id="member-modal-rate-row" style="display:none;margin-bottom:.85rem">
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Pay Rate ($/hr)</label>
+          <input id="member-modal-rate" type="number" placeholder="0.00" min="0" step="0.01" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
+        </div>
         <div style="display:flex;gap:.6rem;justify-content:flex-end">
           <button class="btn btn-outline" onclick="closeMemberModal()">Cancel</button>
           <button class="btn btn-primary" onclick="saveMember()">Save</button>
@@ -3217,8 +3221,11 @@ function showAddMemberModal(){
   document.getElementById("member-modal-pin").value="";
   document.getElementById("member-modal-pw").value="";
   document.getElementById("member-modal-role").value="employee";
+  document.getElementById("member-modal-rate").value="";
   document.getElementById("member-modal-title").textContent="Add Team Member";
   document.getElementById("member-modal-pw-row").style.display="";
+  const canSeePay=(cur.role==="admin"||cur.role==="hr");
+  document.getElementById("member-modal-rate-row").style.display=canSeePay?"":"none";
   document.getElementById("member-modal-role").onchange=toggleMemberModalFields;
   const m=document.getElementById("member-modal");
   if(m) m.style.display="flex";
@@ -3233,6 +3240,13 @@ function editMember(uid){
   document.getElementById("member-modal-pin").value="";
   document.getElementById("member-modal-pw").value="";
   document.getElementById("member-modal-role").value=e.role||"employee";
+  // Pre-populate pay rate from the employee's current timesheet rate if admin/HR
+  const canSeePay=(cur.role==="admin"||cur.role==="hr");
+  document.getElementById("member-modal-rate-row").style.display=canSeePay?"":"none";
+  if(canSeePay){
+    const d=gd(uid,pidx);
+    document.getElementById("member-modal-rate").value=d.rate||"";
+  }
   document.getElementById("member-modal-title").textContent="Edit "+e.name;
   toggleMemberModalFields();
   document.getElementById("member-modal-role").onchange=toggleMemberModalFields;
@@ -3256,6 +3270,8 @@ async function saveMember(){
   const role=document.getElementById("member-modal-role").value;
   const pin=document.getElementById("member-modal-pin").value.trim();
   const pw=document.getElementById("member-modal-pw").value.trim();
+  const rateEl=document.getElementById("member-modal-rate");
+  const rateVal=rateEl&&rateEl.closest('#member-modal-rate-row')&&rateEl.closest('#member-modal-rate-row').style.display!=="none"?rateEl.value.trim():"";
   if(!name){alert("Name is required.");return;}
   if(pw&&pw.length<6){alert("Password must be at least 6 characters.");return;}
   try{
@@ -3267,7 +3283,10 @@ async function saveMember(){
       if(role) payload.role=role;
       if(pin)  payload.pin=pin;
       if(pw)   payload.password=pw;
+      if(rateVal!=="") payload.rate=parseFloat(rateVal)||0;
       r=await api(payload);
+      // Update local EMPS rate so gd() reads fresh value
+      if(r.success&&rateVal!==""){const emp=EMPS.find(e=>e.id===id);if(emp)emp._rate=parseFloat(rateVal)||0;gd(id,pidx).rate=rateVal;}
       if(r.success){
         const emp=EMPS.find(e=>e.id===id);
         if(emp){emp.name=name;emp.role=role;if(pin){emp.pin_set=true;}if(pw){emp.password_set=true;}}
