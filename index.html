@@ -103,6 +103,14 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 .entry-row input{padding:.32rem .55rem;border:1px solid var(--border);border-radius:5px;font-size:.8rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg);width:100%}
 .entry-row input:focus{outline:none;border-color:var(--teal)}
 .entry-row input[type=number]{text-align:center}
+.entry-row{position:relative}
+.entry-row.has-del{padding-right:2rem}
+.del-row-btn{position:absolute;right:.45rem;top:50%;transform:translateY(-50%);background:none;border:none;color:#ef4444;font-size:1.05rem;line-height:1;cursor:pointer;padding:.15rem .3rem;border-radius:4px}
+.del-row-btn:hover{background:#fee2e2}
+.add-line-btn{margin:.3rem .9rem .55rem;padding:.25rem .7rem;font-size:.72rem;font-weight:600;color:var(--teal);background:transparent;border:1px dashed var(--teal);border-radius:6px;cursor:pointer;font-family:'DM Sans',sans-serif}
+.add-line-btn:hover{background:rgba(20,184,166,.08)}
+.ts-save-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:.35rem}
+.ts-save-note{font-size:.68rem;color:var(--teal);min-height:.9rem}
 .btype-sel{padding:.3rem .45rem;border:1px solid var(--border);border-radius:5px;font-size:.72rem;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg);width:100%;cursor:pointer}
 .btype-sel:focus{outline:none;border-color:var(--teal)}
 .btype-sel.bt-billable{background:#f0fdf4;border-color:#86efac;color:#166534}
@@ -459,13 +467,18 @@ function gd(uid,p){
     store[k]={
       rate:"",
       // Each entry now includes billingType (defaulting to "billable")
-      entries:Array.from({length:14*3},(_,i)=>({day:Math.floor(i/3),ei:i%3,co:"",del:"",hrs:"",bt:BT_DEFAULT})),
-      submitted:false
+      entries:Array.from({length:14},(_,day)=>({day,ei:0,co:"",del:"",hrs:"",bt:BT_DEFAULT})),
+      submitted:false,
+      status:"draft",
+      loaded:false
     };
   }
   return store[k];
 }
 function pfl(v){const n=parseFloat(v);return isNaN(n)?0:n;}
+// Rows for one day, in display order
+function dayRows(d,day){return d.entries.filter(e=>e.day===day).sort((a,b)=>a.ei-b.ei);}
+const MAX_ROWS_PER_DAY=15;
 function fm(n){return"$"+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/,",");}
 function pdate(pi,offset){const[y,m,d]=PSTARTS[pi];const dt=new Date(y,m,d);dt.setDate(dt.getDate()+offset);return dt;}
 
@@ -893,8 +906,14 @@ function doLogin(u){
 }
 
 function logout(){cur=null;showLoginSelect();show("s-login");}
-function changePeriod(){pidx=parseInt(document.getElementById("period-sel").value);renderApp();}
-function renderApp(){if(!cur)return;(cur.role==="manager"||cur.role==="hr"||cur.role==="admin")?renderDash():renderTS(cur._vid||cur.id);}
+function changePeriod(){pidx=parseInt(document.getElementById("period-sel").value);renderApp();window.scrollTo({top:0,behavior:"instant"});}
+async function renderApp(){
+  if(!cur)return;
+  if(cur.role==="manager"||cur.role==="hr"||cur.role==="admin"){renderDash();return;}
+  const uid=cur._vid||cur.id;
+  if(!gd(uid,pidx).loaded) await loadDraft(uid,pidx);
+  renderTS(uid);
+}
 
 // ── INITIAL PAGE LOAD — fetch employees from DB ───────────────────────────
 (function initPage(){
@@ -972,7 +991,11 @@ function renderTS(uid){
   let h=`${clientDatalist}<div class="emp-info">
     <div><div class="emp-name">${emp.name}</div><div class="emp-period">${PERIODS[pidx]} &middot; Bi-Weekly Timesheet</div></div>
     ${(role==="admin"||role==="hr")?`<div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" onchange="upRate(this.value)"${isViewing?" readonly":""}></div>`:''}
-    <div style="text-align:right">${d.submitted?'<span class="badge b-sub">&#10003; Submitted</span>':'<span class="badge b-pend">Pending</span>'}</div>
+    <div class="ts-save-wrap">
+      ${d.submitted?'<span class="badge b-sub">&#10003; Submitted</span>':'<span class="badge b-pend">Pending</span>'}
+      ${isViewing?'':'<button class="btn btn-primary" style="padding:.32rem .85rem;font-size:.78rem" onclick="manualSave()">&#128190; Save Draft</button>'}
+      <span id="save-confirm" class="ts-save-note">${(!isViewing&&d.submitted)?'Already submitted &mdash; edits save when you Resubmit':''}</span>
+    </div>
   </div>`;
 
   for(let wk=0;wk<2;wk++){
@@ -985,18 +1008,24 @@ function renderTS(uid){
     for(let di=0;di<7;di++){
       const dayIdx=wk*7+di,dt=pdate(pidx,dayIdx),isWk=di>=5;
       h+=`<div class="day-block"><div class="day-hdr${isWk?" wknd":""}"><span class="day-nm">${DAYS[di]}</span><span class="day-dt">${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span></div>`;
-      for(let ei=0;ei<3;ei++){
-        const en=d.entries.find(e=>e.day===dayIdx&&e.ei===ei);
+      const rows=dayRows(d,dayIdx);
+      const canDel=!isViewing&&rows.length>1;
+      rows.forEach(en=>{
+        const ei=en.ei;
         const hr=pfl(en.hrs),rt=pfl(d.rate),pay=hr*rt;
         const btVal=en.bt||BT_DEFAULT;
         const ro=isViewing?" readonly":"";
-        h+=`<div class="entry-row">
-          <input type="text" placeholder="Company" value="${en.co}" list="${(!isViewing&&CLIENTS.length)?'cl-clients':''}" onchange="upE(${dayIdx},${ei},'co',this.value)"${ro}>
-          <input type="text" placeholder="Deliverable" value="${en.del}" onchange="upE(${dayIdx},${ei},'del',this.value)"${ro}>
+        h+=`<div class="entry-row${canDel?" has-del":""}" id="er-${dayIdx}-${ei}">
+          <input type="text" placeholder="Company" value="${escHtml(en.co)}" list="${(!isViewing&&CLIENTS.length)?'cl-clients':''}" onchange="upE(${dayIdx},${ei},'co',this.value)"${ro}>
+          <input type="text" placeholder="Deliverable" value="${escHtml(en.del)}" onchange="upE(${dayIdx},${ei},'del',this.value)"${ro}>
           ${btSelect(dayIdx, ei, btVal, isViewing)}
-          <input type="number" placeholder="0" value="${en.hrs}" min="0" max="24" step="0.5" onchange="upE(${dayIdx},${ei},'hrs',this.value)"${ro}>
-          ${canSeePay?`<div class="dpay dim">${rt?fm(rt):"-"}</div><div class="dpay">${(hr&&rt)?fm(pay):"-"}</div>`:''}
+          <input type="number" placeholder="0" value="${escHtml(en.hrs)}" min="0" max="24" step="0.01" onchange="upE(${dayIdx},${ei},'hrs',this.value)"${ro}>
+          ${canSeePay?`<div class="dpay dim" id="rate-${dayIdx}-${ei}">${rt?fm(rt):"-"}</div><div class="dpay" id="pay-${dayIdx}-${ei}">${(hr&&rt)?fm(pay):"-"}</div>`:''}
+          ${canDel?`<button class="del-row-btn" onclick="delRow(${dayIdx},${ei})" title="Delete line">&times;</button>`:''}
         </div>`;
+      });
+      if(!isViewing&&rows.length<MAX_ROWS_PER_DAY){
+        h+=`<button class="add-line-btn" onclick="addRow(${dayIdx})">+ Add Line</button>`;
       }
       h+=`</div>`;
     }
@@ -1061,11 +1090,142 @@ function upE(day,ei,field,val){
   const d=gd(cur._vid||cur.id,pidx);
   const en=d.entries.find(e=>e.day===day&&e.ei===ei);
   if(en)en[field]=val;recalc(cur._vid||cur.id);
+  queueAutoSave();
 }
 function upBT(day,ei,val){
   const d=gd(cur._vid||cur.id,pidx);
   const en=d.entries.find(e=>e.day===day&&e.ei===ei);
   if(en){en.bt=val;}recalc(cur._vid||cur.id);
+  queueAutoSave();
+}
+
+// ── ADD / DELETE LINES ─────────────────────────────────────────────────────
+function addRow(day){
+  const uid=cur._vid||cur.id;
+  if(cur._vid&&cur._vid!==cur.id)return; // read-only when viewing someone else
+  const d=gd(uid,pidx);
+  const rows=dayRows(d,day);
+  if(rows.length>=MAX_ROWS_PER_DAY)return;
+  const ei=rows.length?Math.max(...rows.map(r=>r.ei))+1:0;
+  d.entries.push({day,ei,co:"",del:"",hrs:"",bt:BT_DEFAULT});
+  renderTS(uid);
+  const first=document.querySelector(`#er-${day}-${ei} input`);
+  if(first)first.focus();
+  queueAutoSave();
+}
+function delRow(day,ei){
+  const uid=cur._vid||cur.id;
+  if(cur._vid&&cur._vid!==cur.id)return;
+  const d=gd(uid,pidx);
+  if(dayRows(d,day).length<=1)return;
+  d.entries=d.entries.filter(e=>!(e.day===day&&e.ei===ei));
+  // Re-number the remaining rows for that day so indexes stay 0,1,2…
+  dayRows(d,day).forEach((r,i)=>{r.ei=i;});
+  renderTS(uid);
+  queueAutoSave();
+}
+
+// ── LOAD SAVED TIMESHEET (drafts, submissions, Chrome-extension hours) ───
+async function loadDraft(uid,pi){
+  const d=gd(uid,pi);
+  const emp=EMPS.find(e=>e.id===uid);
+  try{
+    const r=await fetch(`${API_BASE}?action=load_draft&uid=${encodeURIComponent(uid)}&period=${encodeURIComponent(PERIODS[pi])}&t=${Date.now()}`).then(x=>x.json());
+    if(r.success&&r.record){
+      const ts=r.record;
+      d.rate=ts.pay_rate||ts.employee_rate||emp?.rate||d.rate||"";
+      d.status=ts.status||"draft";
+      d.submitted=(d.status!=="draft");
+      const entries=[];
+      const perDay={};
+      (ts.entries||[]).forEach(e=>{
+        const day=parseInt(e.day_index);
+        if(isNaN(day)||day<0||day>13)return;
+        const ei=perDay[day]||0;
+        if(ei>=MAX_ROWS_PER_DAY)return;
+        perDay[day]=ei+1;
+        entries.push({day,ei,
+          co:e.client_name||"",
+          del:e.deliverable||"",
+          hrs:e.hours!=null?String(parseFloat(e.hours)):"",
+          bt:e.billing_type||(String(e.billable)==="0"?"nonbillable":BT_DEFAULT)});
+      });
+      // Every day keeps at least one (blank) line to type into
+      for(let day=0;day<14;day++){
+        if(!perDay[day])entries.push({day,ei:0,co:"",del:"",hrs:"",bt:BT_DEFAULT});
+      }
+      d.entries=entries;
+    }else if(!d.rate&&emp?.rate){
+      d.rate=emp.rate;
+    }
+    d.loaded=true;
+  }catch(err){
+    console.warn("load_draft failed",err);
+    // Leave loaded=false so we don't auto-save a blank sheet over saved hours
+  }
+  return d;
+}
+
+// ── SAVE (draft or submit) ─────────────────────────────────────────────────
+let _autoSaveTimer=null;
+function queueAutoSave(){
+  if(!cur||(cur._vid&&cur._vid!==cur.id))return;
+  const uid=cur.id,pi=pidx;
+  if(_autoSaveTimer)clearTimeout(_autoSaveTimer);
+  _autoSaveTimer=setTimeout(()=>{
+    const d=gd(uid,pi);
+    // Never auto-save over an already-submitted/approved sheet (that would flip it back to draft)
+    if(d.loaded&&!d.submitted) saveTimesheet(uid,pi,false).then(ok=>{if(ok)flashSaved("\u2713 Auto-saved");});
+  },3000);
+}
+function flashSaved(msg){
+  const el=document.getElementById("save-confirm");
+  if(!el)return;
+  el.textContent=msg;
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>{el.textContent="";},2500);
+}
+async function saveTimesheet(uid,pi,submit){
+  const d=gd(uid,pi);
+  const emp=EMPS.find(e=>e.id===uid)||cur;
+  const rt=pfl(d.rate)||pfl(emp?.rate);
+  const flat=[];
+  let allH=0;
+  for(let day=0;day<14;day++){
+    dayRows(d,day).forEach((en,i)=>{
+      if(!(en.hrs||en.co||en.del))return;
+      flat.push({day,dayName:DAYS[day%7],co:en.co||"",del:en.del||"",hrs:en.hrs||"",bt:en.bt||BT_DEFAULT,rowIndex:i});
+      allH+=pfl(en.hrs);
+    });
+  }
+  const record={
+    employeeId:uid,
+    employee:emp?.name||"",
+    email:emp?.email||"",
+    period:PERIODS[pi],
+    periodIndex:pi,
+    totalHours:allH.toFixed(2),
+    totalPay:(allH*rt).toFixed(2),
+    payRate:rt,
+    submitted:!!submit,
+    isDraft:!submit,
+    entries:flat
+  };
+  try{
+    const res=await fetch(`${API_BASE}?action=save_timesheet`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(record)}).then(r=>r.json());
+    if(res&&res.success)return true;
+    console.warn("save_timesheet failed",res);
+  }catch(e){console.warn("save_timesheet error",e);}
+  return false;
+}
+async function manualSave(){
+  if(!cur||(cur._vid&&cur._vid!==cur.id))return;
+  const uid=cur.id,d=gd(uid,pidx);
+  if(d.submitted){showToast("This timesheet is already submitted \u2014 use Resubmit to save changes.");return;}
+  if(_autoSaveTimer){clearTimeout(_autoSaveTimer);_autoSaveTimer=null;}
+  const ok=await saveTimesheet(uid,pidx,false);
+  if(ok){d.loaded=true;flashSaved("\u2713 Saved");}
+  else showToast("Could not save \u2014 check your connection and try again.");
 }
 
 function recalc(uid){
@@ -1090,17 +1250,22 @@ function recalc(uid){
   });
 
   // Update pay cells
-  d.entries.forEach((en,i)=>{
-    const rows=document.querySelectorAll(".entry-row");if(!rows[i])return;
-    const cells=rows[i].querySelectorAll(".dpay");const h=pfl(en.hrs);
-    if(cells[0])cells[0].textContent=rt?fm(rt):"-";
-    if(cells[1])cells[1].textContent=(h&&rt)?fm(h*rt):"-";
+  d.entries.forEach(en=>{
+    const rEl=document.getElementById("rate-"+en.day+"-"+en.ei);
+    const pEl=document.getElementById("pay-"+en.day+"-"+en.ei);
+    const h=pfl(en.hrs);
+    if(rEl)rEl.textContent=rt?fm(rt):"-";
+    if(pEl)pEl.textContent=(h&&rt)?fm(h*rt):"-";
   });
 }
 
 // ── SUBMIT ────────────────────────────────────────────────────────────────
-function doSubmit(){
-  const d=gd(cur.id,pidx);d.submitted=true;
+async function doSubmit(){
+  const d=gd(cur.id,pidx);
+  if(_autoSaveTimer){clearTimeout(_autoSaveTimer);_autoSaveTimer=null;}
+  const saved=await saveTimesheet(cur.id,pidx,true);
+  if(!saved){showToast("Submit failed \u2014 your hours were not saved. Please try again.");return;}
+  d.submitted=true;d.status="submitted";
   const allH=d.entries.reduce((s,e)=>s+pfl(e.hrs),0);
   const breakdown=calcBreakdown(d);
   // totalPay intentionally excluded from GHL payload for confidentiality
@@ -1128,10 +1293,10 @@ function doSubmit(){
 function doExport(){
   const d=gd(cur.id,pidx),rt=pfl(d.rate);
   let csv="Employee,Period,Day,Date,Company,Deliverable,BillingType,Hours,PayRate,DailyPay\n";
-  d.entries.forEach(en=>{
+  [...d.entries].sort((a,b)=>a.day-b.day||a.ei-b.ei).forEach(en=>{
     if(!en.hrs&&!en.co)return;
     const dt=pdate(pidx,en.day),h=pfl(en.hrs);
-    csv+=`${cur.name},"${PERIODS[pidx]}",${DAYS[en.day]},${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})},"${en.co}","${en.del}",${btLabel(en.bt||BT_DEFAULT)},${h},${rt},${fm(h*rt)}\n`;
+    csv+=`${cur.name},"${PERIODS[pidx]}",${DAYS[en.day%7]},${dt.toLocaleDateString("en-US",{month:"short",day:"numeric"})},"${en.co}","${en.del}",${btLabel(en.bt||BT_DEFAULT)},${h},${rt},${fm(h*rt)}\n`;
   });
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
   a.download=`${cur.name.replace(/ /g,"_")}_${PERIODS[pidx].replace(/ /g,"_")}.csv`;a.click();
@@ -2237,30 +2402,8 @@ async function viewEmp(uid){
   cur={...cur,_vid:uid,_prev:prev};
   const emp=EMPS.find(e=>e.id===uid);
   document.getElementById("tb-name").textContent=(emp?.name||uid)+" (viewing)";
-  // Load timesheet from DB for this employee + current period
-  try{
-    const r=await fetch(`${API_BASE}?action=load_draft&uid=${uid}&period=${encodeURIComponent(PERIODS[pidx])}`).then(x=>x.json());
-    if(r.success&&r.record){
-      const ts=r.record;
-      const d=gd(uid,pidx);
-      // Seed rate (prefer DB timesheet rate, fall back to user rate)
-      d.rate=ts.pay_rate||ts.employee_rate||emp?.rate||d.rate||"";
-      d.submitted=(ts.status&&ts.status!=='draft');
-      // Map DB entries into store format
-      const blank=()=>({co:"",del:"",hrs:"",bt:BT_DEFAULT});
-      const grid=Array.from({length:14*3},(_,i)=>({day:Math.floor(i/3),ei:i%3,...blank()}));
-      (ts.entries||[]).forEach(e=>{
-        const idx=e.day_index*3+e.row_index;
-        if(idx>=0&&idx<grid.length){
-          grid[idx].co=e.client_name||e.client_id||"";
-          grid[idx].del=e.deliverable||"";
-          grid[idx].hrs=e.hours!=null?String(e.hours):"";
-          grid[idx].bt=e.billing_type||BT_DEFAULT;
-        }
-      });
-      d.entries=grid;
-    }
-  }catch(err){console.warn("load_draft failed",err);}
+  // Always load fresh from the DB for this employee + current period
+  await loadDraft(uid,pidx);
   renderTS(uid);
 }
 function backDash(){
