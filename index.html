@@ -3265,8 +3265,9 @@ function _pmTaskCard(t,s){
   const assigneeName=t.assigned_name||'Unassigned';
   const isUnassigned=!t.assigned_name;
   const estH=parseFloat(t.estimated_hours)||0;
-  const logH=parseFloat(t.logged_hours)||0;
-  const hoursHtml=estH||logH?`<span style="font-size:.67rem;opacity:.7;white-space:nowrap">⏱ ${logH.toFixed(1)}/${estH||'?'}h</span>`:'';
+  const logH=pmTaskLogged(t);
+  const hoursHtml=estH||logH?`<span style="font-size:.67rem;opacity:.85;white-space:nowrap;font-weight:600;color:${pmProgressColor(logH,estH)}" title="${logH.toFixed(2)}h logged${estH?' of '+estH+'h estimated':''}">⏱ ${pmFmtH(logH)}/${estH?pmFmtH(estH):'?'}h</span>`:'';
+  const barHtml=estH?`<div style="height:4px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden;margin:.35rem 0 .1rem" title="${Math.round(logH/estH*100)}% of estimate"><div style="height:100%;width:${Math.min(100,logH/estH*100)}%;background:${pmProgressColor(logH,estH)};border-radius:3px"></div></div>`:'';
   return `<div class="pm-card stage-${s.key}" draggable="true"
     ondragstart="event.dataTransfer.setData('taskId','${t.id}');event.dataTransfer.setData('fromStage','${s.key}');event.currentTarget.classList.add('dragging')"
     ondragend="event.currentTarget.classList.remove('dragging')"
@@ -3285,6 +3286,7 @@ function _pmTaskCard(t,s){
       ${hoursHtml}
       ${dueStr?`<span style="font-size:.68rem;font-weight:600;${isOverdue?'color:#ef4444':'opacity:.65'}">${isOverdue?'⚠ ':''}${dueStr}</span>`:''}
     </div>
+    ${barHtml}
     <div class="pm-card-footer">
       <button class="pm-move-btn" onclick="event.stopPropagation();_pmMoveModal(${t.id},'${s.key}')">→ Move</button>
       ${s.key!=='done'?`<button class="pm-move-btn" style="flex:none;padding:.25rem .55rem;font-weight:700" onclick="event.stopPropagation();_pmCompleteTask(${t.id})" title="Mark done">✓</button>`:''}
@@ -3381,6 +3383,14 @@ function _pmProjectBoard(projectId){
         ${proj.member_names?proj.member_names.split(", ").map(n=>`<span style="background:var(--hover);border:1px solid var(--border);border-radius:999px;padding:.1rem .5rem;color:var(--dark)">${escHtml(n)}</span>`).join(""):'<span>No one yet</span>'}
         ${pmIsTeamEditor()?`<button class="btn btn-outline" style="font-size:.7rem;padding:.12rem .5rem" onclick="pmTeamModal(${proj.id})">&#128101; Manage Team</button>`:''}
       </div>
+      ${(()=>{const logged=projTasks.reduce((a,t)=>a+pmTaskLogged(t),0);
+        const est=parseFloat(proj.estimated_hours)||projTasks.reduce((a,t)=>a+(parseFloat(t.estimated_hours)||0),0);
+        if(!logged&&!est)return '';
+        const pct=est?Math.round(logged/est*100):0,col=pmProgressColor(logged,est);
+        return `<div style="margin-top:.45rem;display:flex;align-items:center;gap:.5rem;font-size:.76rem;color:var(--mid)">
+          <span style="font-weight:600">Hours:</span><b style="color:${col}">${pmFmtH(logged)}h</b>${est?` of ${pmFmtH(est)}h est. (${pct}%)`:' logged'}
+          ${est?`<div style="width:120px;height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(100,pct)}%;background:${col}"></div></div>`:''}
+        </div>`;})()}
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectDetail(${proj.id})">☰ List View</button>`:''}
@@ -3526,7 +3536,7 @@ function _pmShowTaskPanel(task){
           <input id="pm-edit-est-hours" type="number" min="0" step="0.5" value="${task.estimated_hours||''}" placeholder="e.g. 4" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
         </div>
         <div>
-          <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Logged Hours</label>
+          <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem" title="Hours not logged through Log Time / timesheets">Extra Hours (not on timesheets)</label>
           <input id="pm-edit-logged-hours" type="number" min="0" step="0.25" value="${task.logged_hours||''}" placeholder="e.g. 2.5" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
         </div>
         <div style="display:flex;align-items:flex-end">
@@ -3839,9 +3849,14 @@ async function _pmArchiveProject(projectId){
   }catch(e){alert('Error: '+e.message);}
 }
 
+// Hours on a task = hours logged to it on timesheets + any extra hours entered by hand
+function pmTaskLogged(t){return (parseFloat(t.ts_logged_hours)||0)+(parseFloat(t.logged_hours)||0);}
+function pmFmtH(h){return (Math.round(h*100)/100).toString();}
+function pmProgressColor(logged,est){if(!est)return 'var(--mid)';const p=logged/est;return p>1?'#ef4444':p>=.75?'#f59e0b':'#10b981';}
+
 // ── LOG TIME ON A TASK ────────────────────────────────────────────────────
 function pmLogTimeHTML(task){
-  const total=parseFloat(task.ts_logged_hours||0), mine=parseFloat(task.my_logged_hours||0);
+  const total=pmTaskLogged(task), mine=parseFloat(task.my_logged_hours||0);
   const est=parseFloat(task.estimated_hours||0);
   const today=new Date();const iso=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   return `<div style="padding:.75rem 1.25rem;border-bottom:1px solid var(--border)">
@@ -3860,7 +3875,8 @@ function pmLogTimeHTML(task){
   </div>`;
 }
 function pmTimeTotals(total,mine,est){
-  return `${mine?`You: <b style="color:var(--dark)">${mine.toFixed(2)}h</b> · `:''}Total: <b style="color:var(--dark)">${total.toFixed(2)}h</b>${est?` of ${est.toFixed(1)}h est.`:''}`;
+  const pct=est?Math.round(total/est*100):0;
+  return `${mine?`You: <b style="color:var(--dark)">${mine.toFixed(2)}h</b> · `:''}Total: <b style="color:${pmProgressColor(total,est)}">${total.toFixed(2)}h</b>${est?` of ${est.toFixed(1)}h est. (${pct}%)`:''}`;
 }
 async function pmLogTime(taskId){
   const hrsEl=document.getElementById('pm-log-hrs'),dateEl=document.getElementById('pm-log-date'),noteEl=document.getElementById('pm-log-note');
@@ -3878,7 +3894,11 @@ async function pmLogTime(taskId){
     if(typeof r.period_index==='number'){const d=gd(cur.id,r.period_index);d.loaded=false;}
     const t=_pm.tasks.find(x=>x.id===taskId);
     if(t){t.ts_logged_hours=r.task_hours;t.my_logged_hours=r.my_task_hours;}
-    document.getElementById('pm-time-totals').innerHTML=pmTimeTotals(r.task_hours,r.my_task_hours,parseFloat(t?.estimated_hours||0));
+    document.getElementById('pm-time-totals').innerHTML=pmTimeTotals(t?pmTaskLogged(t):r.task_hours,r.my_task_hours,parseFloat(t?.estimated_hours||0));
+    // Refresh the board behind the window so the card's hours and bar update now
+    if(_pm.view==='board'&&_pm.activeProject)_pmProjectBoard(parseInt(_pm.activeProject.id));
+    else if(_pm.view==='mytasks')_pmMyTasks();
+    else if(_pm.view==='board')_renderPMBoard();
     hrsEl.value='';noteEl.value='';
     msg.style.color='var(--teal)';msg.textContent=`\u2713 ${hrs}h added to your ${r.period} timesheet.`;
     btn.disabled=false;
