@@ -435,6 +435,7 @@ if ($method === 'GET') {
 
     // ── RICH REPORT v2 ──────────────────────────────────────────────────────────
     if ($action === 'load_report_v2') {
+        try {
         $db         = getDB();
         $period     = trim($_GET['period']     ?? '');
         $dateStart  = trim($_GET['date_start'] ?? '');
@@ -469,7 +470,7 @@ if ($method === 'GET') {
             GROUP BY u.id ORDER BY u.name";
         $masterStmt = $db->prepare($mSql);
         $masterStmt->execute($tsParams);
-        $master = $masterStmt->fetchAll();
+        $master = $masterStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // --- BILLABLE: by client, with employee breakdown
         $billableStmt = $db->prepare("
@@ -484,7 +485,7 @@ if ($method === 'GET') {
             WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='billable'
             GROUP BY c.id ORDER BY hours DESC");
         $billableStmt->execute($tsParams);
-        $billable = $billableStmt->fetchAll();
+        $billable = $billableStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // --- BILLABLE by employee × client (for drilldown)
         $billableEmpStmt = $db->prepare("
@@ -499,7 +500,7 @@ if ($method === 'GET') {
             WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='billable'
             GROUP BY c.id, u.id ORDER BY c.name, hours DESC");
         $billableEmpStmt->execute($tsParams);
-        $billableByEmp = $billableEmpStmt->fetchAll();
+        $billableByEmp = $billableEmpStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // --- NON-BILLABLE: by client (includes internal)
         $nbStmt = $db->prepare("
@@ -513,7 +514,7 @@ if ($method === 'GET') {
             WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='nonbillable'
             GROUP BY c.id ORDER BY hours DESC");
         $nbStmt->execute($tsParams);
-        $nonbillable = $nbStmt->fetchAll();
+        $nonbillable = $nbStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // --- NON-BILLABLE by employee (for drilldown)
         $nbEmpStmt = $db->prepare("
@@ -526,7 +527,7 @@ if ($method === 'GET') {
             WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='nonbillable'
             GROUP BY u.id, c.id ORDER BY u.name, hours DESC");
         $nbEmpStmt->execute($tsParams);
-        $nbByEmp = $nbEmpStmt->fetchAll();
+        $nbByEmp = $nbEmpStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // --- MARKETING: by client
         $mkStmt = $db->prepare("
@@ -540,7 +541,7 @@ if ($method === 'GET') {
             WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='marketing'
             GROUP BY c.id ORDER BY hours DESC");
         $mkStmt->execute($tsParams);
-        $marketing = $mkStmt->fetchAll();
+        $marketing = $mkStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // --- MARKETING by employee
         $mkEmpStmt = $db->prepare("
@@ -553,7 +554,7 @@ if ($method === 'GET') {
             WHERE {$tsCond} AND COALESCE(te.billing_type,'billable')='marketing'
             GROUP BY u.id, c.id ORDER BY u.name, hours DESC");
         $mkEmpStmt->execute($tsParams);
-        $mkByEmp = $mkEmpStmt->fetchAll();
+        $mkByEmp = $mkEmpStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // --- PROJECTIONS: projects with estimated_hours vs actual logged hours
         $projStmt = $db->prepare("
@@ -571,9 +572,9 @@ if ($method === 'GET') {
             WHERE p.status != 'archived'
             ORDER BY p.due_date IS NULL, p.due_date ASC, p.updated_at DESC");
         $projStmt->execute();
-        $projections = $projStmt->fetchAll();
+        $projections = $projStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        echo json_encode(['success' => true, 'report' => [
+        $payload = ['success' => true, 'report' => [
             'master'      => $master,
             'billable'    => $billable,
             'billableEmp' => $billableByEmp,
@@ -582,7 +583,16 @@ if ($method === 'GET') {
             'marketing'   => $marketing,
             'mkEmp'       => $mkByEmp,
             'projections' => $projections,
-        ]]);
+        ]];
+        $out = json_encode($payload);
+        if ($out === false) {
+            echo json_encode(['success'=>false,'error'=>'json_encode failed: '.json_last_error_msg()]);
+        } else {
+            echo $out;
+        }
+        } catch (Exception $e) {
+            echo json_encode(['success'=>false,'error'=>$e->getMessage()]);
+        }
         exit;
     }
 
