@@ -1225,14 +1225,11 @@ function renderDash(){
           <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Email</label>
           <input id="member-modal-email" type="email" placeholder="jane@genhead.com" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
         </div>
-        <div id="member-modal-pin-row" style="margin-bottom:.85rem">
-          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">PIN (4 digits, employees only)</label>
-          <input id="member-modal-pin" type="text" maxlength="4" placeholder="e.g. 1234" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
-        </div>
-        <div id="member-modal-pw-row" style="margin-bottom:.85rem;display:none">
+        <div id="member-modal-pw-row" style="margin-bottom:.85rem">
           <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Password (leave blank to set later)</label>
           <input id="member-modal-pw" type="password" placeholder="Min 6 characters" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
         </div>
+        <input id="member-modal-pin" type="hidden" value="">
         <div style="display:flex;gap:.6rem;justify-content:flex-end">
           <button class="btn btn-outline" onclick="closeMemberModal()">Cancel</button>
           <button class="btn btn-primary" onclick="saveMember()">Save</button>
@@ -3147,8 +3144,7 @@ function showAddMemberModal(){
   document.getElementById("member-modal-pw").value="";
   document.getElementById("member-modal-role").value="employee";
   document.getElementById("member-modal-title").textContent="Add Team Member";
-  document.getElementById("member-modal-pin-row").style.display="";
-  document.getElementById("member-modal-pw-row").style.display="none";
+  document.getElementById("member-modal-pw-row").style.display="";
   document.getElementById("member-modal-role").onchange=toggleMemberModalFields;
   const m=document.getElementById("member-modal");
   if(m) m.style.display="flex";
@@ -3171,9 +3167,7 @@ function editMember(uid){
 }
 
 function toggleMemberModalFields(){
-  const role=document.getElementById("member-modal-role").value;
-  document.getElementById("member-modal-pin-row").style.display=role==="employee"?"":"none";
-  document.getElementById("member-modal-pw-row").style.display=role!=="employee"?"":"none";
+  // Password shown for all roles now — nothing to toggle
 }
 
 function closeMemberModal(){
@@ -3189,7 +3183,6 @@ async function saveMember(){
   const pin=document.getElementById("member-modal-pin").value.trim();
   const pw=document.getElementById("member-modal-pw").value.trim();
   if(!name){alert("Name is required.");return;}
-  if(pin&&(pin.length!==4||!/^\d+$/.test(pin))){alert("PIN must be exactly 4 digits.");return;}
   if(pw&&pw.length<6){alert("Password must be at least 6 characters.");return;}
   try{
     let r;
