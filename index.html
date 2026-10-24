@@ -1689,7 +1689,7 @@ function renderDash(){
     <div class="dash-top"><div><h2>Records</h2><p>${role==="manager"?"Review your team's timecards":"Review and approve timecards"} ${showPayroll?'&nbsp;<span class="conf">Confidential</span>':''}</p></div></div>
     <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.25rem;margin-bottom:1rem">
       <div class="rec-filters">
-        <select id="rec-status-filter" onchange="renderRecords(false)">
+        <select id="rec-status-filter" onchange="_recJustReviewed={};renderRecords(false)">
           <option value="review" selected>Needs Review</option>
           <option value="approved">Approved</option>
           <option value="returned">Returned for Fixes</option>
@@ -1697,11 +1697,11 @@ function renderDash(){
           <option value="draft">In Progress (not submitted)</option>
           <option value="">All Statuses</option>
         </select>
-        <select id="rec-period-filter" onchange="renderRecords(false)">
+        <select id="rec-period-filter" onchange="_recJustReviewed={};renderRecords(false)">
           <option value="">All Periods</option>
           ${PERIODS.map(p=>`<option value="${p}">${p}</option>`).join("")}
         </select>
-        <select id="rec-emp-filter" onchange="renderRecords(false)">
+        <select id="rec-emp-filter" onchange="_recJustReviewed={};renderRecords(false)">
           <option value="">${role==="manager"?"All My Reports":"All Team Members"}</option>
           ${reviewScope().map(e=>`<option value="${e.id}">${escHtml(e.name)}</option>`).join("")}
         </select>
@@ -2038,7 +2038,7 @@ function switchTab(tab){
     if(btn)btn.className="tab"+(t===tab?" active":"");
   });
   if(tab==="reports"){loadClientReport();const lbl=document.getElementById("cr-period-label");if(lbl)lbl.textContent=PERIODS[pidx]+" · Confidential";}
-  if(tab==="records") renderRecords();
+  if(tab==="records"){_recJustReviewed={};renderRecords();}
   if(tab==="team"){renderTeam();populatePeriodSelects();}
   if(tab==="hrm"){populatePeriodSelects();renderHRM();}
   if(tab==="auditlog"){populatePeriodSelects();renderAuditLog();}
@@ -2078,6 +2078,7 @@ async function saveDelegation(){
 
 // ── RECORDS: timecard review & approval hub ──────────────────────────────
 let _recOpen={};
+let _recJustReviewed={}; // id -> action; keeps reviewed rows visible with their new status
 async function renderRecords(refetch=true){
   const wrap=document.getElementById("records-table-wrap");
   if(!wrap) return;
@@ -2100,6 +2101,7 @@ async function renderRecords(refetch=true){
     if(!scopeIds.has(uid))return false;
     if(empF&&uid!==empF)return false;
     if(periodF&&r.period!==periodF)return false;
+    if(_recJustReviewed[r.id])return true;
     if(statusF==="review")return r.status==="submitted"||r.status==="under_review";
     if(statusF)return r.status===statusF;
     return true;
@@ -2125,7 +2127,8 @@ async function renderRecords(refetch=true){
       <button class="btn btn-outline" style="color:#6366f1;border-color:#6366f155" onclick="openReview('return',${r.id})">Return</button>
       <button class="btn btn-outline" style="color:#ef4444;border-color:#ef444455" onclick="openReview('reject',${r.id})">Decline</button>`:""}
     </div>`;
-    let row=`<tr>
+    const just=_recJustReviewed[r.id];
+    let row=`<tr${just?' style="background:'+(STATUS_META[r.status]||{color:'#94a3b8'}).color+'14"':''}>
       <td><strong>${name}</strong></td>
       <td style="font-size:.78rem;color:var(--mid)">${escHtml(r.period||"—")}</td>
       <td>${tot.toFixed(2)}</td>
@@ -2133,7 +2136,7 @@ async function renderRecords(refetch=true){
       <td style="color:#854d0e">${(bd.nonbillable||0).toFixed(2)}</td>
       <td style="color:#3730a3">${(bd.marketing||0).toFixed(2)}</td>
       ${showPay?`<td style="color:var(--teal);font-weight:600">${pfl(r.total_pay)?fm(pfl(r.total_pay)):"-"}</td>`:""}
-      <td>${statusBadge(r.status)}</td>
+      <td>${statusBadge(r.status)}${just?`<div style="font-size:.68rem;color:var(--mid);margin-top:.2rem">just now by you</div>`:''}</td>
       <td style="font-size:.74rem;color:var(--mid)">${subAt}<br>${r.status==="draft"?"":"Reviewed: "+reviewed}</td>
       <td>${actions}</td>
     </tr>`;
@@ -2229,6 +2232,7 @@ async function confirmReview(){
     const r=await reviewTimecard(_rv.action,_rv.tsId,comment);
     if(!r.success){err.textContent=r.error||"That didn't go through. Please try again.";b.disabled=false;return;}
     closeReview();
+    _recJustReviewed[_rv.tsId]=_rv.action;
     showToast(_rv.action==="approve"?"Timecard approved.":_rv.action==="return"?"Returned to employee for fixes.":"Timecard declined.");
     await renderRecords(true);
   }catch(e){err.textContent="Network error — please try again.";b.disabled=false;}
