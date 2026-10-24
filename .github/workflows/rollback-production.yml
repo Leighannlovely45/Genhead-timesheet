@@ -1,0 +1,54 @@
+name: Roll back Production (live)
+
+# Manual only. Restores live's FILES from a backup made by "Deploy to Production".
+# The database is not touched: the upgrade only ADDED tables/columns, which the
+# previous code simply ignores. (A full DB restore, if ever needed, is in the
+# runbook — the dump is saved next to the files backup.)
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup:
+        description: 'Backup folder name (YYYYMMDD-HHMMSS), or LATEST'
+        required: true
+        default: 'LATEST'
+      confirm:
+        description: 'Type ROLLBACK to restore live files'
+        required: true
+        default: ''
+
+jobs:
+  rollback:
+    if: ${{ github.event.inputs.confirm == 'ROLLBACK' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Set up SSH
+        env:
+          CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$CPANEL_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "${CPANEL_PORT:-22}" "$CPANEL_HOST" >> ~/.ssh/known_hosts
+
+      - name: Restore files from backup
+        env:
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+          PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+          BACKUP: ${{ github.event.inputs.backup }}
+        run: |
+          ssh -i ~/.ssh/id_rsa -p "${CPANEL_PORT:-22}" "$CPANEL_USER@$CPANEL_HOST" bash -s -- "$PROD_DEPLOY_PATH" "$BACKUP" <<'REMOTE'
+          set -euo pipefail
+          P="$1"; B="$2"
+          [ "$B" = "LATEST" ] && B=$(cat "$HOME/timesheet_backups/LATEST")
+          F="$HOME/timesheet_backups/$B/files.tgz"
+          test -f "$F" || { echo "Backup not found: $F"; exit 1; }
+          # Remove files that only exist in the new version, then restore the old files
+          rm -f "$P/schema.php"
+          tar xzf "$F" -C "$P"
+          echo "Restored live files from $B"
+          REMOTE

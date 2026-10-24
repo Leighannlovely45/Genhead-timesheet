@@ -1,0 +1,112 @@
+name: Deploy to Production (live)
+
+# Manual only: Actions → "Deploy to Production (live)" → Run workflow → type DEPLOY.
+# Pushing to main never touches live (that deploys staging).
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   CPANEL_SSH_KEY, CPANEL_HOST, CPANEL_PORT, CPANEL_USER   (same as staging)
+#   PROD_DEPLOY_PATH   absolute folder that serves timesheet.genhead.com
+#                      e.g. /home/<cpanel-user>/public_html/timesheet
+#   PROD_URL           e.g. https://timesheet.genhead.com
+#
+# What it does: backs up live files + database on the server, moves known
+# leftover setup files out of the web folder, copies ONLY the app files
+# (no --delete, never touches db.php or .htaccess), then smoke-tests live.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DEPLOY to update the live timesheet'
+        required: true
+        default: ''
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event.inputs.confirm == 'DEPLOY' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required secrets
+        env:
+          PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+          PROD_URL: ${{ secrets.PROD_URL }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+        run: |
+          for v in PROD_DEPLOY_PATH PROD_URL CPANEL_HOST; do
+            if [ -z "${!v}" ]; then echo "::error::Missing secret $v"; exit 1; fi
+          done
+          case "$PROD_DEPLOY_PATH" in
+            *stagging*|*staging*) echo "::error::PROD_DEPLOY_PATH points at staging"; exit 1;;
+          esac
+
+      - name: Set up SSH
+        env:
+          CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$CPANEL_SSH_KEY" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "${CPANEL_PORT:-22}" "$CPANEL_HOST" >> ~/.ssh/known_hosts
+
+      - name: Back up live files and database (on the server)
+        env:
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+          PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+        run: |
+          ssh -i ~/.ssh/id_rsa -p "${CPANEL_PORT:-22}" "$CPANEL_USER@$CPANEL_HOST" bash -s -- "$PROD_DEPLOY_PATH" <<'REMOTE'
+          set -euo pipefail
+          P="$1"; TS=$(date +%Y%m%d-%H%M%S); B="$HOME/timesheet_backups/$TS"
+          test -f "$P/db.php" || { echo "No db.php in $P — wrong folder?"; exit 1; }
+          mkdir -p "$B"
+          tar czf "$B/files.tgz" -C "$P" --exclude=error_log .
+          cd "$P"
+          eval "$(php -r 'include "db.php"; printf("DBH=%s DBN=%s DBU=%s DBP=%s", escapeshellarg(DB_HOST), escapeshellarg(DB_NAME), escapeshellarg(DB_USER), escapeshellarg(DB_PASS));')"
+          mysqldump -h"$DBH" -u"$DBU" -p"$DBP" --single-transaction --routines "$DBN" | gzip > "$B/database.sql.gz"
+          # Leftover one-time setup files: move out of the web folder (not deleted)
+          mkdir -p "$B/removed-from-web"
+          for f in migrate.php patch.php migrate_billing_type.sql migrate_passwords.sql; do
+            [ -e "$P/$f" ] && mv "$P/$f" "$B/removed-from-web/" && echo "moved $f"
+          done
+          echo "$TS" > "$HOME/timesheet_backups/LATEST"
+          ls -la "$B"
+          echo "Backup saved to $B"
+          REMOTE
+
+      - name: Copy app files to live (no deletes)
+        env:
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+          PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/id_rsa -p ${CPANEL_PORT:-22}" \
+            api.php schema.php index.html hours-admin.html client-hours-portal.html \
+            "$CPANEL_USER@$CPANEL_HOST:$PROD_DEPLOY_PATH/"
+
+      - name: Smoke test live
+        env:
+          PROD_URL: ${{ secrets.PROD_URL }}
+        run: |
+          set -e
+          U="${PROD_URL%/}"
+          code=$(curl -s -o load.json -w '%{http_code}' "$U/api.php?action=load")
+          echo "load → HTTP $code"; head -c 300 load.json; echo
+          [ "$code" = "200" ] && grep -q '"success":true' load.json || { echo "::error::Live API did not answer correctly — consider rollback"; exit 1; }
+          if grep -q '"rate"' load.json; then echo "::error::Pay rates visible without sign-in"; exit 1; fi
+          code=$(curl -s -o ts.json -w '%{http_code}' "$U/api.php?action=load_timesheets")
+          echo "load_timesheets without sign-in → HTTP $code"
+          [ "$code" = "401" ] || { echo "::error::Timesheets readable without sign-in"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$U/")
+          echo "page → HTTP $code"; [ "$code" = "200" ]
+          echo "Live is up and protected."
