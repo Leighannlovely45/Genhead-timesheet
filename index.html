@@ -20,6 +20,7 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
 /* LOGIN */
 #s-login{background:var(--navy);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem 1rem;background-image:radial-gradient(ellipse at 60% 20%,rgba(3,173,143,.08) 0%,transparent 60%),radial-gradient(ellipse at 20% 80%,rgba(53,29,114,.15) 0%,transparent 55%)}
 #s-login.active{display:flex}
+#s-login:not(.active){display:none}
 .login-logo-wrap{display:flex;align-items:center;gap:.65rem;margin-bottom:.3rem}
 .login-logo-mark{width:38px;height:38px;background:linear-gradient(135deg,var(--teal),#02c4a2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;letter-spacing:-1px;flex-shrink:0}
 .login-brand{font-size:2rem;font-weight:700;color:#fff;letter-spacing:-1px;margin-bottom:0}
@@ -1179,7 +1180,9 @@ function renderTS(uid){
   const showPayCols=(role==="admin"||role==="hr");
   const gridCols=showPayCols?"1.35fr 1.25fr 1.7fr 1.05fr .65fr .75fr .75fr":"1.35fr 1.25fr 1.9fr 1.1fr .7fr";
 
-  let h=`<div class="emp-info">
+  const topBack=(!isViewing&&cur._vid&&["manager","hr","admin"].includes(cur.role))
+    ?`<div style="margin-bottom:.6rem"><button class="btn btn-outline" style="font-size:.8rem;padding:.35rem .8rem" onclick="backDash()">&#8592; Back to Dashboard</button></div>`:'';
+  let h=`${topBack}<div class="emp-info">
     <div><div class="emp-name">${emp.name}</div><div class="emp-period">${PERIODS[pidx]} &middot; Bi-Weekly Timesheet</div></div>
     ${(role==="admin"||role==="hr")?`<div class="field"><label>Pay Rate ($/hr)</label><input type="number" id="pr" value="${d.rate}" placeholder="0.00" min="0" step="0.01" readonly title="Pay rates are set on the Team tab"></div>`:''}
     <div class="ts-save-wrap">
