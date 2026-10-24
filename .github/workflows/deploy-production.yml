@@ -75,7 +75,7 @@ jobs:
           mysqldump -h"$DBH" -u"$DBU" -p"$DBP" --single-transaction --routines "$DBN" | gzip > "$B/database.sql.gz"
           # Leftover one-time setup files: move out of the web folder (not deleted)
           mkdir -p "$B/removed-from-web"
-          for f in migrate.php patch.php migrate_billing_type.sql migrate_passwords.sql; do
+          for f in migrate.php patch.php migrate_billing_type.sql migrate_passwords.sql employees.json timesheets.json request_log.txt; do
             [ -e "$P/$f" ] && mv "$P/$f" "$B/removed-from-web/" && echo "moved $f"
           done
           echo "$TS" > "$HOME/timesheet_backups/LATEST"
