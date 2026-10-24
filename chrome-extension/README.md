@@ -1,63 +1,46 @@
-# Genhead Time Tracker — Chrome Extension
+# Genhead Time Tracker — v2.0
 
-Automatically tracks time spent working in Genhead client sub-accounts.
+Tracks the time you spend inside GenSuite client sub-accounts and adds it to your
+Genhead timesheet automatically.
+
+## Install (2 minutes)
+
+1. Unzip `genhead-time-tracker-v2.zip` into a folder you'll keep, e.g. `Documents\Genhead Time Tracker`.
+   Don't delete this folder later — Chrome runs the tracker from it.
+2. In Chrome go to `chrome://extensions` and turn on **Developer mode** (top right).
+3. If you see an older **Genhead Time Tracker**, click **Remove** on it.
+4. Click **Load unpacked** and pick the folder from step 1.
+5. Click the puzzle-piece icon in Chrome's toolbar and **pin** Genhead Time Tracker.
+6. Click the tracker icon and sign in with your **Genhead email and timesheet password**
+   (the same password you use at timesheet.genhead.com).
 
 ## How it works
 
-- Detects when you navigate to a client sub-account at `app.genhead.com/v2/location/{ID}/...`
-- Starts a timer automatically
-- Pauses after 2 minutes of system inactivity
-- Saves time entries to your timesheet throughout the day
-- You review and add deliverable notes before submitting
+- Open any client sub-account in GenSuite (`app.genhead.com` or `app.gohighlevel.com`) and
+  the timer starts. Genhead's own agency account isn't counted.
+- It pauses when you've been inactive for 2 minutes, your computer is locked or asleep,
+  or Chrome isn't the window you're using.
+- Time is saved to your timesheet every 30 seconds, under that client.
+- **Working on a specific task?** Open the tracker and pick it under *Working on*. Your time
+  then goes to that task — on your timesheet and on the task's progress bar.
+- The popup shows today's lines on your timesheet. Add notes/deliverables in the timesheet.
 
-## Install Instructions
+## Badge on the icon
 
-### Step 1 — Add source column to database
-Run this in GoDaddy phpMyAdmin → genhead_timesheet → SQL:
+| Badge | Meaning |
+| --- | --- |
+| green ● | Tracking |
+| none | Paused / not in a client sub-account |
+| orange ! | Signed out — open the tracker and sign in |
+| red ! | Something needs attention (e.g. timesheet already submitted) — open the tracker |
 
-```sql
-ALTER TABLE timesheet_entries ADD COLUMN source VARCHAR(20) DEFAULT 'manual' AFTER row_index;
-ALTER TABLE timesheet_entries ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
-```
+## Good to know
 
-### Step 2 — Install the extension in Chrome
-1. Open Chrome and go to: `chrome://extensions`
-2. Enable **Developer Mode** (toggle in top right)
-3. Click **Load unpacked**
-4. Select the `genhead-extension` folder
-5. The Genhead Tracker icon appears in your Chrome toolbar
-
-### Step 3 — First time setup
-1. Click the Genhead Tracker icon in your toolbar
-2. Enter your Genhead email address (one-time only)
-3. Click Save Email
-
-### Step 4 — Use it
-- Log into Genhead at `app.genhead.com`
-- Navigate to any client sub-account
-- The tracker icon shows a green dot ● when timing is active
-- Click the icon anytime to see today's tracked time per client
-
-## What gets tracked
-- ✅ Time in client sub-accounts only
-- ✅ Your own Genhead agency (6BHLldSrdn5rbbMGKr1n) is excluded
-- ✅ Each unique client gets its own entry row in your timesheet
-- ✅ Pauses automatically when you're idle for 2+ minutes
-- ✅ Saves incrementally every 30 seconds
-
-## What you need to do
-- Add the **Deliverable** description to each auto-logged entry before submitting
-- Review all entries for accuracy — you can edit hours if needed
-- Submit your timesheet as normal when the period ends
-
-## Troubleshooting
-- **Timer not starting?** Make sure you're logged into `app.genhead.com` (not `app.gohighlevel.com`)
-- **Client showing as location ID?** The location needs to be in your Genhead clients list — sync clients first
-- **Email not detected automatically?** Enter it manually in the popup
-
-## Files
-- `manifest.json` — Extension configuration
-- `background.js` — Timer logic, idle detection, API calls  
-- `content.js` — Reads logged-in user email from GHL page
-- `popup.html` — Status widget showing current timer and today's entries
-- `icons/` — Extension icons
+- **"Sub-account isn't linked to a client"**: your time is still saved. An Admin or HR person
+  can link it in one click from the tracker; the time then moves to that client.
+- **Submitted timesheet**: new time can't be added to a submitted or approved period. Ask your
+  reviewer to return it.
+- Tracker lines update live during the day. If you change the hours of a tracker line on the
+  timesheet, the tracker will overwrite it while you keep working in that account that day —
+  make hour corrections at the end of the day.
+- Signed in for 14 days, then it asks again. No time is lost while signed out on this computer.

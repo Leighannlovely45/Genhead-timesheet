@@ -146,7 +146,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // ─────────────────────────────────────────
 // Open without signing in: sign-in/reset flows, the login name list, the Chrome
 // extension, the client hours portal & hours-bank admin, and secret-protected GHL hooks.
-$PUBLIC_ACTIONS = ['verify_password','set_password','check_password_set','forgot_pin','reset_pin','load',
+$PUBLIC_ACTIONS = ['verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
                    'upsert_time','client_hours','get_client_by_location','load_client_banks','set_client_hours',
                    'load_clients','ghl_add','fire_webhook'];
 $ROLE_RULES = [
@@ -160,7 +160,7 @@ $ROLE_RULES = [
     'add_employee'=>['admin','hr'], 'add_manager'=>['admin','hr'], 'update_employee'=>['admin','hr'],
     'remove_employee'=>['admin','hr'], 'toggle_active'=>['admin','hr'], 'assign_manager'=>['admin','hr'],
     'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
-    'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'],
+    'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'],
 ];
 // Removed: one-time setup helpers that let anyone create admins or change PINs
 if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
@@ -178,6 +178,187 @@ if ($action === 'whoami') {
     echo json_encode(['success' => true, 'user' => publicUser($AUTH)]);
     exit;
 }
+// ─────────────────────────────────────────
+// CHROME EXTENSION v2
+// ─────────────────────────────────────────
+// Find a client by its GHL sub-account (location) id
+function clientByLocation($db, $loc) {
+    if (!$loc) return null;
+    foreach (['location_id', 'ghl_contact_id'] as $col) {
+        try {
+            $st = $db->prepare("SELECT id, name, billable FROM clients WHERE $col = ? AND active = 1 LIMIT 1");
+            $st->execute([$loc]);
+            if ($r = $st->fetch()) return $r;
+        } catch (Exception $e) {}
+    }
+    return null;
+}
+
+// Sign in with email + timesheet password. Picks the active account with that
+// email whose password matches (people can have more than one account).
+if ($action === 'ext_login') {
+    $raw  = json_decode(file_get_contents('php://input'), true) ?: [];
+    $email = strtolower(trim($raw['email'] ?? ($_GET['email'] ?? '')));
+    $pw    = (string)($raw['pw'] ?? ($_GET['pw'] ?? ''));
+    if (!$email || $pw === '') { echo json_encode(['success'=>false,'error'=>'Enter your email and timesheet password.']); exit; }
+    $db = getDB();
+    $st = $db->prepare("SELECT * FROM users WHERE LOWER(email) = ? AND status = 'active'
+                        ORDER BY FIELD(role,'admin','hr','manager','employee'), id");
+    $st->execute([$email]);
+    $rows = $st->fetchAll();
+    if (!$rows) { usleep(400000); echo json_encode(['success'=>false,'error'=>'No active account with that email.']); exit; }
+    foreach ($rows as $u) {
+        if (empty($u['password_set']) || empty($u['password_hash'])) continue;
+        if (password_verify($pw, $u['password_hash'])) {
+            echo json_encode(['success'=>true,'token'=>issueToken($u['id']),'user'=>publicUser($u)]);
+            exit;
+        }
+    }
+    usleep(400000);
+    $anySet = array_filter($rows, function($u){ return !empty($u['password_set']); });
+    echo json_encode(['success'=>false,'error'=> $anySet ? 'Wrong password.' : 'Set your password in the timesheet portal first, then sign in here.']);
+    exit;
+}
+
+// What the popup needs for the sub-account you're in: client, your open tasks
+// for that client, and what the extension has logged today.
+if ($action === 'ext_context') {
+    $db  = getDB();
+    ensureEntryColumns($db);
+    $uid = (int)$AUTH['id'];
+    $loc = trim($_GET['location_id'] ?? '');
+    $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date'] ?? '') ? $_GET['date'] : date('Y-m-d');
+    $client = clientByLocation($db, $loc);
+    $tasks = [];
+    if ($client) {
+        $st = $db->prepare("SELECT t.id, t.title, t.stage, t.estimated_hours, p.id AS project_id, p.name AS project_name,
+                (SELECT COALESCE(SUM(te.hours),0) FROM timesheet_entries te WHERE te.task_id = t.id) AS logged_hours
+            FROM tasks t JOIN projects p ON p.id = t.project_id
+            WHERE p.client_id = ? AND p.status NOT IN ('archived','completed') AND t.stage <> 'done'
+              AND (t.assigned_to = ? OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = ?))
+            ORDER BY (t.assigned_to = ?) DESC, FIELD(t.stage,'inprogress','todo','inreview','backlog'), t.due_date IS NULL, t.due_date");
+        $st->execute([(int)$client['id'], $uid, $uid, $uid]);
+        $tasks = $st->fetchAll();
+    }
+    $per = periodForDate($date);
+    $today = []; $sheetStatus = null;
+    if ($per) {
+        $ts = $db->prepare("SELECT id, status FROM timesheets WHERE user_id = ? AND period = ? LIMIT 1");
+        $ts->execute([$uid, $per['period']]);
+        if ($sheet = $ts->fetch()) {
+            $sheetStatus = $sheet['status'];
+            $st = $db->prepare("SELECT te.hours, te.deliverable, te.task_id, COALESCE(c.name, te.client_label) AS client_name, tk.title AS task_title
+                FROM timesheet_entries te LEFT JOIN clients c ON c.id = te.client_id LEFT JOIN tasks tk ON tk.id = te.task_id
+                WHERE te.timesheet_id = ? AND te.day_index = ? AND te.hours > 0 ORDER BY te.row_index");
+            $st->execute([(int)$sheet['id'], $per['day']]);
+            $today = $st->fetchAll();
+        }
+    }
+    $linkable = [];
+    if (!$client && isPayRole($AUTH)) {
+        $linkable = $db->query("SELECT id, name FROM clients WHERE active = 1 ORDER BY name")->fetchAll();
+    }
+    echo json_encode(['success'=>true, 'user'=>publicUser($AUTH), 'date'=>$date, 'linkable'=>$linkable, 'can_link'=>isPayRole($AUTH),
+        'client'=>$client ? ['id'=>(int)$client['id'],'name'=>$client['name']] : null,
+        'tasks'=>$tasks, 'today'=>$today, 'period'=>$per ? $per['period'] : null, 'sheet_status'=>$sheetStatus]);
+    exit;
+}
+
+// Admin/HR: link a GHL sub-account to a client, and move time already tracked there
+if ($action === 'ext_link_location' && $method === 'POST') {
+    $db  = getDB();
+    ensureEntryColumns($db);
+    $raw = json_decode(file_get_contents('php://input'), true) ?: [];
+    $loc = trim((string)($raw['location_id'] ?? ''));
+    $cid = (int)($raw['client_id'] ?? 0);
+    if (!$loc || !$cid) { echo json_encode(['success'=>false,'error'=>'Pick a client.']); exit; }
+    $c = $db->prepare("SELECT id, name, location_id FROM clients WHERE id = ? AND active = 1"); $c->execute([$cid]);
+    $client = $c->fetch();
+    if (!$client) { echo json_encode(['success'=>false,'error'=>'Client not found.']); exit; }
+    if (!empty($client['location_id']) && $client['location_id'] !== $loc) { echo json_encode(['success'=>false,'error'=>"{$client['name']} is already linked to a different sub-account."]); exit; }
+    $db->prepare("UPDATE clients SET location_id = ? WHERE id = ?")->execute([$loc, $cid]);
+    $mv = $db->prepare("UPDATE timesheet_entries SET client_id = ?, client_label = NULL WHERE ext_location = ? AND client_id IS NULL");
+    $mv->execute([$cid, $loc]);
+    echo json_encode(['success'=>true, 'client'=>$client['name'], 'lines_moved'=>$mv->rowCount()]);
+    exit;
+}
+
+// Tracked time. The extension sends the running TOTAL for each
+// (date, sub-account, task) so a resend never double-counts.
+if ($action === 'ext_track' && $method === 'POST') {
+    $db  = getDB();
+    ensureEntryColumns($db);
+    $uid = (int)$AUTH['id'];
+    $raw = json_decode(file_get_contents('php://input'), true) ?: [];
+    $items = $raw['items'] ?? [];
+    if (!is_array($items) || count($items) > 200) { echo json_encode(['success'=>false,'error'=>'Bad request']); exit; }
+    $us = $db->prepare("SELECT rate FROM users WHERE id = ?"); $us->execute([$uid]); $rate = (float)$us->fetchColumn();
+    $results = [];
+    foreach ($items as $it) {
+        $key   = (string)($it['key'] ?? '');
+        $date  = (string)($it['date'] ?? '');
+        $loc   = trim((string)($it['location_id'] ?? ''));
+        $secs  = max(0, min(86400, (int)($it['seconds'] ?? 0)));
+        $taskId = (int)($it['task_id'] ?? 0) ?: null;
+        $label = trim((string)($it['client_name'] ?? ''));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !$loc) { $results[] = ['key'=>$key,'ok'=>false,'error'=>'bad item']; continue; }
+        $per = periodForDate($date);
+        if (!$per) { $results[] = ['key'=>$key,'ok'=>false,'error'=>'Date outside pay periods']; continue; }
+
+        // Task must belong to a project this person can see; it also decides project + billing
+        $projectId = null; $billingType = null; $deliverable = '';
+        if ($taskId) {
+            $tk = $db->prepare("SELECT t.title, t.billing_type, p.id AS project_id, p.billing_type AS pbt FROM tasks t JOIN projects p ON p.id = t.project_id
+                WHERE t.id = ? AND (t.assigned_to = ? OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = ?))");
+            $tk->execute([$taskId, $uid, $uid]);
+            if ($t = $tk->fetch()) { $projectId = (int)$t['project_id']; $billingType = $t['billing_type'] ?: $t['pbt']; $deliverable = $t['title']; }
+            else { $taskId = null; }
+        }
+        $client = clientByLocation($db, $loc);
+        if (!$billingType) $billingType = ($client && (string)$client['billable'] === '0') ? 'nonbillable' : 'billable';
+        if (!in_array($billingType, ['billable','nonbillable','marketing'])) $billingType = 'billable';
+
+        // This person's timesheet for the period
+        $ts = $db->prepare("SELECT id, status FROM timesheets WHERE user_id = ? AND period = ? LIMIT 1");
+        $ts->execute([$uid, $per['period']]);
+        $sheet = $ts->fetch();
+        if ($sheet && in_array($sheet['status'], ['submitted','under_review','approved'])) {
+            $results[] = ['key'=>$key,'ok'=>false,'locked'=>true,'error'=>"Your {$per['period']} timesheet is already ".($sheet['status']==='approved'?'approved':'submitted')."."]; continue;
+        }
+        if (!$sheet) {
+            $db->prepare("INSERT INTO timesheets (user_id, period, period_index, period_start, period_end, status, total_hours, total_pay, pay_rate) VALUES (?,?,?,?,?,'draft',0,0,?)")
+               ->execute([$uid, $per['period'], $per['index'], $per['start'], $per['end'], $rate]);
+            $sheetId = (int)$db->lastInsertId();
+        } else { $sheetId = (int)$sheet['id']; }
+
+        $hours = round($secs / 3600, 4);
+        $clientId = $client ? (int)$client['id'] : null;
+        // ext_location ties the line to the sub-account so the same line is updated each time
+        // (the timesheet keeps it when people save); unlinked sub-accounts show the page name
+        $find = $db->prepare("SELECT id FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ? AND source = 'extension'
+                              AND ext_location = ? AND task_id <=> ? LIMIT 1");
+        $find->execute([$sheetId, $per['day'], $loc, $taskId]);
+        $existing = $find->fetchColumn();
+        $shownLabel = $client ? null : (($label !== '' ? $label : 'Sub-account ' . $loc) . ' (not linked)');
+        if ($existing) {
+            $db->prepare("UPDATE timesheet_entries SET hours = ?, client_id = ?, project_id = ?, billing_type = ?, billable = ?, updated_at = NOW() WHERE id = ?")
+               ->execute([$hours, $clientId, $projectId, $billingType, $billingType === 'billable' ? 1 : 0, $existing]);
+        } else {
+            $row = $db->prepare("SELECT COALESCE(MAX(row_index),-1)+1 FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ?");
+            $row->execute([$sheetId, $per['day']]);
+            $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location)
+                          VALUES (?,?,?,?,?,?,?,?,?,?, 'extension', ?, ?, ?)")
+               ->execute([$sheetId, $clientId, $shownLabel, $deliverable, $hours, $rate, $billingType === 'billable' ? 1 : 0, $billingType, $per['day'], (int)$row->fetchColumn(), $projectId, $taskId, $loc]);
+        }
+        $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
+                      total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?) WHERE id = ?")
+           ->execute([$sheetId, $sheetId, $sheetId]);
+        $results[] = ['key'=>$key,'ok'=>true,'hours'=>$hours,'client'=>$client ? $client['name'] : null,'linked'=>(bool)$client];
+    }
+    echo json_encode(['success'=>true,'results'=>$results]);
+    exit;
+}
+
 // Table/column list (no data) — used to plan database upgrades
 if ($action === 'schema_report') {
     $db = getDB();
@@ -2155,7 +2336,7 @@ if ($method === 'POST') {
 
         ensureEntryColumns($db);
         $db->prepare("DELETE FROM timesheet_entries WHERE timesheet_id = ?")->execute([$tsId]);
-        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($entries as $i => $en) {
             if (empty($en['hrs']) && empty($en['co'])) continue;
             $clientId = null;
@@ -2176,8 +2357,9 @@ if ($method === 'POST') {
             // Preserve the Chrome-extension tag so its next update edits this line instead of adding a duplicate
             $source = in_array(($en['src'] ?? ''), ['extension','task']) ? $en['src'] : null;
             $taskLink = (int)($en['task'] ?? 0) ?: null;
+            $extLoc   = $source === 'extension' ? (trim((string)($en['extloc'] ?? '')) ?: null) : null;
             $projectId = (int)($en['proj'] ?? 0) ?: null;
-            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId, $taskLink]);
+            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId, $taskLink, $extLoc]);
         }
 
         if ($submitted) {
@@ -2608,6 +2790,7 @@ function ensureEntryColumns($db) {
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN client_label VARCHAR(255) DEFAULT NULL"); } catch (Exception $e) {}
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN project_id INT DEFAULT NULL"); } catch (Exception $e) {}
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN task_id INT DEFAULT NULL"); } catch (Exception $e) {}
+    try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN ext_location VARCHAR(100) DEFAULT NULL"); } catch (Exception $e) {}
 }
 
 // Pay period containing a date — calculated from the first period (Apr 27 2026), no end date

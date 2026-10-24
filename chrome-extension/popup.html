@@ -1,78 +1,85 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Genhead Time Tracker</title>
+<meta charset="utf-8">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { width: 320px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #08153A; color: #fff; }
-  .header { padding: 1rem 1.1rem .75rem; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; justify-content: space-between; }
-  .logo { font-size: .9rem; font-weight: 700; color: #03AD8F; }
-  .logo span { color: rgba(255,255,255,.5); font-weight: 400; }
-  .badge { font-size: .65rem; padding: .2rem .5rem; border-radius: 20px; font-weight: 600; }
-  .badge-active { background: rgba(3,173,143,.2); color: #03AD8F; }
-  .badge-inactive { background: rgba(255,255,255,.08); color: rgba(255,255,255,.4); }
-  .timer-block { padding: .85rem 1.1rem; border-bottom: 1px solid rgba(255,255,255,.08); }
-  .timer-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .5px; color: rgba(255,255,255,.35); margin-bottom: .25rem; }
-  .timer-client { font-size: .9rem; font-weight: 600; margin-bottom: .2rem; min-height: 1.2rem; }
-  .timer-time { font-size: 1.5rem; font-weight: 700; color: #03AD8F; font-variant-numeric: tabular-nums; }
-  .entries { padding: .7rem 1.1rem; }
-  .entries-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .5px; color: rgba(255,255,255,.35); margin-bottom: .4rem; }
-  .entry { display: flex; justify-content: space-between; align-items: center; padding: .3rem 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: .8rem; }
-  .entry:last-child { border: none; }
-  .entry-name { color: rgba(255,255,255,.8); }
-  .entry-hrs { color: #03AD8F; font-weight: 600; }
-  .no-entries { font-size: .75rem; color: rgba(255,255,255,.3); text-align: center; padding: .4rem 0; }
-  .total { padding: .45rem 1.1rem; background: rgba(3,173,143,.1); display: flex; justify-content: space-between; align-items: center; font-size: .78rem; }
-  .total-label { color: rgba(255,255,255,.4); }
-  .total-val { color: #03AD8F; font-weight: 700; }
-  .email-block { padding: .7rem 1.1rem; border-top: 1px solid rgba(255,255,255,.08); }
-  .email-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .5px; color: rgba(255,255,255,.35); margin-bottom: .35rem; }
-  .email-row { display: flex; gap: .4rem; }
-  input { flex: 1; padding: .35rem .5rem; border-radius: 5px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: .75rem; font-family: inherit; }
-  input::placeholder { color: rgba(255,255,255,.3); }
-  input:focus { outline: none; border-color: #03AD8F; }
-  .btn { padding: .35rem .7rem; border-radius: 5px; border: none; font-size: .72rem; font-weight: 600; cursor: pointer; font-family: inherit; }
-  .btn-teal { background: #03AD8F; color: #fff; }
-  .btn-teal:hover { background: #029d81; }
-  .msg { font-size: .68rem; margin-top: .3rem; min-height: .9rem; }
-  .msg-ok { color: #03AD8F; }
-  .msg-err { color: #ef4444; }
-  .footer { padding: .6rem 1.1rem; border-top: 1px solid rgba(255,255,255,.08); display: flex; gap: .4rem; }
-  .btn-outline { flex: 1; background: transparent; color: rgba(255,255,255,.6); border: 1px solid rgba(255,255,255,.15); }
-  .btn-outline:hover { background: rgba(255,255,255,.05); }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{width:340px;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#08153A;color:#fff;font-size:13px}
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .brand{font-weight:700;font-size:15px;letter-spacing:-.3px}.brand span{color:#03AD8F}
+  .who{font-size:11px;color:rgba(255,255,255,.55);text-align:right}
+  .who a{color:rgba(255,255,255,.55);cursor:pointer;text-decoration:underline}
+  .sec{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.45);margin-bottom:6px}
+  .status{display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,.75)}
+  .dot{width:9px;height:9px;border-radius:50%;background:#64748b;flex-shrink:0}.dot.on{background:#03AD8F;box-shadow:0 0 0 3px rgba(3,173,143,.25)}
+  .client{font-size:16px;font-weight:600;margin:8px 0 2px;word-break:break-word}
+  .timer{font-family:Consolas,'Courier New',monospace;font-size:26px;font-weight:600;color:#03AD8F}
+  .sub{font-size:11px;color:rgba(255,255,255,.45)}
+  select,input{width:100%;padding:8px 9px;border-radius:7px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#fff;font-size:13px;font-family:inherit}
+  select option{color:#111}
+  input::placeholder{color:rgba(255,255,255,.35)}
+  .btn{display:inline-block;border:none;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn-p{background:#03AD8F;color:#fff}.btn-o{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.25)}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  .warn{background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.4);color:#fde68a;border-radius:7px;padding:8px 10px;font-size:11.5px;line-height:1.45;margin-top:8px}
+  .err{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.45);color:#fecaca}
+  .entry{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px}
+  .entry:last-child{border-bottom:none}
+  .entry .n{color:rgba(255,255,255,.85);overflow:hidden;text-overflow:ellipsis}
+  .entry .t{color:rgba(255,255,255,.4);font-size:11px}
+  .entry .h{font-family:Consolas,monospace;color:#03AD8F;white-space:nowrap}
+  .total{display:flex;justify-content:space-between;font-weight:600;padding-top:8px;margin-top:4px;border-top:1px solid rgba(255,255,255,.1)}
+  .muted{color:rgba(255,255,255,.4);font-size:12px}
+  code{font-family:Consolas,monospace;background:rgba(255,255,255,.1);padding:1px 4px;border-radius:4px;user-select:all}
+  .hidden{display:none}
+  #login .sec>*+*{margin-top:8px}
 </style>
 </head>
 <body>
-<div class="header">
-  <div class="logo">gen<span>head</span> tracker</div>
-  <span class="badge badge-inactive" id="status-badge">Inactive</span>
-</div>
-<div class="timer-block">
-  <div class="timer-label">Currently tracking</div>
-  <div class="timer-client" id="timer-client" style="color:rgba(255,255,255,.3)">—</div>
-  <div class="timer-time" id="timer-time">0:00:00</div>
-</div>
-<div class="entries">
-  <div class="entries-label">Today</div>
-  <div id="entries-list"><div class="no-entries">No time tracked yet</div></div>
-</div>
-<div class="total" id="total-bar" style="display:none">
-  <span class="total-label">Total today</span>
-  <span class="total-val" id="total-val">0.0 hrs</span>
-</div>
-<div class="email-block" id="email-block">
-  <div class="email-label">Your email (one-time setup)</div>
-  <div class="email-row">
-    <input type="email" id="email-inp" placeholder="you@genhead.com">
-    <button class="btn btn-teal" id="save-btn">Save</button>
+  <div class="hd">
+    <div class="brand">gen<span>head</span> <span style="color:rgba(255,255,255,.4);font-weight:400;font-size:12px">Time Tracker</span></div>
+    <div class="who" id="who"></div>
   </div>
-  <div class="msg" id="email-msg"></div>
-</div>
-<div class="footer">
-  <button class="btn btn-outline" id="open-btn">Open Timesheet</button>
-  <button class="btn btn-teal" id="refresh-btn">Refresh</button>
-</div>
-<script src="popup.js"></script>
+
+  <!-- Signed out -->
+  <div id="login" class="hidden">
+    <div class="sec">
+      <div class="lbl">Sign in with your timesheet login</div>
+      <input id="email" type="email" placeholder="Your Genhead email" autocomplete="username">
+      <input id="pw" type="password" placeholder="Timesheet password" autocomplete="current-password">
+      <button class="btn btn-p" id="signin" style="width:100%">Sign In</button>
+      <div id="loginMsg" class="sub"></div>
+      <div class="sub">First time? Create your password in the timesheet portal first, then sign in here.</div>
+    </div>
+  </div>
+
+  <!-- Signed in -->
+  <div id="main" class="hidden">
+    <div class="sec">
+      <div class="status"><span class="dot" id="dot"></span><span id="statusText">—</span></div>
+      <div class="client" id="client">—</div>
+      <div class="timer" id="timer">0:00:00</div>
+      <div class="sub" id="timerSub">today in this account</div>
+      <div id="notice"></div>
+    </div>
+    <div class="sec" id="taskSec">
+      <div class="lbl">Working on</div>
+      <select id="task"></select>
+      <div class="sub" id="taskSub" style="margin-top:5px"></div>
+    </div>
+    <div class="sec">
+      <div class="lbl">On your timesheet today</div>
+      <div id="today"><div class="muted">Loading…</div></div>
+    </div>
+    <div class="sec">
+      <div class="row">
+        <button class="btn btn-o" id="sync">Save now</button>
+        <button class="btn btn-p" id="open">Open timesheet</button>
+      </div>
+      <div class="sub" id="syncInfo" style="margin-top:6px;text-align:center"></div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
 </body>
 </html>

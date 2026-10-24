@@ -1,40 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Genhead Time Tracker",
-  "version": "1.0.0",
-  "description": "Automatically tracks time spent in Genhead client sub-accounts",
-  "permissions": [
-    "tabs",
-    "idle",
-    "storage",
-    "alarms",
-    "scripting"
-  ],
+  "version": "2.0.0",
+  "description": "Tracks time in GenSuite client sub-accounts and adds it to your Genhead timesheet.",
+  "permissions": ["tabs", "idle", "storage", "alarms"],
   "host_permissions": [
+    "https://timesheet.genhead.com/*",
     "https://app.genhead.com/*",
-    "https://timesheet.genhead.com/*"
+    "https://app.gohighlevel.com/*"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://app.genhead.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
+  "background": { "service_worker": "background.js" },
   "action": {
+    "default_title": "Genhead Time Tracker",
     "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
   },
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  }
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
 }
