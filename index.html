@@ -459,8 +459,9 @@ function btLabel(key){ const t=BILLING_TYPES.find(b=>b.key===key); return t?t.la
 function btCss(key){   const t=BILLING_TYPES.find(b=>b.key===key); return t?t.css:"";    }
 
 // ── CONFIG ─────────────────────────────────────────────────────────────────
-const PERIODS=["Apr 27 - May 10","May 11 - May 24","May 25 - Jun 07","Jun 08 - Jun 21","Jun 22 - Jul 05","Jul 06 - Jul 19","Jul 20 - Aug 02","Aug 03 - Aug 16","Aug 17 - Aug 30","Aug 31 - Sep 13","Sep 14 - Sep 27","Sep 28 - Oct 11","Oct 12 - Oct 25","Oct 26 - Nov 08","Nov 09 - Nov 22","Nov 23 - Dec 06","Dec 07 - Dec 20","Dec 21 - Jan 03"];
-const PSTARTS=[[2026,3,27],[2026,4,11],[2026,4,25],[2026,5,8],[2026,5,22],[2026,6,6],[2026,6,20],[2026,7,3],[2026,7,17],[2026,7,31],[2026,8,14],[2026,8,28],[2026,9,12],[2026,9,26],[2026,10,9],[2026,10,23],[2026,11,7],[2026,11,21]];
+// Bi-weekly pay periods from Apr 27 2026 through ~2 months ahead — calculated, no end date
+const PSTARTS=(()=>{const out=[];const d=new Date(2026,3,27);const lim=new Date();lim.setDate(lim.getDate()+60);while(d<=lim){out.push([d.getFullYear(),d.getMonth(),d.getDate()]);d.setDate(d.getDate()+14);}return out;})();
+const PERIODS=PSTARTS.map(([y,m,dd])=>{const st=new Date(y,m,dd),en=new Date(y,m,dd+13);const f=x=>x.toLocaleDateString("en-US",{month:"short"})+" "+String(x.getDate()).padStart(2,"0");return f(st)+" - "+f(en);});
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 let EMPS=[];    // populated from DB on load
 let CLIENTS=[]; // populated from DB on load
@@ -479,6 +480,35 @@ function projectsForClient(name){
 
 // ── API HELPER ─────────────────────────────────────────────────────────────
 const API_BASE="api.php";
+// ── SIGN-IN SESSION ─────────────────────────────────────────────────────────
+// The server issues a signed token at sign-in; it's kept on this device for up
+// to 14 days ("stay signed in") and sent with every request to api.php.
+let AUTH_TOKEN=null;
+try{AUTH_TOKEN=localStorage.getItem("ts_auth")||null;}catch(e){}
+function setAuth(t){AUTH_TOKEN=t||null;try{t?localStorage.setItem("ts_auth",t):localStorage.removeItem("ts_auth");}catch(e){}}
+const _nativeFetch=window.fetch.bind(window);
+window.fetch=function(input,init){
+  const url=typeof input==="string"?input:(input&&input.url)||"";
+  const toApi=/(^|\/)api\.php(\?|$)/.test(url)&&(!/^https?:\/\//i.test(url)||url.startsWith(location.origin));
+  if(toApi&&AUTH_TOKEN){init={...(init||{}),headers:{...((init&&init.headers)||{}),"X-TS-Auth":AUTH_TOKEN}};}
+  return _nativeFetch(input,init).then(r=>{if(toApi&&r.status===401&&cur)sessionExpired();return r;});
+};
+function sessionExpired(){
+  if(!cur)return;
+  setAuth(null);cur=null;
+  showLoginSelect();show("s-login");
+  const err=document.getElementById("lf-error");
+  if(err)err.textContent="Your session ended. Please sign in again.";
+}
+// Download a file from api.php with the session header (window.open can't send it)
+async function downloadAuth(url,filename){
+  try{
+    const r=await fetch(url);
+    if(!r.ok){showToast("Download failed.");return;}
+    const blob=await r.blob();
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+  }catch(e){showToast("Download failed.");}
+}
 // POST helper. api.php reads the action from the URL, so it goes there; the rest is
 // sent as JSON so true/false and numbers arrive as real values.
 function api(body){
@@ -494,6 +524,7 @@ function api(body){
 let GHL_WEBHOOK=localStorage.getItem("ghl_webhook")||"";
 let GHL_INVITE_WEBHOOK="";
 let GHL_NOTIFY_WEBHOOK="";
+let appSettings={}; // non-secret settings for HR/Admin (secrets arrive masked)
 let cur=null,pidx=0;
 const store={};
 
@@ -536,7 +567,11 @@ function canSeePay(){return cur&&(cur.role==="hr"||cur.role==="admin");}
 function reviewScope(){
   const me=myDbId();
   if(cur.role==="hr"||cur.role==="admin") return EMPS.filter(e=>String(e.id).replace(/^e/,"")!==me);
-  if(cur.role==="manager") return EMPS.filter(e=>String(e.manager_id||"")===me);
+  if(cur.role==="manager"){
+    // Direct reports + reports of anyone who delegated their approvals to me
+    const delegators=new Set(EMPS.filter(e=>String(e.delegate_to||"")===me).map(e=>String(e.id).replace(/^e/,"")));
+    return EMPS.filter(e=>{const m=String(e.manager_id||"");return String(e.id).replace(/^e/,"")!==me&&(m===me||delegators.has(m));});
+  }
   return [];
 }
 // Turn DB entries into store rows (variable lines per day, blank line on empty days)
@@ -629,6 +664,24 @@ function renderNameSuggestions(query){
   });
 }
 // Select a person when the text is exactly their name, label or email (typed or autofilled)
+// First-time setup: confirm identity with the old PIN or old shared role password
+function lfShowProof(kind){
+  const g=document.getElementById("lf-proof-group");
+  if(!g)return;
+  const inp=document.getElementById("lf-proof");inp.value="";
+  if(kind==="pin"){
+    document.getElementById("lf-proof-label").textContent="Your current PIN";
+    inp.setAttribute("inputmode","numeric");inp.placeholder="4-digit PIN from the old timesheet";
+    document.getElementById("lf-proof-hint").textContent="We're moving from PINs to passwords. Enter your old PIN once to confirm it's you.";
+    g.style.display="";
+  }else if(kind==="role_password"){
+    const role=(EMPS.find(e=>e.id===_selectedEmpId)||{}).role||"";
+    document.getElementById("lf-proof-label").textContent=`Current ${role==="hr"?"HR":"Manager"} password`;
+    inp.removeAttribute("inputmode");inp.placeholder="The shared password you used before";
+    document.getElementById("lf-proof-hint").textContent="Enter the old shared password once to confirm it's you.";
+    g.style.display="";
+  }else{g.style.display="none";}
+}
 function lfMatchName(value,allowEmail){
   const q=String(value||'').trim().toLowerCase();
   if(!q||!EMPS.length) return false;
@@ -686,6 +739,11 @@ function buildLoginForm(){
     <div class="lf-group" id="lf-pw-group" style="display:none">
       <label class="lf-label" id="lf-pw-label">Password</label>
       <input type="password" class="lf-input" id="lf-password" name="password" placeholder="Enter your password" autocomplete="current-password">
+    </div>
+    <div class="lf-group" id="lf-proof-group" style="display:none">
+      <label class="lf-label" id="lf-proof-label" for="lf-proof">Your current PIN</label>
+      <input type="password" class="lf-input" id="lf-proof" name="current-pin" placeholder="" autocomplete="off" inputmode="numeric">
+      <div id="lf-proof-hint" style="font-size:.7rem;color:rgba(255,255,255,.4);margin-top:.3rem"></div>
     </div>
     <div class="lf-group" id="lf-pw-confirm-group" style="display:none">
       <label class="lf-label">Confirm Password</label>
@@ -807,6 +865,7 @@ function lfLevelChange(){
   document.getElementById("lf-pw-group").style.display="none";
   document.getElementById("lf-pin-confirm").style.display="none";
   document.getElementById("lf-pw-confirm-group").style.display="none";
+  const pg=document.getElementById("lf-proof-group");if(pg)pg.style.display="none";
   document.getElementById("lf-forgot").style.display="none";
   document.getElementById("lf-error").textContent="";
   document.getElementById("lf-submit").disabled=true;
@@ -857,11 +916,11 @@ function lfSubmit(){
       if(pw.length<6){errEl.textContent="Password must be at least 6 characters.";return;}
       if(pw!==pwConf){errEl.textContent="Passwords don't match — try again.";document.getElementById("lf-password-confirm").value="";return;}
       submitBtn.disabled=true;
-      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`)
+      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}&old=${encodeURIComponent((document.getElementById("lf-proof")||{}).value||"")}`)
         .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
         .then(r=>{
           submitBtn.disabled=false;
-          if(r.success){if(u)u.password_set=true;doLogin(u);}
+          if(r.success){onAuthSuccess(r,u);}
           else errEl.textContent=r.error||"Error setting password.";
         }).catch(e=>{submitBtn.disabled=false;errEl.textContent="Error: "+(e.message||"try again");});
     } else {
@@ -871,8 +930,7 @@ function lfSubmit(){
         .then(r=>{
           submitBtn.disabled=false;
           if(r.success){
-            if(u)u.password_set=true;
-            doLogin(u);
+            onAuthSuccess(r,u);
           } else if(r.needs_setup){
             _pinMode='setup';
             document.getElementById("lf-password").setAttribute("autocomplete","new-password");
@@ -882,6 +940,7 @@ function lfSubmit(){
             document.getElementById("lf-pw-confirm-group").style.display="";
             document.getElementById("lf-forgot").style.display="none";
             errEl.textContent="No password set yet — please create one.";
+            lfShowProof(r.verify);
             setTimeout(()=>document.getElementById("lf-password").focus(),100);
           } else {
             errEl.textContent="Incorrect password.";
@@ -902,11 +961,11 @@ function lfSubmit(){
       if(pw.length<6){errEl.textContent="Password must be at least 6 characters.";return;}
       if(pw!==pwConf){errEl.textContent="Passwords don't match — try again.";document.getElementById("lf-password-confirm").value="";return;}
       submitBtn.disabled=true;
-      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}`)
+      fetch(`api.php?action=set_password&id=${encodeURIComponent(uid)}&pw=${encodeURIComponent(pw)}&old=${encodeURIComponent((document.getElementById("lf-proof")||{}).value||"")}`)
         .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
         .then(r=>{
           submitBtn.disabled=false;
-          if(r.success){if(u)u.password_set=true;doLogin(u);}
+          if(r.success){onAuthSuccess(r,u);}
           else errEl.textContent=r.error||"Error setting password.";
         }).catch(e=>{submitBtn.disabled=false;errEl.textContent="Error: "+(e.message||"try again");});
 
@@ -918,8 +977,7 @@ function lfSubmit(){
         .then(r=>{
           submitBtn.disabled=false;
           if(r.success){
-            if(u)u.password_set=true;
-            doLogin(u);
+            onAuthSuccess(r,u);
           } else if(r.needs_setup){
             // First-time user — switch to setup mode
             _pinMode='setup';
@@ -930,6 +988,7 @@ function lfSubmit(){
             document.getElementById("lf-pw-confirm-group").style.display="";
             document.getElementById("lf-forgot").style.display="none";
             errEl.textContent="No password set yet — please create one.";
+            lfShowProof(r.verify);
             setTimeout(()=>document.getElementById("lf-password").focus(),100);
           } else {
             errEl.textContent="Incorrect password.";
@@ -998,7 +1057,7 @@ function submitResetPin(){
   if(pw!==conf){document.getElementById("rpin-error").textContent="Passwords don't match.";return;}
   fetch(`${API_BASE}?action=reset_pin`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({uid:_resetUid,token:_resetToken,password:pw})})
   .then(x=>x.json()).catch(()=>({success:false,error:"Network error — please try again."})).then(r=>{
-    if(r.success){ window.history.replaceState({},"",window.location.pathname); if(u)doLogin(u);else showLoginSelect(); }
+    if(r.success){ window.history.replaceState({},"",window.location.pathname); onAuthSuccess(r,u); }
     else { document.getElementById("rpin-error").textContent=r.error||"Reset failed. Link may have expired."; }
   });
 }
@@ -1014,7 +1073,11 @@ function doLogin(u){
   pidx=currentPeriodIndex();sel.value=pidx;show("s-app");renderApp();
 }
 
-function logout(){cur=null;showLoginSelect();show("s-login");}
+function logout(){
+  const t=AUTH_TOKEN;setAuth(null);cur=null;
+  // Reload so no signed-in data (rates etc.) stays in memory
+  window.location.href=window.location.pathname;
+}
 async function changePeriod(){
   pidx=parseInt(document.getElementById("period-sel").value);
   if(cur&&cur._vid){await loadDraft(cur._vid,pidx);renderTS(cur._vid);}
@@ -1028,6 +1091,29 @@ async function renderApp(){
   if(!PROJECTS.length) await loadProjectsList();
   if(!gd(uid,pidx).loaded) await loadDraft(uid,pidx);
   renderTS(uid);
+}
+
+// ── TEAM + SETTINGS (what's returned depends on who's signed in) ───────────
+async function loadTeam(){
+  const data=await fetch(API_BASE+"?action=load&t="+Date.now()).then(r=>r.json());
+  const s=data.settings||data.data?.settings||{};
+  appSettings=s||{};
+  if(s.ghl_webhook_url) GHL_WEBHOOK=s.ghl_webhook_url;
+  if(s.ghl_invite_webhook_url) GHL_INVITE_WEBHOOK=s.ghl_invite_webhook_url;
+  if(s.ghl_notify_webhook_url) GHL_NOTIFY_WEBHOOK=s.ghl_notify_webhook_url;
+  const empList=data.employees||data.data?.employees;
+  if(empList){
+    EMPS=empList.map(e=>({...e,id:String(e.id),password_set:!!e.password_set,pin_set:!!e.pin_set}));
+  }
+  if(!data.me&&AUTH_TOKEN)setAuth(null); // token expired or invalid
+  return data;
+}
+// After a successful sign-in / password setup / reset
+async function onAuthSuccess(r,u){
+  if(r&&r.token)setAuth(r.token);
+  await loadTeam();
+  const me=EMPS.find(e=>e.id===(r.user?.id||u?.id))||u;
+  if(me){me.password_set=true;doLogin(me);}
 }
 
 // ── INITIAL PAGE LOAD — fetch employees from DB ───────────────────────────
@@ -1055,22 +1141,11 @@ async function renderApp(){
   // EMPS array is queried live on each keystroke, so there's nothing to refresh.
   function refreshNameDropdown(){ /* intentionally empty */ }
 
-  // Load employees from DB (load is a GET action)
-  fetch(API_BASE+"?action=load").then(r=>r.json()).then(data=>{
-    // Pull settings
-    const s=data.settings||data.data?.settings||{};
-    if(s.ghl_webhook_url) GHL_WEBHOOK=s.ghl_webhook_url;
-    if(s.ghl_invite_webhook_url) GHL_INVITE_WEBHOOK=s.ghl_invite_webhook_url;
-    if(s.ghl_notify_webhook_url) GHL_NOTIFY_WEBHOOK=s.ghl_notify_webhook_url;
-
-    if(data.employees||data.data?.employees){
-      const empList=data.employees||data.data?.employees;
-      EMPS=empList.map(e=>({
-        ...e,
-        id:String(e.id),
-        password_set:!!e.password_set,
-        pin_set:!!e.pin_set
-      }));
+  // Load the team list; if this device is still signed in, go straight in
+  loadTeam().then(data=>{
+    if(data&&data.me&&!(tok&&uid)){
+      const me=EMPS.find(e=>e.id===data.me.id);
+      if(me){doLogin(me);return;}
     }
     // Only refresh the dropdown options — never rebuild the whole form.
     // This preserves any name the user has already selected.
@@ -1630,6 +1705,7 @@ function renderDash(){
       </div>
       <div id="records-table-wrap"></div>
     </div>
+    <div id="rec-delegate-bar" style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:.9rem 1.1rem;margin-bottom:1rem">${delegateBarHTML()}</div>
   </div>
 
   <!-- TEAM PANE -->
@@ -1967,6 +2043,34 @@ function switchTab(tab){
   if(tab==="projects") renderProjects();
   if(tab==="settings") renderSettings();
   if(tab==="ghl") renderSettings(); // populate API key/secret fields in GHL tab
+}
+
+// ── APPROVAL DELEGATION ──────────────────────────────────────────────────
+function delegateBarHTML(){
+  const me=myDbId();
+  const self=EMPS.find(e=>String(e.id).replace(/^e/,"")===me)||{};
+  const current=String(self.delegate_to||"");
+  const choices=EMPS.filter(e=>["manager","hr","admin"].includes(e.role)&&e.active!==false&&String(e.id).replace(/^e/,"")!==me);
+  const covering=EMPS.filter(e=>String(e.delegate_to||"")===me).map(e=>escHtml(e.name));
+  return `<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;font-size:.82rem">
+    <span style="font-weight:600;color:var(--dark)">&#128260; Delegate my approvals to</span>
+    <select id="delegate-sel" style="background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:7px;padding:.35rem .6rem;font-size:.82rem">
+      <option value="">No one (I review my own team)</option>
+      ${choices.map(e=>{const id=String(e.id).replace(/^e/,"");return `<option value="${id}"${id===current?" selected":""}>${escHtml(e.name)}</option>`;}).join("")}
+    </select>
+    <button class="btn btn-outline" style="font-size:.78rem;padding:.3rem .75rem" onclick="saveDelegation()">Save</button>
+    <span style="color:var(--mid);font-size:.76rem">While set, that person can approve, return or decline your team's timecards.</span>
+  </div>
+  ${covering.length?`<div style="margin-top:.5rem;font-size:.78rem;color:var(--teal)">You're covering approvals for: <b>${covering.join(", ")}</b> &mdash; their team's timecards appear in Records.</div>`:""}`;
+}
+async function saveDelegation(){
+  const val=document.getElementById("delegate-sel").value;
+  const r=await api({action:"set_delegate",delegate_id:val});
+  if(!r.success){showToast(r.error||"Could not save delegation.");return;}
+  const self=EMPS.find(e=>String(e.id).replace(/^e/,"")===myDbId());
+  if(self)self.delegate_to=val||null;
+  showToast(val?"Approvals delegated.":"Delegation removed.");
+  const bar=document.getElementById("rec-delegate-bar");if(bar)bar.innerHTML=delegateBarHTML();
 }
 
 // ── RECORDS: timecard review & approval hub ──────────────────────────────
@@ -2914,7 +3018,7 @@ async function renderAuditLog(){
 async function exportAuditCSV(){
   const periodFilter=document.getElementById("audit-period-filter")?document.getElementById("audit-period-filter").value:PERIODS[pidx];
   const period=periodFilter||PERIODS[pidx];
-  window.open(`${API_BASE}?action=export_audit&period=${encodeURIComponent(period)}`);
+  downloadAuth(`${API_BASE}?action=export_audit&period=${encodeURIComponent(period)}`,`Genhead_Audit_${String(period).replace(/[^a-z0-9]+/gi,"_")}.csv`);
 }
 
 // ── CLIENTS ───────────────────────────────────────────────────────────────

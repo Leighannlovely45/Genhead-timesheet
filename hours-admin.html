@@ -230,8 +230,10 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
 
 <script>
 const API = 'api.php';
-const PERIODS = ["Apr 27 - May 10","May 11 - May 24","May 25 - Jun 07","Jun 08 - Jun 21","Jun 22 - Jul 05","Jul 06 - Jul 19","Jul 20 - Aug 02","Aug 03 - Aug 16","Aug 17 - Aug 30","Aug 31 - Sep 13","Sep 14 - Sep 27","Sep 28 - Oct 11","Oct 12 - Oct 25","Oct 26 - Nov 08","Nov 09 - Nov 22","Nov 23 - Dec 06","Dec 07 - Dec 20","Dec 21 - Jan 03"];
-const PSTARTS = [[2026,4,27],[2026,5,11],[2026,5,25],[2026,6,8],[2026,6,22],[2026,7,6],[2026,7,20],[2026,8,3],[2026,8,17],[2026,8,31],[2026,9,14],[2026,9,28],[2026,10,12],[2026,10,26],[2026,11,9],[2026,11,23],[2026,12,7],[2026,12,21]];
+// Bi-weekly periods from Apr 27 2026 through ~2 months ahead (no end date). PSTARTS months are 1-based here.
+const PSTARTS = (()=>{const out=[];const d=new Date(2026,3,27);const lim=new Date();lim.setDate(lim.getDate()+60);while(d<=lim){out.push([d.getFullYear(),d.getMonth()+1,d.getDate()]);d.setDate(d.getDate()+14);}return out;})();
+const PERIODS = PSTARTS.map(([y,m,dd])=>{const s=new Date(y,m-1,dd),e=new Date(y,m-1,dd+13);const f=x=>x.toLocaleDateString('en-US',{month:'short'})+' '+String(x.getDate()).padStart(2,'0');return f(s)+' - '+f(e);});
+
 
 let currentPidx = 0;
 let allClients = [];

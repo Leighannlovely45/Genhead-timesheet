@@ -2,15 +2,184 @@
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
+header("Access-Control-Allow-Headers: Content-Type, X-TS-Auth");
 header("X-Frame-Options: ALLOWALL");
 header("Content-Security-Policy: frame-ancestors *");
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 require_once __DIR__ . '/db.php';
 
+// Bi-weekly pay period start dates [y,m,d], calculated from the first period
+// (Apr 27 2026) through ~2 months from today — no hard-coded end date.
+if (!function_exists('payPeriodStarts')) {
+    function payPeriodStarts() {
+        $out = []; $d = new DateTime('2026-04-27'); $limit = new DateTime('+60 days');
+        while ($d <= $limit) { $out[] = [(int)$d->format('Y'), (int)$d->format('n'), (int)$d->format('j')]; $d->modify('+14 days'); }
+        return $out;
+    }
+}
+
+// ─────────────────────────────────────────
+// SETTINGS HELPERS (guarded: some db.php files already define these)
+// ─────────────────────────────────────────
+if (!function_exists('getSetting')) {
+    function getSetting($key, $default = '') {
+        try {
+            $db   = getDB();
+            $stmt = $db->prepare("SELECT `value` FROM settings WHERE `key` = ? LIMIT 1");
+            $stmt->execute([$key]);
+            $row  = $stmt->fetch();
+            return $row ? $row['value'] : $default;
+        } catch (Exception $e) { return $default; }
+    }
+}
+if (!function_exists('setSetting')) {
+    function setSetting($key, $value) {
+        $db = getDB();
+        $db->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+           ->execute([$key, $value]);
+    }
+}
+
+if (!function_exists('logAudit')) {
+    // Normally defined in db.php; fallback so approvals never crash without it
+    function logAudit($timesheetId, $userId, $action, $before = null, $after = null) {
+        try {
+            getDB()->prepare("INSERT INTO audit_log (timesheet_id, user_id, action, before_state, after_state, ip_address) VALUES (?, ?, ?, ?, ?, ?)")
+                ->execute([$timesheetId, $userId, $action, $before ? json_encode($before) : null, $after ? json_encode($after) : null, $_SERVER['REMOTE_ADDR'] ?? null]);
+        } catch (Exception $e) { error_log('audit: ' . $e->getMessage()); }
+    }
+}
+
+// ─────────────────────────────────────────
+// DATABASE UPGRADE — adds missing tables/columns, never removes anything
+// ─────────────────────────────────────────
+require_once __DIR__ . '/schema.php';
+ensureSchema(getDB());
+
+// ─────────────────────────────────────────
+// SESSIONS — signed token sent by the page in the X-TS-Auth header
+// ─────────────────────────────────────────
+define('SESSION_DAYS', 14);
+function sessionSecret() {
+    static $s = null;
+    if ($s !== null) return $s;
+    $s = getSetting('session_secret', '');
+    if (strlen($s) < 32) { $s = bin2hex(random_bytes(32)); setSetting('session_secret', $s); }
+    return $s;
+}
+function b64u($d)  { return rtrim(strtr(base64_encode($d), '+/', '-_'), '='); }
+function b64ud($d) { return base64_decode(strtr($d, '-_', '+/')); }
+function issueToken($uid) {
+    $p = b64u(json_encode(['u' => (int)$uid, 'e' => time() + SESSION_DAYS * 86400]));
+    return $p . '.' . b64u(hash_hmac('sha256', $p, sessionSecret(), true));
+}
+function authToken() {
+    $t = $_SERVER['HTTP_X_TS_AUTH'] ?? '';
+    if (!$t && function_exists('getallheaders')) {
+        foreach (getallheaders() as $k => $v) { if (strtolower($k) === 'x-ts-auth') { $t = $v; break; } }
+    }
+    return trim($t);
+}
+function authUser() {
+    static $u = false;
+    if ($u !== false) return $u;
+    $u = null;
+    $t = authToken();
+    if (!$t || strpos($t, '.') === false) return $u;
+    list($payload, $sig) = explode('.', $t, 2);
+    if (!hash_equals(b64u(hash_hmac('sha256', $payload, sessionSecret(), true)), $sig)) return $u;
+    $d = json_decode(b64ud($payload), true);
+    if (!$d || ($d['e'] ?? 0) < time()) return $u;
+    $st = getDB()->prepare("SELECT id, name, email, role, manager_id, delegate_to, rate FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+    $st->execute([(int)$d['u']]);
+    $u = $st->fetch() ?: null;
+    return $u;
+}
+function isPayRole($u) { return $u && in_array($u['role'], ['admin', 'hr']); }
+function requireAuth() {
+    $u = authUser();
+    if (!$u) { http_response_code(401); echo json_encode(['success' => false, 'auth' => false, 'error' => 'Your session has ended — please sign in again.']); exit; }
+    return $u;
+}
+function requireRole($roles) {
+    $u = requireAuth();
+    if (!in_array($u['role'], $roles)) { http_response_code(403); echo json_encode(['success' => false, 'error' => "You don't have access to do that."]); exit; }
+    return $u;
+}
+// Ids of people this user reviews: HR/Admin = everyone else; managers = direct reports
+// plus the reports of anyone who delegated their approvals to them.
+function reviewableIds($u) {
+    if (!$u) return [];
+    $db = getDB();
+    if (isPayRole($u)) {
+        $st = $db->prepare("SELECT id FROM users WHERE id <> ?");
+        $st->execute([(int)$u['id']]);
+        return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    }
+    $st = $db->prepare("SELECT id FROM users WHERE id <> ? AND (manager_id = ? OR manager_id IN (SELECT id FROM users WHERE delegate_to = ?))");
+    $st->execute([(int)$u['id'], (int)$u['id'], (int)$u['id']]);
+    return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+}
+function canReview($u, $targetId) { return in_array((int)$targetId, reviewableIds($u), true); }
+function publicUser($row) {
+    return ['id' => 'e' . $row['id'], 'db_id' => (int)$row['id'], 'name' => $row['name'], 'email' => $row['email'] ?? '', 'role' => $row['role']];
+}
+function stripPay(&$rows) {
+    foreach ($rows as &$r) {
+        unset($r['pay_rate'], $r['total_pay'], $r['employee_rate'], $r['rate']);
+        if (!empty($r['entries'])) foreach ($r['entries'] as &$e) unset($e['pay_rate']);
+    }
+}
+
 $method = $_SERVER['REQUEST_METHOD'];
 $action = isset($_GET['action']) ? $_GET['action'] : '';
+
+// ─────────────────────────────────────────
+// ACCESS RULES
+// ─────────────────────────────────────────
+// Open without signing in: sign-in/reset flows, the login name list, the Chrome
+// extension, the client hours portal & hours-bank admin, and secret-protected GHL hooks.
+$PUBLIC_ACTIONS = ['verify_password','set_password','check_password_set','forgot_pin','reset_pin','load',
+                   'upsert_time','client_hours','get_client_by_location','load_client_banks','set_client_hours',
+                   'load_clients','ghl_add','fire_webhook'];
+$ROLE_RULES = [
+    'load_report_v2'=>['admin','hr'], 'load_report'=>['admin','hr'], 'export_payroll'=>['admin','hr'],
+    'export_clients'=>['admin','hr'], 'export_audit'=>['admin','hr'], 'load_audit'=>['admin','hr'],
+    'load_audit_period'=>['admin','hr'], 'load_overtime'=>['admin','hr'], 'resolve_overtime'=>['admin','hr','manager'],
+    'update_settings'=>['admin','hr'], 'update_secret'=>['admin','hr'], 'update_password'=>['admin','hr'],
+    'set_setting'=>['admin','hr'], 'test_invite_webhook'=>['admin','hr'], 'test_submission_webhook'=>['admin','hr'],
+    'test_decision_webhook'=>['admin','hr'], 'sync_clients'=>['admin','hr'], 'add_client'=>['admin','hr'],
+    'update_client'=>['admin','hr'], 'clean_clients'=>['admin','hr'], 'deactivate_user'=>['admin','hr'],
+    'add_employee'=>['admin','hr'], 'add_manager'=>['admin','hr'], 'update_employee'=>['admin','hr'],
+    'remove_employee'=>['admin','hr'], 'toggle_active'=>['admin','hr'], 'assign_manager'=>['admin','hr'],
+    'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
+    'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'],
+];
+// Removed: one-time setup helpers that let anyone create admins or change PINs
+if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
+    http_response_code(410); echo json_encode(['success' => false, 'error' => 'This action has been removed.']); exit;
+}
+$AUTH = null;
+if ($action !== '' && !in_array($action, $PUBLIC_ACTIONS, true)) {
+    $AUTH = isset($ROLE_RULES[$action]) ? requireRole($ROLE_RULES[$action]) : requireAuth();
+} else {
+    $AUTH = authUser();
+}
+
+// Who am I (used to stay signed in across refreshes)
+if ($action === 'whoami') {
+    echo json_encode(['success' => true, 'user' => publicUser($AUTH)]);
+    exit;
+}
+// Table/column list (no data) — used to plan database upgrades
+if ($action === 'schema_report') {
+    $db = getDB();
+    $cols = $db->query("SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION")->fetchAll();
+    echo json_encode(['success' => true, 'columns' => $cols]);
+    exit;
+}
+
 
 // ─────────────────────────────────────────
 // GET ACTIONS
@@ -24,17 +193,18 @@ if ($method === 'GET') {
         $id = preg_replace('/^e/', '', $_GET['id'] ?? '');
         $password = $_GET['pw'] ?? '';
         if (!$id || !$password) { echo json_encode(['success' => false, 'error' => 'ID and password required']); exit; }
-        $stmt = $db->prepare("SELECT id, password, password_hash, password_set, name, role FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND status = 'active' LIMIT 1");
         $stmt->execute([$id]);
         $row = $stmt->fetch();
         if (!$row) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
-        if (!$row['password_set']) { echo json_encode(['success' => false, 'needs_setup' => true]); exit; }
-        if ($row['password_hash']) {
+        if (!$row['password_set']) { echo json_encode(['success' => false, 'needs_setup' => true, 'verify' => setupProof($row)]); exit; }
+        if (!empty($row['password_hash'])) {
             $valid = password_verify($password, $row['password_hash']);
         } else {
-            $valid = ($row['password'] === $password);
+            $valid = isset($row['password']) && $row['password'] !== '' && hash_equals((string)$row['password'], (string)$password);
         }
-        echo json_encode(['success' => $valid, 'name' => $row['name'], 'role' => $row['role']]);
+        if (!$valid) { usleep(400000); echo json_encode(['success' => false]); exit; }
+        echo json_encode(['success' => true, 'name' => $row['name'], 'role' => $row['role'], 'token' => issueToken($row['id']), 'user' => publicUser($row)]);
         exit;
     }
 
@@ -93,15 +263,20 @@ if ($method === 'GET') {
         if (!$id || strlen($password) < 6) {
             echo json_encode(['success' => false, 'error' => 'Password must be at least 6 characters']); exit;
         }
-        $stmt = $db->prepare("SELECT id, role, password_set FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND status = 'active' LIMIT 1");
         $stmt->execute([$id]);
         $u = $stmt->fetch();
         if (!$u) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
         // First-time setup only. Changing an existing password must go through the emailed reset link.
         if ($u['password_set']) { echo json_encode(['success' => false, 'error' => 'A password is already set for this account. Use "Forgot password" to reset it.']); exit; }
+        // Prove it's really them: their old PIN, or the old shared Manager/HR password
+        $proof = setupProof($u);
+        $given = (string)($body['old'] ?? ($_GET['old'] ?? ''));
+        if ($proof === 'pin' && !hash_equals((string)$u['pin'], $given)) { usleep(400000); echo json_encode(['success' => false, 'error' => 'That PIN doesn\'t match the one on file.']); exit; }
+        if ($proof === 'role_password' && !hash_equals((string)getSetting($u['role'].'_password'), $given)) { usleep(400000); echo json_encode(['success' => false, 'error' => 'That doesn\'t match the current '.ucfirst($u['role']).' password.']); exit; }
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $id]);
-        echo json_encode(['success' => true]);
+        echo json_encode(['success' => true, 'token' => issueToken($id), 'user' => publicUser($u)]);
         exit;
     }
 
@@ -226,7 +401,7 @@ if ($method === 'GET') {
         $db     = getDB();
         ensureProjectMembers($db);
         $status = $_GET['status'] ?? '';
-        $viewer = (int)preg_replace('/^e/', '', $_GET['viewer'] ?? '');
+        $viewer = (int)$AUTH['id'];
         $sql    = "SELECT p.*, COALESCE(p.client_name, (SELECT c.name FROM clients c WHERE c.id = p.client_id)) AS client_name, u.name AS creator_name,
                    (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS task_count,
                    (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.stage = 'done') AS done_count,
@@ -264,7 +439,7 @@ if ($method === 'GET') {
         $assignedTo = (int)($_GET['assigned_to'] ?? 0);
         $stage      = $_GET['stage'] ?? '';
         ensureEntryColumns($db);
-        $viewer = (int)preg_replace('/^e/', '', $_GET['viewer'] ?? '');
+        $viewer = (int)$AUTH['id'];
         $sql = "SELECT t.*, p.name AS project_name, p.client_name, p.billing_type AS project_billing_type,
                 (SELECT COALESCE(SUM(te.hours),0) FROM timesheet_entries te WHERE te.task_id = t.id) AS ts_logged_hours,
                 (SELECT COALESCE(SUM(te.hours),0) FROM timesheet_entries te JOIN timesheets tsx ON tsx.id = te.timesheet_id WHERE te.task_id = t.id AND tsx.user_id = ?) AS my_logged_hours
@@ -314,7 +489,25 @@ if ($method === 'GET') {
         foreach ($db->query("SELECT `key`, `value` FROM settings")->fetchAll() as $row) {
             $settings[$row['key']] = $row['value'];
         }
-        $formatted = array_map(function($e) {
+        // Never send secrets. Signed-out visitors only get what the sign-in screen needs.
+        $SECRET_KEYS = ['ghl_api_key','webhook_secret','session_secret','manager_password','hr_password'];
+        foreach (array_keys($settings) as $k) {
+            if (in_array($k, $SECRET_KEYS, true) || strpos($k, 'pin_reset_') === 0) {
+                if (isPayRole($AUTH) && in_array($k, ['ghl_api_key','webhook_secret'], true) && $settings[$k] !== '') {
+                    $settings[$k] = '••••••' . substr($settings[$k], -4);   // masked for the Settings screen
+                } else { unset($settings[$k]); }
+            }
+        }
+        if (!$AUTH) {
+            $mini = array_map(function($e) {
+                return ['id'=>'e'.$e['id'], 'name'=>$e['name'], 'role'=>$e['role'], 'active'=>$e['status']==='active', 'password_set'=>(bool)$e['password_set']];
+            }, $employees);
+            echo json_encode(['success' => true, 'data' => ['employees' => $mini, 'settings' => (object)[]]]);
+            exit;
+        }
+        if (!isPayRole($AUTH)) $settings = [];
+        $canPay = isPayRole($AUTH); $meId = (int)$AUTH['id'];
+        $formatted = array_map(function($e) use ($canPay, $meId) {
             return [
                 'id'             => 'e' . $e['id'],
                 'db_id'          => $e['id'],
@@ -324,13 +517,14 @@ if ($method === 'GET') {
                 'role'           => $e['role'],
                 'pin_set'        => (bool)$e['pin_set'],
                 'password_set'   => (bool)$e['password_set'],
-                'rate'           => $e['rate'],
+                'rate'           => $canPay ? $e['rate'] : null,
+                'delegate_to'    => $e['delegate_to'],
                 'active'         => $e['status'] === 'active',
                 'added_from_ghl' => (bool)$e['added_from_ghl'],
                 'manager_id'     => $e['manager_id'],
             ];
         }, $employees);
-        echo json_encode(['success' => true, 'data' => ['employees' => $formatted, 'settings' => $settings]]);
+        echo json_encode(['success' => true, 'data' => ['employees' => $formatted, 'settings' => $settings], 'me' => publicUser($AUTH)]);
         exit;
     }
 
@@ -356,6 +550,7 @@ if ($method === 'GET') {
         $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
         $period = isset($_GET['period']) ? $_GET['period'] : '';
         $dbId = preg_replace('/^e/', '', $uid);
+        if ((int)$dbId !== (int)$AUTH['id'] && !canReview($AUTH, $dbId)) { http_response_code(403); echo json_encode(['success'=>false,'error'=>'Not allowed']); exit; }
         $stmt = $db->prepare("SELECT t.*, u.name as employee_name, u.email as employee_email, u.rate as employee_rate
             FROM timesheets t JOIN users u ON t.user_id = u.id
             WHERE t.user_id = ? AND t.period = ? LIMIT 1");
@@ -374,6 +569,7 @@ if ($method === 'GET') {
             WHERE tc.timesheet_id = ? ORDER BY tc.created_at DESC");
         $stmt3->execute([$ts['id']]);
         $ts['comments'] = $stmt3->fetchAll();
+        if (!isPayRole($AUTH)) { $one = [$ts]; stripPay($one); $ts = $one[0]; }
         echo json_encode(['success' => true, 'record' => $ts]);
         exit;
     }
@@ -400,6 +596,10 @@ if ($method === 'GET') {
             $stmt3->execute([$ts['id']]);
             $ts['comments'] = $stmt3->fetchAll();
         }
+        // Only your own timecards and the ones you review
+        $allowed = reviewableIds($AUTH); $allowed[] = (int)$AUTH['id'];
+        $timesheets = array_values(array_filter($timesheets, function($t) use ($allowed) { return in_array((int)$t['user_id'], $allowed, true); }));
+        if (!isPayRole($AUTH)) stripPay($timesheets);
         echo json_encode(['success' => true, 'records' => $timesheets]);
         exit;
     }
@@ -745,9 +945,7 @@ if ($method === 'GET') {
             echo json_encode(['success'=>true,'plan'=>'diy','plan_label'=>'DIY Plan',
                 'client'=>['name'=>$client['name'],'plan'=>'diy','plan_label'=>'DIY Plan']]); exit;
         }
-        $pStarts = [[2026,4,27],[2026,5,11],[2026,5,25],[2026,6,8],[2026,6,22],[2026,7,6],
-            [2026,7,20],[2026,8,3],[2026,8,17],[2026,8,31],[2026,9,14],[2026,9,28],
-            [2026,10,12],[2026,10,26],[2026,11,9],[2026,11,23],[2026,12,7],[2026,12,21]];
+        $pStarts = payPeriodStarts();
         $today = new DateTime();
         $periods = []; $currentPeriod = ''; $currentPidx = 0;
         foreach ($pStarts as $i => $ps) {
@@ -962,7 +1160,7 @@ if ($method === 'GET' && $action === 'fire_webhook') {
 }
 
 if ($method === 'GET' && in_array($action, ['add_project','archive_project','delete_project','set_project_members','set_project_est_hours','log_task_time','add_task','update_task','add_task_comment','toggle_task_follower','delete_task'])) {
-    $body = normalizeUserIds($_GET);
+    $body = applyAuthIds(normalizeUserIds($_GET), $action);
     $db = getDB();
     ensureProjectMembers($db);
 
@@ -1347,7 +1545,7 @@ if ($method === 'POST') {
     $rawBody = file_get_contents('php://input');
     $body = json_decode($rawBody, true);
     if (!is_array($body)) $body = !empty($_POST) ? $_POST : [];
-    $body = normalizeUserIds($body);
+    $body = applyAuthIds(normalizeUserIds($body), $action);
     $db = getDB();
 
     // ── ADD PROJECT ──────────────────────────────────────────────────────────
@@ -1545,11 +1743,7 @@ if ($method === 'POST') {
         $clientName = $client ? $client['name'] : $clientName;
 
         // Determine pay period
-        $pStarts = [
-            [2026,4,27],[2026,5,11],[2026,5,25],[2026,6,8],[2026,6,22],[2026,7,6],
-            [2026,7,20],[2026,8,3],[2026,8,17],[2026,8,31],[2026,9,14],[2026,9,28],
-            [2026,10,12],[2026,10,26],[2026,11,9],[2026,11,23],[2026,12,7],[2026,12,21]
-        ];
+        $pStarts = payPeriodStarts();
         $checkDt = new DateTime($date);
         $period = 'Unknown'; $pidx = 0; $pStart = $date; $pEnd = $date;
         foreach ($pStarts as $i => $ps) {
@@ -1626,15 +1820,20 @@ if ($method === 'POST') {
         if (!$id || strlen($password) < 6) {
             echo json_encode(['success' => false, 'error' => 'Password must be at least 6 characters']); exit;
         }
-        $stmt = $db->prepare("SELECT id, role, password_set FROM users WHERE id = ? AND status = 'active' LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND status = 'active' LIMIT 1");
         $stmt->execute([$id]);
         $u = $stmt->fetch();
         if (!$u) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
         // First-time setup only. Changing an existing password must go through the emailed reset link.
         if ($u['password_set']) { echo json_encode(['success' => false, 'error' => 'A password is already set for this account. Use "Forgot password" to reset it.']); exit; }
+        // Prove it's really them: their old PIN, or the old shared Manager/HR password
+        $proof = setupProof($u);
+        $given = (string)($body['old'] ?? ($_GET['old'] ?? ''));
+        if ($proof === 'pin' && !hash_equals((string)$u['pin'], $given)) { usleep(400000); echo json_encode(['success' => false, 'error' => 'That PIN doesn\'t match the one on file.']); exit; }
+        if ($proof === 'role_password' && !hash_equals((string)getSetting($u['role'].'_password'), $given)) { usleep(400000); echo json_encode(['success' => false, 'error' => 'That doesn\'t match the current '.ucfirst($u['role']).' password.']); exit; }
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $id]);
-        echo json_encode(['success' => true]);
+        echo json_encode(['success' => true, 'token' => issueToken($id), 'user' => publicUser($u)]);
         exit;
     }
 
@@ -1891,12 +2090,14 @@ if ($method === 'POST') {
         $hash = password_hash($pass, PASSWORD_DEFAULT);
         $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $uid]);
         $db->prepare("DELETE FROM settings WHERE `key` = ?")->execute([$key]);
-        echo json_encode(['success' => true, 'role' => $uRow['role']]);
+        $full = $db->prepare("SELECT * FROM users WHERE id = ?"); $full->execute([$uid]);
+        echo json_encode(['success' => true, 'role' => $uRow['role'], 'token' => issueToken($uid), 'user' => publicUser($full->fetch())]);
         exit;
     }
 
     // ── SAVE TIMESHEET ──────────────────────────────────────────────────────
     if ($action === 'save_timesheet') {
+        $body['employeeId'] = 'e' . $AUTH['id'];   // you can only save your own timesheet
         $rawId = $body['employeeId'] ?? '';
         $strippedId = preg_replace('/^e/', '', $rawId);
         if (is_numeric($strippedId)) {
@@ -1918,12 +2119,9 @@ if ($method === 'POST') {
         $payRate     = (float)($body['payRate']    ?? 0);
         $entries     = $body['entries'] ?? [];
 
-        $periodStarts = [
-            [2026,4,27],[2026,5,11],[2026,5,25],[2026,6,8],[2026,6,22],[2026,7,6],
-            [2026,7,20],[2026,8,3],[2026,8,17],[2026,8,31],[2026,9,14],[2026,9,28],
-            [2026,10,12],[2026,10,26],[2026,11,9],[2026,11,23],[2026,12,7],[2026,12,21]
-        ];
-        $ps        = $periodStarts[$periodIndex] ?? [2026,3,27];
+        $periodStarts = payPeriodStarts();
+        if (!isset($periodStarts[$periodIndex])) { $x = new DateTime('2026-04-27'); $x->modify('+'.(14*$periodIndex).' days'); $periodStarts[$periodIndex] = [(int)$x->format('Y'),(int)$x->format('n'),(int)$x->format('j')]; }
+        $ps        = $periodStarts[$periodIndex];
         $startDate = sprintf('%04d-%02d-%02d', $ps[0], $ps[1], $ps[2]);
         $endDt     = new DateTime($startDate);
         $endDt->modify('+13 days');
@@ -1983,11 +2181,14 @@ if ($method === 'POST') {
             $empRow = $db->prepare("SELECT name, email, manager_id FROM users WHERE id = ?");
             $empRow->execute([$dbId]);
             $empData = $empRow->fetch();
-            if ($empData && $empData['manager_id']) {
-                $mgrRow = $db->prepare("SELECT name, email FROM users WHERE id = ?");
-                $mgrRow->execute([$empData['manager_id']]);
-                $mgrData = $mgrRow->fetch();
-                if ($mgrData) {
+            if ($empData) {
+                $mgrData = ['name' => '', 'email' => ''];
+                if ($empData['manager_id']) {
+                    $mgrRow = $db->prepare("SELECT name, email FROM users WHERE id = ?");
+                    $mgrRow->execute([$empData['manager_id']]);
+                    $mgrData = $mgrRow->fetch() ?: $mgrData;
+                }
+                {
                     fireNotificationWebhook($db, 'timecard_submitted', [
                         'employee_name'    => $empData['name'],
                         'employee_email'   => $empData['email'],
@@ -2007,6 +2208,10 @@ if ($method === 'POST') {
     // ── APPROVE TIMESHEET ───────────────────────────────────────────────────
     if ($action === 'approve_timesheet') {
         $tsId         = (int)($body['timesheet_id'] ?? 0);
+        $own = $db->prepare("SELECT user_id FROM timesheets WHERE id = ?"); $own->execute([$tsId]);
+        $ownerId = $own->fetchColumn();
+        if ($ownerId === false) { echo json_encode(['success'=>false,'error'=>'Timesheet not found']); exit; }
+        if (!canReview($AUTH, $ownerId)) { http_response_code(403); echo json_encode(['success'=>false,'error'=>"You can't review this timecard."]); exit; }
         $approverId   = !empty($body['approver_id']) ? (int)$body['approver_id'] : null;
         $approverName = trim($body['approver_name'] ?? 'Manager');
         $comment      = trim($body['comment'] ?? '');
@@ -2038,6 +2243,10 @@ if ($method === 'POST') {
     // ── REJECT TIMESHEET ────────────────────────────────────────────────────
     if ($action === 'reject_timesheet') {
         $tsId         = (int)($body['timesheet_id'] ?? 0);
+        $own = $db->prepare("SELECT user_id FROM timesheets WHERE id = ?"); $own->execute([$tsId]);
+        $ownerId = $own->fetchColumn();
+        if ($ownerId === false) { echo json_encode(['success'=>false,'error'=>'Timesheet not found']); exit; }
+        if (!canReview($AUTH, $ownerId)) { http_response_code(403); echo json_encode(['success'=>false,'error'=>"You can't review this timecard."]); exit; }
         $approverId   = !empty($body['approver_id']) ? (int)$body['approver_id'] : null;
         $approverName = trim($body['approver_name'] ?? 'Manager');
         $comment      = trim($body['comment'] ?? '');
@@ -2069,6 +2278,10 @@ if ($method === 'POST') {
     // ── RETURN TIMESHEET ────────────────────────────────────────────────────
     if ($action === 'return_timesheet') {
         $tsId         = (int)($body['timesheet_id'] ?? 0);
+        $own = $db->prepare("SELECT user_id FROM timesheets WHERE id = ?"); $own->execute([$tsId]);
+        $ownerId = $own->fetchColumn();
+        if ($ownerId === false) { echo json_encode(['success'=>false,'error'=>'Timesheet not found']); exit; }
+        if (!canReview($AUTH, $ownerId)) { http_response_code(403); echo json_encode(['success'=>false,'error'=>"You can't review this timecard."]); exit; }
         $approverId   = !empty($body['approver_id']) ? (int)$body['approver_id'] : null;
         $approverName = trim($body['approver_name'] ?? 'Manager');
         $comment      = trim($body['comment'] ?? '');
@@ -2129,6 +2342,10 @@ if ($method === 'POST') {
     if ($action === 'set_delegate') {
         $managerId  = preg_replace('/^e/', '', $body['manager_id']  ?? '');
         $delegateId = preg_replace('/^e/', '', $body['delegate_id'] ?? '');
+        if ($delegateId) {
+            $dr = $db->prepare("SELECT role FROM users WHERE id = ? AND status = 'active'"); $dr->execute([(int)$delegateId]);
+            if (!in_array($dr->fetchColumn(), ['admin','hr','manager']) || (int)$delegateId === (int)$managerId) { echo json_encode(['success'=>false,'error'=>'Pick a manager, HR or admin (not yourself).']); exit; }
+        }
         $db->prepare("UPDATE users SET delegate_to=? WHERE id=?")->execute([$delegateId?:null,$managerId]);
         echo json_encode(['success' => true]);
         exit;
@@ -2246,7 +2463,11 @@ if ($method === 'POST') {
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
         $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period'];
-        foreach ($allowed as $key) { if (isset($body[$key])) setSetting($key, $body[$key]); }
+        foreach ($allowed as $key) {
+            if (!isset($body[$key])) continue;
+            if (strpos((string)$body[$key], '••••') === 0) continue;   // unchanged masked secret
+            setSetting($key, $body[$key]);
+        }
         echo json_encode(['success' => true]);
         exit;
     }
@@ -2264,7 +2485,8 @@ if ($method === 'POST') {
 
     // ── UPDATE WEBHOOK SECRET ───────────────────────────────────────────────
     if ($action === 'update_secret') {
-        setSetting('webhook_secret', trim($body['secret'] ?? ''));
+        $sec = trim($body['secret'] ?? '');
+        if (strpos($sec, '••••') !== 0) setSetting('webhook_secret', $sec);
         echo json_encode(['success' => true]);
         exit;
     }
@@ -2297,21 +2519,6 @@ if ($method === 'POST') {
 // HELPERS
 // ─────────────────────────────────────────
 
-function getSetting($key, $default = '') {
-    try {
-        $db   = getDB();
-        $stmt = $db->prepare("SELECT `value` FROM settings WHERE `key` = ? LIMIT 1");
-        $stmt->execute([$key]);
-        $row  = $stmt->fetch();
-        return $row ? $row['value'] : $default;
-    } catch (Exception $e) { return $default; }
-}
-
-function setSetting($key, $value) {
-    $db = getDB();
-    $db->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
-       ->execute([$key, $value]);
-}
 
 function checkOvertime($db, $tsId, $userId, $entries) {
     $threshold = (float)getSetting('overtime_weekly_threshold', 40);
@@ -2347,6 +2554,27 @@ function normalizeUserIds($body) {
     return $body;
 }
 
+// What a person must enter to create their first password
+function setupProof($u) {
+    if (!empty($u['pin_set']) && !empty($u['pin'])) return 'pin';
+    if (in_array($u['role'], ['manager','hr']) && getSetting($u['role'].'_password') !== '') return 'role_password';
+    return 'none';
+}
+
+// Signed-in user's id wins over any id the page sends
+function applyAuthIds($body, $action) {
+    $u = authUser();
+    if (!$u) return $body;
+    foreach (['actor_id','created_by','approver_id','hr_id'] as $k) $body[$k] = (string)$u['id'];
+    if (isset($body['approver_id'])) $body['approver_name'] = $u['name'];
+    if (in_array($action, ['add_task_comment','log_task_time','toggle_task_follower'], true)) {
+        $body['user_id'] = (string)$u['id'];
+        if ($action === 'add_task_comment') $body['user_name'] = $u['name'];
+    }
+    if ($action === 'set_delegate') $body['manager_id'] = (string)$u['id'];
+    return $body;
+}
+
 // Project team members (many people per project)
 function ensureProjectMembers($db) {
     static $done = false;
@@ -2376,24 +2604,15 @@ function ensureEntryColumns($db) {
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN task_id INT DEFAULT NULL"); } catch (Exception $e) {}
 }
 
-// Pay period containing a date (same calendar the timesheet uses)
+// Pay period containing a date — calculated from the first period (Apr 27 2026), no end date
 function periodForDate($date) {
-    $pStarts = [
-        [2026,4,27],[2026,5,11],[2026,5,25],[2026,6,8],[2026,6,22],[2026,7,6],
-        [2026,7,20],[2026,8,3],[2026,8,17],[2026,8,31],[2026,9,14],[2026,9,28],
-        [2026,10,12],[2026,10,26],[2026,11,9],[2026,11,23],[2026,12,7],[2026,12,21]
-    ];
-    $d = new DateTime($date);
-    foreach ($pStarts as $i => $ps) {
-        $s = new DateTime(sprintf('%04d-%02d-%02d', $ps[0], $ps[1], $ps[2]));
-        $e = clone $s; $e->modify('+13 days');
-        if ($d >= $s && $d <= $e) {
-            return ['period' => $s->format('M d').' - '.$e->format('M d'), 'index' => $i,
-                    'start' => $s->format('Y-m-d'), 'end' => $e->format('Y-m-d'),
-                    'day' => (int)$s->diff($d)->days];
-        }
-    }
-    return null;
+    $a = new DateTime('2026-04-27'); $d = new DateTime($date);
+    if ($d < $a) return null;
+    $days = (int)$a->diff($d)->days; $idx = intdiv($days, 14);
+    $s = clone $a; $s->modify('+' . (14 * $idx) . ' days');
+    $e = clone $s; $e->modify('+13 days');
+    return ['period' => $s->format('M d').' - '.$e->format('M d'), 'index' => $idx,
+            'start' => $s->format('Y-m-d'), 'end' => $e->format('Y-m-d'), 'day' => $days % 14];
 }
 
 function fireNotificationWebhook($db, $event, $payload) {

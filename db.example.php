@@ -1,11 +1,11 @@
 <?php
 // db.php — Database connection
-// Local development settings — change for production
+// Copy to db.php on the server and fill in real values. Never commit db.php.
 
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'Stagging');
-define('DB_USER', 'Staginguser');
-define('DB_PASS', '123Staging123!');
+define('DB_NAME', 'your_database_name');
+define('DB_USER', 'your_database_user');
+define('DB_PASS', 'your_database_password');
 define('DB_CHARSET', 'utf8mb4');
 
 function getDB() {
