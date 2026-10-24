@@ -639,7 +639,7 @@ function buildEmpLabel(e){
   const roleLabel={employee:'Employee',manager:'Manager',hr:'HR',admin:'Admin'};
   const nameCounts={};
   EMPS.forEach(x=>{ nameCounts[x.name]=(nameCounts[x.name]||0)+1; });
-  return nameCounts[e.name]>1 ? `${e.name} (${roleLabel[e.role]||e.role})` : e.name;
+  return nameCounts[e.name]>1 ? `${e.name} (${roleLabel[e.role]||e.role||'no role'})` : e.name;
 }
 function renderNameSuggestions(query){
   const list=document.getElementById('lf-name-list');
@@ -694,6 +694,7 @@ function lfMatchName(value,allowEmail){
   return true;
 }
 function selectNameSuggestion(id, label, keepPassword){
+  const hu=document.getElementById('lf-username'); if(hu) hu.value=label||'';
   _selectedEmpId=id;
   const inp=document.getElementById('lf-name-input');
   if(inp) inp.value=label;
@@ -717,7 +718,8 @@ function buildLoginForm(){
     <form id="lf-form" autocomplete="on" action="#" novalidate>
     <div class="lf-group" style="position:relative">
       <label class="lf-label" for="lf-name-input">Name</label>
-      <input type="text" class="lf-input" id="lf-name-input" name="username" placeholder="Start typing your name…" autocomplete="username" autocapitalize="words" autocorrect="off" spellcheck="false">
+      <input type="text" class="lf-input" id="lf-name-input" name="ts-person" placeholder="Start typing your name…" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other">
+      <input type="text" id="lf-username" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
       <div id="lf-name-list" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:#1a2a3a;border:1.5px solid rgba(3,173,143,.5);border-radius:0 0 10px 10px;max-height:220px;overflow-y:auto"></div>
       <div id="lf-name-hint" style="font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.35rem;display:none">Select your name from the list ↑</div>
     </div>
@@ -787,6 +789,13 @@ function buildLoginForm(){
   nameInp.addEventListener('animationstart',function(e){
     if(e.animationName==='onAutoFillStart') setTimeout(()=>{ if(!_selectedEmpId) lfMatchName(nameInp.value,true); },0);
   });
+  const hiddenUser=document.getElementById('lf-username');
+  const fromSaved=()=>{ if(!_selectedEmpId&&hiddenUser.value){ if(lfMatchName(hiddenUser.value,false)) nameInp.value=hiddenUser.value; } };
+  hiddenUser.addEventListener('change',fromSaved);
+  hiddenUser.addEventListener('input',fromSaved);
+  document.getElementById('lf-password').addEventListener('change',()=>setTimeout(fromSaved,0));
+  // If anything still drops an email into the Name box, clear it instead of leaving a dead end
+  nameInp.addEventListener('change',function(){ if(!_selectedEmpId&&this.value.includes('@')&&!lfMatchName(this.value,true)){ this.value=''; renderNameSuggestions(''); } });
   document.getElementById('lf-form').addEventListener('submit',function(e){
     e.preventDefault();
     if(!_selectedEmpId) lfMatchName(nameInp.value,true);

@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-23.3');
+define('SCHEMA_VERSION', '2026-10-24.1');
 
 function ensureSchema($db) {
     static $done = false;
@@ -103,6 +103,16 @@ function ensureSchema($db) {
         created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX (timesheet_id)
     )");
+
+    // ── users.role must accept every role (live had an ENUM without 'admin') ──
+    try {
+        $st = $db->prepare("SELECT DATA_TYPE, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'");
+        $st->execute();
+        $rc = $st->fetch();
+        if ($rc && strtolower($rc['DATA_TYPE']) === 'enum' && stripos($rc['COLUMN_TYPE'], "'admin'") === false) {
+            $exec("ALTER TABLE users MODIFY role VARCHAR(20) NOT NULL DEFAULT 'employee'");
+        }
+    } catch (Exception $e) { error_log('schema role: ' . $e->getMessage()); }
 
     // ── Columns added to existing tables ─────────────────────────────────────
     $add('users', 'password_hash',  "VARCHAR(255) NULL");
