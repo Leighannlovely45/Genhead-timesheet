@@ -9,6 +9,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 require_once __DIR__ . '/db.php';
 
+// ── TIMEZONE — Genhead runs on Central time regardless of the hosting server's clock.
+// PHP dates (submitted/approved times, "today") and MySQL NOW()/timestamps both use it.
+define('APP_TIMEZONE', 'America/Chicago');
+date_default_timezone_set(APP_TIMEZONE);
+try { getDB()->exec("SET time_zone = '" . date('P') . "'"); } catch (Exception $e) { error_log('timezone: ' . $e->getMessage()); }
+
 // Bi-weekly pay period start dates [y,m,d], calculated from the first period
 // (Apr 27 2026) through ~2 months from today — no hard-coded end date.
 if (!function_exists('payPeriodStarts')) {
