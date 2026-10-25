@@ -584,7 +584,7 @@ function entriesFromDB(list){
     const ei=perDay[day]||0;
     if(ei>=MAX_ROWS_PER_DAY)return;
     perDay[day]=ei+1;
-    entries.push({day,ei,src:e.source||"",task:e.task_id?String(e.task_id):"",extloc:e.ext_location||"",
+    entries.push({day,ei,src:e.source||"",task:e.task_id?String(e.task_id):"",extloc:e.ext_location||"",extsess:e.ext_session?String(e.ext_session):"",
       proj:e.project_id?String(e.project_id):"",projName:e.project_name||"",
       co:e.client_name||"",
       del:e.deliverable||"",
@@ -1464,7 +1464,7 @@ async function saveTimesheet(uid,pi,submit){
   for(let day=0;day<14;day++){
     dayRows(d,day).forEach((en,i)=>{
       if(!(en.hrs||en.co||en.del))return;
-      flat.push({day,dayName:DAYS[day%7],task:en.task||"",extloc:en.extloc||"",co:en.co||"",proj:en.proj||"",del:en.del||"",hrs:en.hrs||"",bt:en.bt||BT_DEFAULT,rowIndex:i,src:en.src||""});
+      flat.push({day,dayName:DAYS[day%7],task:en.task||"",extloc:en.extloc||"",extsess:en.extsess||"",co:en.co||"",proj:en.proj||"",del:en.del||"",hrs:en.hrs||"",bt:en.bt||BT_DEFAULT,rowIndex:i,src:en.src||""});
       allH+=pfl(en.hrs);
     });
   }

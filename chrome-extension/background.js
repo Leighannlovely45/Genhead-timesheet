@@ -8,6 +8,7 @@ const AGENCY_LOCATION = '6BHLldSrdn5rbbMGKr1n';   // Genhead's own account — n
 const IDLE_SECONDS = 120;                          // pause after 2 minutes without input
 const MAX_GAP_MS = 150 * 1000;                     // longer gaps = computer asleep; not counted
 const KEEP_DAYS = 3;
+const NEW_SESSION_AFTER_MS = 60 * 60 * 1000;      // a break of 1 hour or more starts a new session
 
 chrome.idle.setDetectionInterval(IDLE_SECONDS);
 
@@ -18,7 +19,8 @@ function localDate(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-const totalKey = (date, loc, taskId) => `${date}|${loc}|${taskId || 0}`;
+const totalKey = (date, loc, taskId, session) => `${date}|${loc}|${taskId || 0}|${session || 0}`;
+function clockLabel(ms) { return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
 function cleanTitle(t) {
   return String(t || '').replace(/\s*[-|·]\s*(HighLevel|GoHighLevel|GenSuite|Genhead).*$/i, '').trim().slice(0, 120);
 }
@@ -34,22 +36,26 @@ async function commit(now) {
   let since = run.since || now;
   let elapsed = now - since;
   if (elapsed > MAX_GAP_MS) elapsed = 0;           // asleep / closed: don't count the gap
+  const upd = { run };
   if (elapsed > 0) {
-    const k = totalKey(localDate(since), run.loc, run.taskId);
-    const t = totals[k] || { date: localDate(since), loc: run.loc, taskId: run.taskId || null, label: run.label || '', seconds: 0, synced: -1 };
+    const k = totalKey(localDate(since), run.loc, run.taskId, run.session);
+    const t = totals[k] || { date: localDate(since), loc: run.loc, taskId: run.taskId || null, session: run.session || 0,
+                             sessionStart: run.sessionStart || since, label: run.label || '', seconds: 0, synced: -1 };
     t.seconds += Math.round(elapsed / 1000);
     if (run.label) t.label = run.label;
     totals[k] = t;
+    upd.totals = totals;
+    upd.lastCountedAt = now;
   }
   run.since = now;
-  await set({ run, totals });
+  await set(upd);
 }
 
 // ── decide whether we should be timing right now, and for which client ────
 async function evaluate(reasonHint) {
   const now = Date.now();
   await commit(now);
-  const { auth, run = {}, taskByLoc = {} } = await get(['auth', 'run', 'taskByLoc']);
+  const { auth, run = {}, lastCountedAt = 0, forceNewSession = false } = await get(['auth', 'run', 'lastCountedAt', 'forceNewSession']);
   let want = null, reason = reasonHint || '';
 
   if (!auth || !auth.token) reason = 'signed_out';
@@ -70,9 +76,21 @@ async function evaluate(reasonHint) {
   }
 
   if (want) {
+    // Back after 1 hour+ away (or just signed in / new day) → new session: its own
+    // timesheet line, and the task choice resets so it isn't assumed.
+    const away = !run.active && (!lastCountedAt || now - lastCountedAt >= NEW_SESSION_AFTER_MS);
+    const newDay = run.sessionStart && localDate(run.sessionStart) !== localDate(now);
+    let session = run.session || 0, sessionStart = run.sessionStart || now, newSessionAt = run.newSessionAt || null;
+    if (forceNewSession || away || newDay || !session) {
+      session = Math.floor(now / 1000); sessionStart = now;
+      newSessionAt = (run.session && !forceNewSession) ? now : null;   // tell the person only after a real break
+      await set({ taskByLoc: {}, forceNewSession: false });
+    }
+    const { taskByLoc = {} } = await get('taskByLoc');
     const taskId = taskByLoc[want.loc] || null;
-    const same = run.active && run.loc === want.loc && (run.taskId || null) === taskId;
-    await set({ run: { active: true, loc: want.loc, label: want.label || run.label || '', taskId, since: same ? run.since : now, startedAt: same ? run.startedAt : now, reason: 'tracking' } });
+    const same = run.active && run.loc === want.loc && (run.taskId || null) === taskId && run.session === session;
+    await set({ run: { active: true, loc: want.loc, label: want.label || run.label || '', taskId, session, sessionStart, newSessionAt,
+                       since: same ? run.since : now, startedAt: same ? run.startedAt : now, reason: 'tracking' } });
   } else {
     await set({ run: { ...run, active: false, since: null, reason } });
   }
@@ -86,7 +104,8 @@ async function sync() {
   const today = localDate(Date.now());
   const pending = Object.entries(totals).filter(([, t]) => t.seconds !== t.synced && t.seconds >= 30);
   if (!pending.length) return;
-  const items = pending.map(([key, t]) => ({ key, date: t.date, location_id: t.loc, task_id: t.taskId, seconds: t.seconds, client_name: t.label }));
+  const items = pending.map(([key, t]) => ({ key, date: t.date, location_id: t.loc, task_id: t.taskId, seconds: t.seconds, client_name: t.label,
+    session: t.session || 0, session_label: t.sessionStart ? clockLabel(t.sessionStart) : '' }));
   let res;
   try {
     res = await fetch(`${API}?action=ext_track`, {
@@ -144,7 +163,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const r = await fetch(`${API}?action=ext_login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: msg.email, pw: msg.pw }) });
         data = await r.json();
       } catch (e) { return { success: false, error: "Can't reach the timesheet. Check your internet connection." }; }
-      if (data && data.success) { await set({ auth: { token: data.token, user: data.user }, lastError: '' }); await evaluate(); await sync(); }
+      if (data && data.success) { await set({ auth: { token: data.token, user: data.user }, lastError: '', forceNewSession: true }); await evaluate(); await sync(); }
       return data || { success: false, error: 'Sign-in failed.' };
     }
     if (msg.type === 'logout') {
@@ -156,10 +175,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       await commit(Date.now());
       const { taskByLoc = {} } = await get('taskByLoc');
       if (msg.taskId) taskByLoc[msg.loc] = Number(msg.taskId); else delete taskByLoc[msg.loc];
-      await set({ taskByLoc });
+      const { run } = await get('run'); if (run) run.newSessionAt = null;
+      await set({ taskByLoc, run });
       await evaluate(); await sync();
       return { success: true };
     }
+    if (msg.type === 'ackSession') { const { run } = await get('run'); if (run) { run.newSessionAt = null; await set({ run }); } return { success: true }; }
     if (msg.type === 'syncNow') { await commit(Date.now()); await sync(); return get(['lastError', 'lastSync', 'totals']); }
     return null;
   };

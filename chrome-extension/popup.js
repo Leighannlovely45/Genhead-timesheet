@@ -64,10 +64,12 @@ async function render() {
   const started = run.active && run.since ? run.since : null;
   const tick = () => { $('timer').textContent = fmtClock(base + (started ? (Date.now() - started) / 1000 : 0)); };
   tick(); if (started) ticker = setInterval(tick, 1000);
-  $('timerSub').textContent = loc ? 'today in this account' : 'open a client sub-account to start';
+  $('timerSub').textContent = loc ? (run.sessionStart ? `today in this account · this session since ${new Date(run.sessionStart).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'today in this account') : 'open a client sub-account to start';
 
   // notices
   let n = '';
+  if (run.active && run.newSessionAt && loc)
+    n += `<div class="warn">Welcome back. You were away for over an hour, so this is a <b>new session</b> on its own timesheet line. Pick what you're working on below. <a id="ackSess" style="color:#fde68a;cursor:pointer;text-decoration:underline">Got it</a></div>`;
   if (status.lastError) n += `<div class="warn err">${esc(status.lastError)}</div>`;
   if (ctx && ['submitted', 'under_review', 'approved'].includes(ctx.sheet_status))
     n += `<div class="warn err">Your ${esc(ctx.period)} timesheet is already ${ctx.sheet_status === 'approved' ? 'approved' : 'submitted'}, so new time can't be added. Ask your reviewer to return it.</div>`;
@@ -80,7 +82,23 @@ async function render() {
       n += `<div class="warn">This sub-account isn't linked to a client yet. Your time is still saved — an Admin or HR can link it from this tracker. Sub-account ID: <code>${esc(loc)}</code></div>`;
     }
   }
+  if (loc && linked && ctx.client.name_is_id) {
+    const pageName = run.label && !/^[A-Za-z0-9]{15,}$/.test(run.label) ? run.label : '';
+    if (ctx.can_link) {
+      n += `<div class="warn">This client shows up as its account ID <code>${esc(ctx.client.name)}</code> on timesheets and reports. Give it its real name:
+        <input id="renameInp" style="margin-top:6px" value="${esc(pageName)}" placeholder="Client name">
+        <button class="btn btn-p" id="renameBtn" style="margin-top:6px;width:100%">Rename client</button></div>`;
+    } else {
+      n += `<div class="warn">This client shows up as its account ID <code>${esc(ctx.client.name)}</code> on timesheets and reports${pageName ? ` (its name here is <b>${esc(pageName)}</b>)` : ''}. Your time is saved — please ask an Admin or HR to rename it from this tracker.</div>`;
+    }
+  }
   $('notice').innerHTML = n;
+  if ($('renameBtn')) $('renameBtn').onclick = async () => {
+    const name = $('renameInp').value.trim(); if (!name) return;
+    const r = await api('ext_rename_client', { method: 'POST', body: { client_id: ctx.client.id, name } });
+    if (r && r.success) render(); else alert((r && r.error) || 'Could not rename.');
+  };
+  if ($('ackSess')) $('ackSess').onclick = async () => { await send({ type: 'ackSession' }); render(); };
   if ($('linkBtn')) $('linkBtn').onclick = async () => {
     const cid = $('linkSel').value; if (!cid) return;
     const r = await api('ext_link_location', { method: 'POST', body: { location_id: loc, client_id: Number(cid) } });

@@ -160,7 +160,7 @@ $ROLE_RULES = [
     'add_employee'=>['admin','hr'], 'add_manager'=>['admin','hr'], 'update_employee'=>['admin','hr'],
     'remove_employee'=>['admin','hr'], 'toggle_active'=>['admin','hr'], 'assign_manager'=>['admin','hr'],
     'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
-    'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'],
+    'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'], 'ext_rename_client'=>['admin','hr'],
 ];
 // Removed: one-time setup helpers that let anyone create admins or change PINs
 if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
@@ -182,6 +182,14 @@ if ($action === 'whoami') {
 // CHROME EXTENSION v2
 // ─────────────────────────────────────────
 // Find a client by its GHL sub-account (location) id
+// A client "name" that is really a GHL id (old tracker created these): no spaces,
+// 15+ letters/digits, and both letters and digits — e.g. oSDgZEGJA3v2SLQTb
+function nameLooksLikeId($name, $loc = '') {
+    $n = trim((string)$name);
+    if ($n === '') return true;
+    if ($loc !== '' && strcasecmp($n, $loc) === 0) return true;
+    return (bool)preg_match('/^(?=.*\d)(?=.*[A-Za-z])[A-Za-z0-9]{15,}$/', $n);
+}
 function clientByLocation($db, $loc) {
     if (!$loc) return null;
     foreach (['location_id', 'ghl_contact_id'] as $col) {
@@ -259,7 +267,7 @@ if ($action === 'ext_context') {
         $linkable = $db->query("SELECT id, name FROM clients WHERE active = 1 ORDER BY name")->fetchAll();
     }
     echo json_encode(['success'=>true, 'user'=>publicUser($AUTH), 'date'=>$date, 'linkable'=>$linkable, 'can_link'=>isPayRole($AUTH),
-        'client'=>$client ? ['id'=>(int)$client['id'],'name'=>$client['name']] : null,
+        'client'=>$client ? ['id'=>(int)$client['id'],'name'=>$client['name'],'name_is_id'=>nameLooksLikeId($client['name'], $loc)] : null,
         'tasks'=>$tasks, 'today'=>$today, 'period'=>$per ? $per['period'] : null, 'sheet_status'=>$sheetStatus]);
     exit;
 }
@@ -283,6 +291,25 @@ if ($action === 'ext_link_location' && $method === 'POST') {
     exit;
 }
 
+// Admin/HR: give a client its real name (replacing an id-looking name)
+if ($action === 'ext_rename_client' && $method === 'POST') {
+    $db  = getDB();
+    $raw = json_decode(file_get_contents('php://input'), true) ?: [];
+    $cid = (int)($raw['client_id'] ?? 0);
+    $name = trim(preg_replace('/\s+/', ' ', (string)($raw['name'] ?? '')));
+    if (!$cid || mb_strlen($name) < 2 || mb_strlen($name) > 120) { echo json_encode(['success'=>false,'error'=>'Enter a name (2–120 characters).']); exit; }
+    if (nameLooksLikeId($name)) { echo json_encode(['success'=>false,'error'=>"That still looks like an account ID — type the client's name."]); exit; }
+    $dup = $db->prepare("SELECT id FROM clients WHERE LOWER(name) = LOWER(?) AND id <> ? AND active = 1 LIMIT 1"); $dup->execute([$name, $cid]);
+    if ($dup->fetchColumn()) { echo json_encode(['success'=>false,'error'=>"Another client is already called \"$name\". Ask an admin to merge them in Clients."]); exit; }
+    $old = $db->prepare("SELECT name FROM clients WHERE id = ?"); $old->execute([$cid]); $was = $old->fetchColumn();
+    if ($was === false) { echo json_encode(['success'=>false,'error'=>'Client not found.']); exit; }
+    $db->prepare("UPDATE clients SET name = ? WHERE id = ?")->execute([$name, $cid]);
+    // projects store a copy of the client name
+    try { $db->prepare("UPDATE projects SET client_name = ? WHERE client_id = ?")->execute([$name, $cid]); } catch (Exception $e) {}
+    echo json_encode(['success'=>true,'name'=>$name,'was'=>$was]);
+    exit;
+}
+
 // Tracked time. The extension sends the running TOTAL for each
 // (date, sub-account, task) so a resend never double-counts.
 if ($action === 'ext_track' && $method === 'POST') {
@@ -301,6 +328,8 @@ if ($action === 'ext_track' && $method === 'POST') {
         $secs  = max(0, min(86400, (int)($it['seconds'] ?? 0)));
         $taskId = (int)($it['task_id'] ?? 0) ?: null;
         $label = trim((string)($it['client_name'] ?? ''));
+        $session = (int)($it['session'] ?? 0) ?: null;
+        $sessionLabel = substr(trim((string)($it['session_label'] ?? '')), 0, 20);
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !$loc) { $results[] = ['key'=>$key,'ok'=>false,'error'=>'bad item']; continue; }
         $per = periodForDate($date);
         if (!$per) { $results[] = ['key'=>$key,'ok'=>false,'error'=>'Date outside pay periods']; continue; }
@@ -336,8 +365,8 @@ if ($action === 'ext_track' && $method === 'POST') {
         // ext_location ties the line to the sub-account so the same line is updated each time
         // (the timesheet keeps it when people save); unlinked sub-accounts show the page name
         $find = $db->prepare("SELECT id FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ? AND source = 'extension'
-                              AND ext_location = ? AND task_id <=> ? LIMIT 1");
-        $find->execute([$sheetId, $per['day'], $loc, $taskId]);
+                              AND ext_location = ? AND task_id <=> ? AND ext_session <=> ? LIMIT 1");
+        $find->execute([$sheetId, $per['day'], $loc, $taskId, $session]);
         $existing = $find->fetchColumn();
         $shownLabel = $client ? null : (($label !== '' ? $label : 'Sub-account ' . $loc) . ' (not linked)');
         if ($existing) {
@@ -346,9 +375,10 @@ if ($action === 'ext_track' && $method === 'POST') {
         } else {
             $row = $db->prepare("SELECT COALESCE(MAX(row_index),-1)+1 FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ?");
             $row->execute([$sheetId, $per['day']]);
-            $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location)
-                          VALUES (?,?,?,?,?,?,?,?,?,?, 'extension', ?, ?, ?)")
-               ->execute([$sheetId, $clientId, $shownLabel, $deliverable, $hours, $rate, $billingType === 'billable' ? 1 : 0, $billingType, $per['day'], (int)$row->fetchColumn(), $projectId, $taskId, $loc]);
+            if ($sessionLabel !== '') $deliverable = $deliverable !== '' ? "$deliverable (from $sessionLabel)" : "Tracked session from $sessionLabel";
+            $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location, ext_session)
+                          VALUES (?,?,?,?,?,?,?,?,?,?, 'extension', ?, ?, ?, ?)")
+               ->execute([$sheetId, $clientId, $shownLabel, $deliverable, $hours, $rate, $billingType === 'billable' ? 1 : 0, $billingType, $per['day'], (int)$row->fetchColumn(), $projectId, $taskId, $loc, $session]);
         }
         $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
                       total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?) WHERE id = ?")
@@ -2336,7 +2366,7 @@ if ($method === 'POST') {
 
         ensureEntryColumns($db);
         $db->prepare("DELETE FROM timesheet_entries WHERE timesheet_id = ?")->execute([$tsId]);
-        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location, ext_session) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($entries as $i => $en) {
             if (empty($en['hrs']) && empty($en['co'])) continue;
             $clientId = null;
@@ -2358,8 +2388,9 @@ if ($method === 'POST') {
             $source = in_array(($en['src'] ?? ''), ['extension','task']) ? $en['src'] : null;
             $taskLink = (int)($en['task'] ?? 0) ?: null;
             $extLoc   = $source === 'extension' ? (trim((string)($en['extloc'] ?? '')) ?: null) : null;
+            $extSess  = $source === 'extension' ? ((int)($en['extsess'] ?? 0) ?: null) : null;
             $projectId = (int)($en['proj'] ?? 0) ?: null;
-            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId, $taskLink, $extLoc]);
+            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId, $taskLink, $extLoc, $extSess]);
         }
 
         if ($submitted) {
@@ -2791,6 +2822,7 @@ function ensureEntryColumns($db) {
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN project_id INT DEFAULT NULL"); } catch (Exception $e) {}
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN task_id INT DEFAULT NULL"); } catch (Exception $e) {}
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN ext_location VARCHAR(100) DEFAULT NULL"); } catch (Exception $e) {}
+    try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN ext_session INT DEFAULT NULL"); } catch (Exception $e) {}
 }
 
 // Pay period containing a date — calculated from the first period (Apr 27 2026), no end date

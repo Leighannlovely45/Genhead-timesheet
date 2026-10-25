@@ -1,11 +1,11 @@
-# Genhead Time Tracker — v2.0
+# Genhead Time Tracker — v2.1
 
 Tracks the time you spend inside GenSuite client sub-accounts and adds it to your
 Genhead timesheet automatically.
 
 ## Install (2 minutes)
 
-1. Unzip `genhead-time-tracker-v2.zip` into a folder you'll keep, e.g. `Documents\Genhead Time Tracker`.
+1. Unzip `genhead-time-tracker-v2.1.zip` into a folder you'll keep, e.g. `Documents\Genhead Time Tracker`.
    Don't delete this folder later — Chrome runs the tracker from it.
 2. In Chrome go to `chrome://extensions` and turn on **Developer mode** (top right).
 3. If you see an older **Genhead Time Tracker**, click **Remove** on it.
@@ -24,6 +24,10 @@ Genhead timesheet automatically.
 - **Working on a specific task?** Open the tracker and pick it under *Working on*. Your time
   then goes to that task — on your timesheet and on the task's progress bar.
 - The popup shows today's lines on your timesheet. Add notes/deliverables in the timesheet.
+- **Sessions:** if you've been away 1 hour or more (idle, locked, asleep, signed out, or
+  outside client accounts), coming back starts a **new session** — its own timesheet line
+  labeled with its start time — and the task choice resets so it isn't assumed. Signing in
+  also starts a new session. Shorter breaks continue the same line.
 
 ## Badge on the icon
 
@@ -38,6 +42,8 @@ Genhead timesheet automatically.
 
 - **"Sub-account isn't linked to a client"**: your time is still saved. An Admin or HR person
   can link it in one click from the tracker; the time then moves to that client.
+- **"Client shows up as its account ID"**: some clients were created with their GenSuite ID
+  as the name. Admin/HR can rename them right from the tracker; everyone else should let them know.
 - **Submitted timesheet**: new time can't be added to a submitted or approved period. Ask your
   reviewer to return it.
 - Tracker lines update live during the day. If you change the hours of a tracker line on the

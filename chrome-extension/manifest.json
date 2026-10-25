@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Genhead Time Tracker",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Tracks time in GenSuite client sub-accounts and adds it to your Genhead timesheet.",
   "permissions": ["tabs", "idle", "storage", "alarms"],
   "host_permissions": [

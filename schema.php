@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-24.2');
+define('SCHEMA_VERSION', '2026-10-24.3');
 
 function ensureSchema($db) {
     static $done = false;
@@ -129,6 +129,7 @@ function ensureSchema($db) {
     $add('timesheet_entries', 'project_id',   "INT NULL");
     $add('timesheet_entries', 'task_id',      "INT NULL");
     $add('timesheet_entries', 'ext_location', "VARCHAR(100) NULL");
+    $add('timesheet_entries', 'ext_session',  "INT NULL");
     $add('timesheet_entries', 'updated_at',   "TIMESTAMP NULL DEFAULT NULL");
 
     $add('timesheets', 'period_index', "INT NULL");
