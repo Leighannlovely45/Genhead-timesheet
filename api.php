@@ -147,7 +147,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // Open without signing in: sign-in/reset flows, the login name list, the Chrome
 // extension, the client hours portal & hours-bank admin, and secret-protected GHL hooks.
 $PUBLIC_ACTIONS = ['verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
-                   'upsert_time','client_hours','get_client_by_location','load_client_banks','set_client_hours',
+                   'upsert_time','client_hours','get_client_by_location',
                    'load_clients','ghl_add','fire_webhook'];
 $ROLE_RULES = [
     'load_report_v2'=>['admin','hr'], 'load_report'=>['admin','hr'], 'export_payroll'=>['admin','hr'],
@@ -161,6 +161,8 @@ $ROLE_RULES = [
     'remove_employee'=>['admin','hr'], 'toggle_active'=>['admin','hr'], 'assign_manager'=>['admin','hr'],
     'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
     'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'], 'ext_rename_client'=>['admin','hr'],
+    'load_client_banks'=>['admin','hr'], 'set_client_hours'=>['admin','hr'],
+    'send_setup_link'=>['admin','hr'], 'merge_users'=>['admin'],
 ];
 // Removed: one-time setup helpers that let anyone create admins or change PINs
 if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
@@ -178,6 +180,103 @@ if ($action === 'whoami') {
     echo json_encode(['success' => true, 'user' => publicUser($AUTH)]);
     exit;
 }
+// ─────────────────────────────────────────
+// TEAM SAFEGUARDS: only Admins create or change Admins; never remove the last Admin
+// ─────────────────────────────────────────
+if (in_array($action, ['add_employee','add_manager','update_employee','remove_employee','toggle_active','deactivate_user','assign_manager','send_setup_link','merge_users'], true)) {
+    $in = array_merge($_GET, json_decode(file_get_contents('php://input'), true) ?: []);
+    $dbg = getDB();
+    $isAdmin = ($AUTH['role'] ?? '') === 'admin';
+    $newRole = $in['role'] ?? null;
+    if ($newRole !== null && $newRole !== '' && !in_array($newRole, ['employee','manager','hr','admin'], true)) {
+        echo json_encode(['success'=>false,'error'=>'Unknown role.']); exit;
+    }
+    if ($newRole === 'admin' && !$isAdmin) { http_response_code(403); echo json_encode(['success'=>false,'error'=>'Only an Admin can give someone Admin access.']); exit; }
+    $tid = (int)preg_replace('/^e/', '', (string)($in['id'] ?? ($in['employee_id'] ?? ($in['dup_id'] ?? ''))));
+    if ($tid) {
+        $st = $dbg->prepare("SELECT id, role, status FROM users WHERE id = ?"); $st->execute([$tid]);
+        if ($t = $st->fetch()) {
+            if ($t['role'] === 'admin' && !$isAdmin) { http_response_code(403); echo json_encode(['success'=>false,'error'=>"Only an Admin can change an Admin's account."]); exit; }
+            $demote = $newRole && $newRole !== 'admin';
+            $off = in_array($action, ['remove_employee','deactivate_user','merge_users'], true)
+                || ($action === 'toggle_active' && empty($in['active']))
+                || ($action === 'update_employee' && isset($in['active']) && !$in['active']);
+            if ($t['role'] === 'admin' && $t['status'] === 'active' && ($demote || $off)) {
+                $n = (int)$dbg->query("SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active' AND id <> ".(int)$tid)->fetchColumn();
+                if ($n === 0) { echo json_encode(['success'=>false,'error'=>'This is the only active Admin. Make someone else an Admin first.']); exit; }
+            }
+        }
+    }
+}
+
+// Email someone a link to create (or reset) their password; the link is also returned so Admin/HR can pass it on
+if ($action === 'send_setup_link') {
+    $db = getDB();
+    $id = (int)preg_replace('/^e/', '', (string)($_GET['id'] ?? ''));
+    $st = $db->prepare("SELECT * FROM users WHERE id = ? AND status = 'active'"); $st->execute([$id]);
+    $u = $st->fetch();
+    if (!$u) { echo json_encode(['success'=>false,'error'=>'Team member not found.']); exit; }
+    if (!trim($u['email'] ?? '')) { echo json_encode(['success'=>false,'error'=>'Add an email for this person first.']); exit; }
+    $setup = empty($u['password_set']);
+    $url = issueSetupLink($db, $u, $setup ? 24 * 7 : 24);
+    $sent = sendAccessLink($u, $url, $setup ? 'password_setup' : 'password_reset', $setup ? '7 days' : '24 hours');
+    if (function_exists('logAudit')) { try { logAudit(null, (int)$AUTH['id'], $setup ? 'setup_link_sent' : 'reset_link_sent', null, ['to' => $u['name']]); } catch (Throwable $e) {} }
+    echo json_encode(['success'=>true,'sent'=>(bool)$sent,'url'=>$url,'email'=>$u['email'],'kind'=>$setup ? 'setup' : 'reset','expires'=>$setup ? '7 days' : '24 hours']);
+    exit;
+}
+
+// Merge a duplicate account into the one to keep: history moves over, the duplicate is switched off (never deleted)
+if ($action === 'merge_users') {
+    $db = getDB();
+    $keep = (int)preg_replace('/^e/', '', (string)($_GET['keep_id'] ?? ''));
+    $dup  = (int)preg_replace('/^e/', '', (string)($_GET['dup_id'] ?? ''));
+    if (!$keep || !$dup || $keep === $dup) { echo json_encode(['success'=>false,'error'=>'Pick two different accounts.']); exit; }
+    $st = $db->prepare("SELECT * FROM users WHERE id IN (?, ?)"); $st->execute([$keep, $dup]);
+    $rows = []; foreach ($st->fetchAll() as $r) $rows[(int)$r['id']] = $r;
+    if (!isset($rows[$keep], $rows[$dup])) { echo json_encode(['success'=>false,'error'=>'Account not found.']); exit; }
+    if ($rows[$keep]['status'] !== 'active') { echo json_encode(['success'=>false,'error'=>'The account you keep must be active.']); exit; }
+    $moved = ['timesheets'=>0,'combined'=>0];
+    $run = function($sql, $p) use ($db) { try { $s = $db->prepare($sql); $s->execute($p); return $s->rowCount(); } catch (Throwable $e) { return 0; } };
+    $db->beginTransaction();
+    try {
+        $sh = $db->prepare("SELECT id, period FROM timesheets WHERE user_id = ?"); $sh->execute([$dup]);
+        foreach ($sh->fetchAll() as $t) {
+            $k = $db->prepare("SELECT id FROM timesheets WHERE user_id = ? AND period = ? LIMIT 1"); $k->execute([$keep, $t['period']]);
+            if ($kid = $k->fetchColumn()) {
+                // Both accounts have this pay period: move the lines into the kept timesheet
+                $run("UPDATE timesheet_entries SET timesheet_id = ? WHERE timesheet_id = ?", [$kid, $t['id']]);
+                $run("UPDATE timesheet_comments SET timesheet_id = ? WHERE timesheet_id = ?", [$kid, $t['id']]);
+                $run("UPDATE audit_log SET timesheet_id = ? WHERE timesheet_id = ?", [$kid, $t['id']]);
+                $run("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?) WHERE id = ?", [$kid, $kid]);
+                $run("UPDATE timesheets SET total_hours = 0 WHERE id = ?", [$t['id']]);
+                $moved['combined']++;
+            } else {
+                $run("UPDATE timesheets SET user_id = ? WHERE id = ?", [$keep, $t['id']]);
+                $moved['timesheets']++;
+            }
+        }
+        foreach ([['timesheets','approved_by'],['users','manager_id'],['users','delegate_to'],['tasks','assigned_to'],['tasks','created_by'],
+                  ['projects','created_by'],['task_comments','user_id'],['timesheet_comments','user_id'],['audit_log','user_id'],['overtime_flags','user_id']] as $tc)
+            $run("UPDATE {$tc[0]} SET {$tc[1]} = ? WHERE {$tc[1]} = ?", [$keep, $dup]);
+        $run("UPDATE tasks SET assigned_name = ? WHERE assigned_to = ?", [$rows[$keep]['name'], $keep]);
+        foreach (['project_members','task_followers'] as $tb) {
+            $run("UPDATE IGNORE $tb SET user_id = ? WHERE user_id = ?", [$keep, $dup]);
+            $run("DELETE FROM $tb WHERE user_id = ?", [$dup]);
+        }
+        $run("UPDATE users SET manager_id = NULL WHERE id = ? AND manager_id = ?", [$keep, $keep]);
+        $d = $rows[$dup]; $k = $rows[$keep];
+        $run("UPDATE users SET rate = COALESCE(NULLIF(rate,0), ?), manager_id = COALESCE(manager_id, ?), email = COALESCE(NULLIF(email,''), ?) WHERE id = ?",
+             [$d['rate'] ?? null, ($d['manager_id'] ?? null) == $keep ? null : ($d['manager_id'] ?? null), $d['email'] ?? null, $keep]);
+        $run("UPDATE users SET status = 'inactive' WHERE id = ?", [$dup]);
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollBack(); echo json_encode(['success'=>false,'error'=>'Merge failed, nothing was changed: '.$e->getMessage()]); exit;
+    }
+    if (function_exists('logAudit')) { try { logAudit(null, (int)$AUTH['id'], 'accounts_merged', ['id' => $dup, 'name' => $rows[$dup]['name']], ['id' => $keep, 'name' => $rows[$keep]['name'], 'moved' => $moved]); } catch (Throwable $e) {} }
+    echo json_encode(['success'=>true,'moved'=>$moved,'kept'=>'e'.$keep]);
+    exit;
+}
+
 // ─────────────────────────────────────────
 // CHROME EXTENSION v2
 // ─────────────────────────────────────────
@@ -491,6 +590,7 @@ if ($method === 'GET') {
         $given = (string)($body['old'] ?? ($_GET['old'] ?? ''));
         if ($proof === 'pin' && !hash_equals((string)$u['pin'], $given)) { usleep(400000); echo json_encode(['success' => false, 'error' => 'That PIN doesn\'t match the one on file.']); exit; }
         if ($proof === 'role_password' && !hash_equals((string)getSetting($u['role'].'_password'), $given)) { usleep(400000); echo json_encode(['success' => false, 'error' => 'That doesn\'t match the current '.ucfirst($u['role']).' password.']); exit; }
+        if ($proof === 'email') { echo json_encode(['success' => false, 'verify' => 'email', 'error' => 'For security, create your password from the link we email you.']); exit; }
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $id]);
         echo json_encode(['success' => true, 'token' => issueToken($id), 'user' => publicUser($u)]);
@@ -1146,97 +1246,52 @@ if ($method === 'GET') {
     if ($action === 'client_hours') {
         $db = getDB();
         $locationId = $_GET['location_id'] ?? '';
-        $requestedPeriod = $_GET['period'] ?? '';
         if (!$locationId) { echo json_encode(['success'=>false,'error'=>'location_id required']); exit; }
         $client = null;
-        $stmt = $db->prepare("SELECT * FROM clients WHERE location_id = ? AND active = 1 LIMIT 1");
-        $stmt->execute([$locationId]);
-        $client = $stmt->fetch();
-        if (!$client) {
-            $stmt = $db->prepare("SELECT * FROM clients WHERE ghl_contact_id = ? AND active = 1 LIMIT 1");
+        foreach (['location_id', 'ghl_contact_id'] as $col) {
+            $stmt = $db->prepare("SELECT * FROM clients WHERE $col = ? AND active = 1 LIMIT 1");
             $stmt->execute([$locationId]);
-            $client = $stmt->fetch();
+            if ($client = $stmt->fetch()) break;
         }
         if (!$client) { echo json_encode(['success'=>false,'error'=>'Client not found']); exit; }
         if ($client['plan_type'] === 'diy') {
             echo json_encode(['success'=>true,'plan'=>'diy','plan_label'=>'DIY Plan',
                 'client'=>['name'=>$client['name'],'plan'=>'diy','plan_label'=>'DIY Plan']]); exit;
         }
-        $pStarts = payPeriodStarts();
-        $today = new DateTime();
-        $periods = []; $currentPeriod = ''; $currentPidx = 0;
-        foreach ($pStarts as $i => $ps) {
-            $sDt = new DateTime(sprintf('%04d-%02d-%02d',$ps[0],$ps[1],$ps[2]));
-            $eDt = clone $sDt; $eDt->modify('+13 days');
-            $label = $sDt->format('M j').' - '.$eDt->format('M j, Y');
-            $value = $sDt->format('M d').' - '.$eDt->format('M d');
-            $periods[] = ['label'=>$label,'value'=>$value,'index'=>$i];
-            if ($today >= $sDt && $today <= $eDt) { $currentPeriod = $value; $currentPidx = $i; }
+        $month = normMonth($_GET['month'] ?? ($_GET['period'] ?? ''));
+        $bank  = monthBank($db, $client, $month);
+        $activity = []; $usedHours = 0;
+        foreach (clientMonthEntries($db, [(int)$client['id']], $month) as $en) {
+            $usedHours += (float)$en['hours'];
+            $activity[] = ['date'=>$en['date'],'deliverable'=>$en['deliverable'] ?: 'Support work',
+                           'team_member'=>$en['team_member'],'hours'=>(float)$en['hours']];
         }
-        $periods = array_reverse($periods);
-        $activePeriod = $requestedPeriod ?: $currentPeriod;
-        if (!$activePeriod && count($periods) > 0) $activePeriod = $periods[0]['value'];
-        $stmt = $db->prepare("SELECT * FROM client_hours_bank WHERE client_id = ? AND period = ? LIMIT 1");
-        $stmt->execute([$client['id'], $activePeriod]);
-        $bank = $stmt->fetch();
-        if (!$bank) {
-            $bank = ['total_hours'=>$client['monthly_hours']??0,'plan_type'=>$client['plan_type']??'none','plan_label'=>$client['plan_label']??'Retainer'];
-        }
-        $stmt = $db->prepare("SELECT te.hours, te.deliverable, u.name AS team_member, t.period_start, te.day_index
-            FROM timesheet_entries te
-            JOIN timesheets t ON te.timesheet_id = t.id
-            JOIN users u ON t.user_id = u.id
-            WHERE te.client_id = ? AND t.period = ? AND t.status IN ('draft','submitted','under_review','approved')
-            ORDER BY te.day_index ASC");
-        $stmt->execute([$client['id'], $activePeriod]);
-        $entries = $stmt->fetchAll();
-        $usedHours = 0; $activity = [];
-        foreach ($entries as $en) {
-            $hrs = (float)$en['hours']; $usedHours += $hrs;
-            $periodStart = null;
-            foreach ($pStarts as $ps) {
-                $sDt = new DateTime(sprintf('%04d-%02d-%02d',$ps[0],$ps[1],$ps[2]));
-                $eDt = clone $sDt; $eDt->modify('+13 days');
-                $pVal = $sDt->format('M d').' - '.$eDt->format('M d');
-                if ($pVal === $activePeriod) { $periodStart = $sDt; break; }
-            }
-            $entryDate = $periodStart ? (clone $periodStart)->modify('+'.(int)$en['day_index'].' days')->format('Y-m-d') : null;
-            $activity[] = ['date'=>$entryDate,'deliverable'=>$en['deliverable']?:'Support work','team_member'=>$en['team_member'],'hours'=>$hrs];
-        }
-        $totalHours = (float)($bank['total_hours']??0);
-        $remaining = max(0, $totalHours - $usedHours);
+        usort($activity, function($x, $y){ return strcmp($x['date'], $y['date']); });
+        $totalHours = (float)$bank['total_hours'];
         echo json_encode(['success'=>true,
-            'client'=>['name'=>$client['name'],'plan'=>$bank['plan_type']??'retainer','plan_label'=>$bank['plan_label']??($client['plan_label']??'Retainer')],
-            'bank'=>['total_hours'=>$totalHours,'used_hours'=>round($usedHours,2),'remaining'=>round($remaining,2)],
-            'activity'=>$activity,'period'=>$activePeriod,'periods'=>$periods]);
+            'client'=>['name'=>$client['name'],'plan'=>$bank['plan_type'] ?: 'retainer','plan_label'=>$bank['plan_label'] ?: 'Retainer'],
+            'bank'=>['total_hours'=>$totalHours,'used_hours'=>round($usedHours,2),'remaining'=>round(max(0,$totalHours-$usedHours),2)],
+            'activity'=>$activity,'period'=>$month,'month'=>$month,'periods'=>monthList()]);
         exit;
     }
 
-    // ── LOAD CLIENT BANKS — admin view ──────────────────────────────────────
+    // ── LOAD CLIENT BANKS — admin view (by calendar month) ─────────────────
     if ($action === 'load_client_banks') {
         $db = getDB();
-        $period = $_GET['period'] ?? '';
-        $stmt = $db->prepare("
-            SELECT c.id, c.name, c.location_id, c.ghl_contact_id, c.plan_type, c.plan_label, c.monthly_hours,
-                COALESCE(chb.total_hours, c.monthly_hours, 0) AS bank_hours,
-                COALESCE(chb.plan_type, c.plan_type, 'none') AS bank_plan,
-                COALESCE(chb.plan_label, c.plan_label, '') AS bank_plan_label,
-                COALESCE((SELECT SUM(te.hours) FROM timesheet_entries te
-                    JOIN timesheets t ON te.timesheet_id = t.id
-                    WHERE te.client_id = c.id AND t.period = ?
-                    AND t.status IN ('draft','submitted','under_review','approved')), 0) AS used_hours
-            FROM clients c
-            LEFT JOIN client_hours_bank chb ON chb.client_id = c.id AND chb.period = ?
-            WHERE c.active = 1 ORDER BY c.name");
-        $stmt->execute([$period, $period]);
-        $banks = $stmt->fetchAll();
-        $result = array_map(function($b) {
-            $total = (float)$b['bank_hours']; $used = (float)$b['used_hours'];
-            return ['id'=>$b['id'],'name'=>$b['name'],'location_id'=>$b['location_id']??$b['ghl_contact_id'],
-                'plan'=>$b['bank_plan'],'plan_label'=>$b['bank_plan_label'],
-                'total_hours'=>$total,'used_hours'=>round($used,2),'remaining'=>round(max(0,$total-$used),2)];
-        }, $banks);
-        echo json_encode(['success'=>true,'banks'=>$result]);
+        $month = normMonth($_GET['month'] ?? ($_GET['period'] ?? ''));
+        $clients = $db->query("SELECT * FROM clients WHERE active = 1 ORDER BY name")->fetchAll();
+        $used = [];
+        foreach (clientMonthEntries($db, array_map(function($c){ return (int)$c['id']; }, $clients), $month) as $en)
+            $used[$en['client_id']] = ($used[$en['client_id']] ?? 0) + (float)$en['hours'];
+        $result = [];
+        foreach ($clients as $c) {
+            $b = monthBank($db, $c, $month);
+            $total = (float)$b['total_hours']; $u = (float)($used[$c['id']] ?? 0);
+            $result[] = ['id'=>(int)$c['id'],'name'=>$c['name'],'location_id'=>$c['location_id'] ?: $c['ghl_contact_id'],
+                'plan'=>$b['plan_type'] ?: 'none','plan_label'=>$b['plan_label'] ?: '',
+                'total_hours'=>$total,'used_hours'=>round($u,2),'remaining'=>round(max(0,$total-$u),2)];
+        }
+        echo json_encode(['success'=>true,'banks'=>$result,'month'=>$month,'months'=>monthList()]);
         exit;
     }
 
@@ -1301,45 +1356,18 @@ if ($action === 'load_followed_tasks') {
 // ── FORGOT PASSWORD (GET, fires GHL reset webhook) ───────────────────────
 if ($method === 'GET' && $action === 'forgot_pin') {
     $db    = getDB();
-    $email = trim($_GET['email'] ?? '');
+    $email = strtolower(trim($_GET['email'] ?? ''));
     if (!$email) { echo json_encode(['success' => false, 'error' => 'Email required']); exit; }
-    $stmt = $db->prepare("SELECT id, name, role FROM users WHERE email = ? AND status = 'active' LIMIT 1");
+    $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = ? AND status = 'active'
+                          ORDER BY password_set DESC, FIELD(role,'admin','hr','manager','employee'), id LIMIT 1");
     $stmt->execute([$email]);
-    $user = $stmt->fetch();
-    if ($user) {
-        $token   = bin2hex(random_bytes(20));
-        $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
-        $key     = 'pin_reset_' . $user['id'];
-        $val     = json_encode(['token' => $token, 'expires' => $expires]);
-        $db->prepare("INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=?")->execute([$key, $val, $val]);
-        // Use production URL (stagging subdomain redirects there)
-        $resetUrl = 'https://stagging.timesheet.genhead.com/timesheet/?reset_token=' . $token . '&uid=' . $user['id'];
-        // Fire GHL reset webhook — reuse ghl_invite_webhook_url or ghl_notify_webhook_url
-        $webhookUrl = getSetting('ghl_reset_webhook_url') ?: getSetting('ghl_invite_webhook_url');
-        if ($webhookUrl) {
-            $payload = [
-                'event'          => 'password_reset',
-                'action'         => 'password_reset',
-                'employee_name'  => $user['name'],
-                'employee_email' => $email,
-                'employee_id'    => 'e' . $user['id'],
-                'role'           => $user['role'],
-                'reset_url'      => $resetUrl,
-                'expires_in'     => '1 hour',
-                'timestamp'      => date('c'),
-            ];
-            $ch = curl_init($webhookUrl);
-            curl_setopt_array($ch, [CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($payload),CURLOPT_HTTPHEADER=>['Content-Type: application/json'],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10]);
-            curl_exec($ch);
-            curl_close($ch);
-        } else {
-            // Fallback: PHP mail if no webhook configured
-            $subject = 'Genhead Timesheet — Reset Your Password';
-            $message = "Hi {$user['name']},\n\nClick the link below to reset your password (expires in 1 hour):\n\n{$resetUrl}\n\n— Genhead Team";
-            mail($email, $subject, $message, "From: noreply@genhead.com");
-        }
+    if ($user = $stmt->fetch()) {
+        $setup = empty($user['password_set']);
+        $url = issueSetupLink($db, $user, $setup ? 24 : 1);
+        sendAccessLink($user, $url, $setup ? 'password_setup' : 'password_reset', $setup ? '24 hours' : '1 hour');
     }
-    echo json_encode(['success' => true, 'message' => 'If that email is on file, a reset link is on its way!']);
+    usleep(300000);
+    echo json_encode(['success' => true, 'message' => 'If that email is on file, a link is on its way!']);
     exit;
 }
 
@@ -1421,6 +1449,12 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         $estHours    = isset($body['estimated_hours']) && $body['estimated_hours'] !== '' ? (float)$body['estimated_hours'] : null;
         $createdBy   = (int)($body['created_by']  ?? 0);
         if (!$projectId || !$title || !$createdBy) { echo json_encode(['success'=>false,'error'=>'project_id, title, created_by required']); exit; }
+        $chk = taskRulesCheck($db, $AUTH, $projectId, $assignedTo);
+        if ($chk !== true) { echo json_encode(['success'=>false,'error'=>$chk]); exit; }
+        if (!$billingType) {   // a new task starts with its project's billing type
+            $pb = $db->prepare("SELECT billing_type FROM projects WHERE id = ?"); $pb->execute([$projectId]);
+            $billingType = in_array($pbt = $pb->fetchColumn(), ['billable','nonbillable','marketing'], true) ? $pbt : null;
+        }
         try { $db->exec("ALTER TABLE tasks ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
         $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,due_date,billing_type,estimated_hours,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
            ->execute([$projectId,$title,$description,$assignedTo,$assignedName,$priority,$stage,$dueDate,$billingType,$estHours,$createdBy]);
@@ -1444,6 +1478,14 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         if (isset($body['assigned_to']))   { $fields[]='assigned_to = ?';   $params[]=((int)$body['assigned_to'])?:(null); }
         if (isset($body['assigned_name'])) { $fields[]='assigned_name = ?'; $params[]=trim($body['assigned_name'])?:null; }
         if (isset($body['priority']) && in_array($body['priority'],['low','medium','high'])) { $fields[]='priority = ?'; $params[]=$body['priority']; }
+        if (isset($body['billing_type']) && in_array($body['billing_type'],['billable','nonbillable','marketing'],true)) { $fields[]='billing_type = ?'; $params[]=$body['billing_type']; }
+        if (isset($body['title']) && trim($body['title']) !== '') { $fields[]='title = ?'; $params[]=trim($body['title']); }
+        if (isset($body['description'])) { $fields[]='description = ?'; $params[]=trim($body['description']) ?: null; }
+        if (!empty($body['assigned_to']) && (int)$body['assigned_to']) {
+            $pj0 = $db->prepare("SELECT project_id FROM tasks WHERE id = ?"); $pj0->execute([$id]);
+            $chk = taskRulesCheck($db, $AUTH, (int)$pj0->fetchColumn(), (int)$body['assigned_to']);
+            if ($chk !== true) { echo json_encode(['success'=>false,'error'=>$chk]); exit; }
+        }
         if (isset($body['due_date']))      { $fields[]='due_date = ?';      $params[]=$body['due_date']?:null; }
         if (isset($body['estimated_hours']) && $body['estimated_hours']!=='') { $fields[]='estimated_hours = ?'; $params[]=(float)$body['estimated_hours']; }
         if (isset($body['logged_hours'])   && $body['logged_hours']!=='')    { $fields[]='logged_hours = ?';    $params[]=(float)$body['logged_hours']; }
@@ -1692,7 +1734,7 @@ if (in_array($action, ['add_employee','add_manager','update_employee','assign_ma
         $email = trim($body['email'] ?? '');
         // Password param uses 'pw' to avoid WAF keyword filter
         $pw    = trim($body['pw'] ?? $body['mgr_pw'] ?? '');
-        $role  = in_array($body['role'] ?? '', ['manager','hr','admin']) ? $body['role'] : 'manager';
+        $role  = in_array($body['role'] ?? '', ['employee','manager','hr','admin'], true) ? $body['role'] : 'manager';
         if (!$name) { echo json_encode(['success'=>false,'error'=>'Name required']); exit; }
         $hash = $pw ? password_hash($pw, PASSWORD_DEFAULT) : null;
         if ($email) {
@@ -1726,6 +1768,7 @@ if (in_array($action, ['add_employee','add_manager','update_employee','assign_ma
         if (!$id) { echo json_encode(['success' => false, 'error' => 'ID required']); exit; }
         $fields = []; $params = [];
         if (isset($body['name']))        { $fields[] = 'name = ?';        $params[] = $body['name']; }
+        if (isset($body['email']) && trim($body['email']) !== '') { $fields[] = 'email = ?'; $params[] = trim($body['email']); }
         if (isset($body['rate']))        { $fields[] = 'rate = ?';        $params[] = $body['rate']; }
         if (isset($body['active']))      { $fields[] = 'status = ?';      $params[] = $body['active'] ? 'active' : 'inactive'; }
         if (isset($body['role']))        { $fields[] = 'role = ?';        $params[] = $body['role']; }
@@ -1837,6 +1880,12 @@ if ($method === 'POST') {
         $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : null;
         $createdBy   = (int)($body['created_by']   ?? 0);
         if (!$projectId || !$title || !$createdBy) { echo json_encode(['success'=>false,'error'=>'project_id, title, created_by required']); exit; }
+        $chk = taskRulesCheck($db, $AUTH, $projectId, $assignedTo);
+        if ($chk !== true) { echo json_encode(['success'=>false,'error'=>$chk]); exit; }
+        if (!$billingType) {   // a new task starts with its project's billing type
+            $pb = $db->prepare("SELECT billing_type FROM projects WHERE id = ?"); $pb->execute([$projectId]);
+            $billingType = in_array($pbt = $pb->fetchColumn(), ['billable','nonbillable','marketing'], true) ? $pbt : null;
+        }
         $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,due_date,billing_type,created_by)
                       VALUES (?,?,?,?,?,?,?,?,?,?)")
            ->execute([$projectId,$title,$description,$assignedTo,$assignedName,$priority,$stage,$dueDate,$billingType,$createdBy]);
@@ -1901,21 +1950,25 @@ if ($method === 'POST') {
     // ── SET CLIENT HOURS BANK ──────────────────────────────────────────────
     if ($action === 'set_client_hours') {
         $clientId   = (int)($body['client_id']   ?? 0);
-        $period     = trim($body['period']        ?? '');
-        $pidx       = (int)($body['period_index'] ?? 0);
+        $month      = normMonth($body['month'] ?? ($body['period'] ?? ''));
         $totalHours = (float)($body['total_hours'] ?? 0);
-        $planType   = $body['plan_type']  ?? 'retainer';
-        $planLabel  = $body['plan_label'] ?? 'Retainer';
+        $planType   = in_array($body['plan_type'] ?? '', ['retainer','diy','none'], true) ? $body['plan_type'] : 'retainer';
+        $planLabel  = trim($body['plan_label'] ?? '') ?: ($planType === 'retainer' ? $totalHours.' hrs/month' : ($planType === 'diy' ? 'DIY Plan' : 'No Plan'));
         $notes      = trim($body['notes'] ?? '');
-        if (!$clientId || !$period) { echo json_encode(['success'=>false,'error'=>'client_id and period required']); exit; }
-        $db->prepare("INSERT INTO client_hours_bank (client_id,period,period_index,total_hours,plan_type,plan_label,notes)
-            VALUES (?,?,?,?,?,?,?)
-            ON DUPLICATE KEY UPDATE total_hours=VALUES(total_hours),plan_type=VALUES(plan_type),
-            plan_label=VALUES(plan_label),notes=VALUES(notes),updated_at=NOW()")
-           ->execute([$clientId,$period,$pidx,$totalHours,$planType,$planLabel,$notes]);
+        if (!$clientId) { echo json_encode(['success'=>false,'error'=>'client_id required']); exit; }
+        $st = $db->prepare("SELECT id FROM client_hours_bank WHERE client_id = ? AND period = ? ORDER BY id DESC LIMIT 1");
+        $st->execute([$clientId, $month]);
+        if ($bid = $st->fetchColumn()) {
+            $db->prepare("UPDATE client_hours_bank SET total_hours=?, plan_type=?, plan_label=?, notes=? WHERE id=?")
+               ->execute([$totalHours,$planType,$planLabel,$notes,$bid]);
+        } else {
+            $db->prepare("INSERT INTO client_hours_bank (client_id,period,period_index,total_hours,plan_type,plan_label,notes) VALUES (?,?,?,?,?,?,?)")
+               ->execute([$clientId,$month,0,$totalHours,$planType,$planLabel,$notes]);
+        }
+        // The client's default for future months
         $db->prepare("UPDATE clients SET monthly_hours=?,plan_type=?,plan_label=? WHERE id=?")
            ->execute([$totalHours,$planType,$planLabel,$clientId]);
-        echo json_encode(['success'=>true,'message'=>'Hours bank updated']);
+        echo json_encode(['success'=>true,'message'=>'Hours bank updated','month'=>$month]);
         exit;
     }
 
@@ -2048,6 +2101,7 @@ if ($method === 'POST') {
         $given = (string)($body['old'] ?? ($_GET['old'] ?? ''));
         if ($proof === 'pin' && !hash_equals((string)$u['pin'], $given)) { usleep(400000); echo json_encode(['success' => false, 'error' => 'That PIN doesn\'t match the one on file.']); exit; }
         if ($proof === 'role_password' && !hash_equals((string)getSetting($u['role'].'_password'), $given)) { usleep(400000); echo json_encode(['success' => false, 'error' => 'That doesn\'t match the current '.ucfirst($u['role']).' password.']); exit; }
+        if ($proof === 'email') { echo json_encode(['success' => false, 'verify' => 'email', 'error' => 'For security, create your password from the link we email you.']); exit; }
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $db->prepare("UPDATE users SET password_hash = ?, password_set = 1 WHERE id = ?")->execute([$hash, $id]);
         echo json_encode(['success' => true, 'token' => issueToken($id), 'user' => publicUser($u)]);
@@ -2200,6 +2254,7 @@ if ($method === 'POST') {
         if (!$id) { echo json_encode(['success' => false, 'error' => 'ID required']); exit; }
         $fields = []; $params = [];
         if (isset($body['name']))        { $fields[] = 'name = ?';        $params[] = $body['name']; }
+        if (isset($body['email']) && trim($body['email']) !== '') { $fields[] = 'email = ?'; $params[] = trim($body['email']); }
         if (isset($body['rate']))        { $fields[] = 'rate = ?';        $params[] = $body['rate']; }
         if (isset($body['active']))      { $fields[] = 'status = ?';      $params[] = $body['active'] ? 'active' : 'inactive'; }
         if (isset($body['role']))        { $fields[] = 'role = ?';        $params[] = $body['role']; }
@@ -2256,25 +2311,16 @@ if ($method === 'POST') {
     // ── FORGOT PIN / PASSWORD — send reset email (all roles) ────────────────
     if ($action === 'forgot_pin') {
         $db    = getDB();
-        $email = trim($body['email'] ?? '');
+        $email = strtolower(trim($body['email'] ?? ''));
         if (!$email) { echo json_encode(['success' => false, 'error' => 'Email required']); exit; }
-        $stmt = $db->prepare("SELECT id, name, role FROM users WHERE email = ? AND status = 'active' LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = ? AND status = 'active'
+                              ORDER BY password_set DESC, FIELD(role,'admin','hr','manager','employee'), id LIMIT 1");
         $stmt->execute([$email]);
-        $user = $stmt->fetch();
-        // Always return success to prevent email enumeration
-        if ($user) {
-            $token    = bin2hex(random_bytes(20));
-            $expires  = date('Y-m-d H:i:s', strtotime('+1 hour'));
-            $key      = 'pin_reset_' . $user['id'];
-            $val      = json_encode(['token' => $token, 'expires' => $expires]);
-            $db->prepare("INSERT INTO settings (`key`, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=?")->execute([$key, $val, $val]);
-            $resetUrl = 'https://timesheet.genhead.com/index.html?reset_token=' . $token . '&uid=' . $user['id'];
-            $subject  = 'Genhead Timesheet — Reset Your Password';
-            $message  = "Hi {$user['name']},\n\nYou requested a password reset for the Genhead Timesheet Portal.\n\nClick the link below to set a new password (expires in 1 hour):\n\n{$resetUrl}\n\nIf you did not request this, you can ignore this email.\n\n— Genhead Team";
-            $headers  = "From: noreply@genhead.com\r\nReply-To: support@genhead.com";
-            mail($email, $subject, $message, $headers);
+        if ($user = $stmt->fetch()) {
+            $setup = empty($user['password_set']);
+            sendAccessLink($user, issueSetupLink($db, $user, $setup ? 24 : 1), $setup ? 'password_setup' : 'password_reset', $setup ? '24 hours' : '1 hour');
         }
-        echo json_encode(['success' => true, 'message' => 'If that email is in our system, a reset link has been sent.']);
+        echo json_encode(['success' => true, 'message' => 'If that email is in our system, a link has been sent.']);
         exit;
     }
 
@@ -2296,7 +2342,7 @@ if ($method === 'POST') {
             echo json_encode(['success' => false, 'error' => 'Reset link is invalid or has expired']); exit;
         }
         // Determine role to set appropriate field
-        $uStmt = $db->prepare("SELECT role FROM users WHERE id = ? LIMIT 1");
+        $uStmt = $db->prepare("SELECT role FROM users WHERE id = ? AND status = 'active' LIMIT 1");
         $uStmt->execute([$uid]);
         $uRow = $uStmt->fetch();
         if (!$uRow) { echo json_encode(['success' => false, 'error' => 'User not found']); exit; }
@@ -2777,7 +2823,7 @@ function normalizeUserIds($body) {
 function setupProof($u) {
     if (!empty($u['pin_set']) && !empty($u['pin'])) return 'pin';
     if (in_array($u['role'], ['manager','hr']) && getSetting($u['role'].'_password') !== '') return 'role_password';
-    return 'none';
+    return 'email';   // no old credential to prove who they are: they set it up from an emailed link
 }
 
 // Signed-in user's id wins over any id the page sends
@@ -2826,6 +2872,121 @@ function ensureEntryColumns($db) {
 }
 
 // Pay period containing a date — calculated from the first period (Apr 27 2026), no end date
+// ── Tasks: everyone can add tasks to projects they're on; employees assign within the project team
+function taskRulesCheck($db, $auth, $projectId, $assignee) {
+    if (!$auth) return 'Please sign in.';
+    if (in_array($auth['role'], ['admin','hr','manager'], true)) return true;
+    $uid = (int)$auth['id'];
+    $st = $db->prepare("SELECT 1 FROM projects p WHERE p.id = ? AND (p.created_by = ? OR EXISTS (SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?)
+                        OR EXISTS (SELECT 1 FROM tasks t WHERE t.project_id = p.id AND t.assigned_to = ?))");
+    $st->execute([$projectId, $uid, $uid, $uid]);
+    if (!$st->fetchColumn()) return "You can only add tasks to projects you're on.";
+    if ($assignee && (int)$assignee !== $uid) {
+        $m = $db->prepare("SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? UNION SELECT 1 FROM projects WHERE id = ? AND created_by = ?");
+        $m->execute([$projectId, (int)$assignee, $projectId, (int)$assignee]);
+        if (!$m->fetchColumn()) return 'You can assign tasks to people on this project. Ask a manager to add them to the project first.';
+    }
+    return true;
+}
+
+// ── Password setup / reset links ─────────────────────────────────────────
+function appBaseUrl() {
+    $host = $_SERVER['HTTP_HOST'] ?? 'timesheet.genhead.com';
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' || !preg_match('/^(127\.|localhost)/', $host);
+    $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+    return ($https ? 'https' : 'http').'://'.$host.$dir.'/';
+}
+// One-time link that lets this person create (or reset) their password
+function issueSetupLink($db, $user, $hours) {
+    $token = bin2hex(random_bytes(20));
+    $val = json_encode(['token' => $token, 'expires' => date('Y-m-d H:i:s', time() + 3600 * $hours)]);
+    $key = 'pin_reset_' . $user['id'];
+    $st = $db->prepare("UPDATE settings SET `value` = ? WHERE `key` = ?"); $st->execute([$val, $key]);
+    if (!$st->rowCount()) {
+        $chk = $db->prepare("SELECT COUNT(*) FROM settings WHERE `key` = ?"); $chk->execute([$key]);
+        if (!$chk->fetchColumn()) $db->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, ?)")->execute([$key, $val]);
+    }
+    return appBaseUrl() . '?reset_token=' . $token . '&uid=' . $user['id'];
+}
+// Email the link to the address on the account (GHL workflow, or PHP mail as a fallback)
+function sendAccessLink($user, $url, $kind, $expires) {
+    $email = trim($user['email'] ?? '');
+    if (!$email) return false;
+    $hook = getSetting('ghl_reset_webhook_url') ?: getSetting('ghl_invite_webhook_url');
+    $payload = ['event' => $kind, 'action' => $kind, 'employee_name' => $user['name'], 'employee_email' => $email,
+                'employee_id' => 'e' . $user['id'], 'role' => $user['role'], 'reset_url' => $url, 'setup_url' => $url,
+                'login_url' => appBaseUrl(), 'expires_in' => $expires, 'timestamp' => date('c')];
+    if ($hook && function_exists('curl_init')) {
+        $ch = curl_init($hook);
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
+        curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($code >= 200 && $code < 300) return true;
+    }
+    $what = $kind === 'password_setup' ? 'create your password' : 'reset your password';
+    return @mail($email, 'Genhead Timesheet: ' . ucfirst($what),
+        "Hi {$user['name']},\n\nUse this link to {$what} for the Genhead Timesheet (expires in {$expires}):\n\n{$url}\n\nIf you didn't ask for this, you can ignore this email.\n\nGenhead Team",
+        "From: noreply@genhead.com\r\nReply-To: support@genhead.com");
+}
+
+// ── Client hours by calendar month ───────────────────────────────────────
+function normMonth($m) {
+    $m = trim((string)$m);
+    if (preg_match('/^(\d{4})-(\d{2})$/', $m, $x) && (int)$x[2] >= 1 && (int)$x[2] <= 12) return $m;
+    return date('Y-m');
+}
+// Months from the first pay period (Apr 2026) to this month, newest first
+function monthList() {
+    $out = []; $d = new DateTime('2026-04-01'); $end = new DateTime(date('Y-m-01'));
+    while ($d <= $end) { $out[] = ['value'=>$d->format('Y-m'), 'label'=>$d->format('F Y')]; $d->modify('+1 month'); }
+    return array_reverse($out);
+}
+// Hours bank for a month: a saved month row, else the client's monthly default
+function monthBank($db, $client, $month) {
+    $st = $db->prepare("SELECT total_hours, plan_type, plan_label FROM client_hours_bank WHERE client_id = ? AND period = ? ORDER BY id DESC LIMIT 1");
+    $st->execute([(int)$client['id'], $month]);
+    if ($b = $st->fetch()) return $b;
+    return ['total_hours'=>$client['monthly_hours'] ?? 0, 'plan_type'=>$client['plan_type'] ?? 'none', 'plan_label'=>$client['plan_label'] ?? ''];
+}
+// Start date of a timesheet: period_start if stored, else from its "Mon dd - Mon dd" label
+function sheetStart($periodStart, $periodLabel) {
+    if ($periodStart && $periodStart !== '0000-00-00') return substr($periodStart, 0, 10);
+    $first = trim(explode('-', (string)$periodLabel)[0]);
+    foreach ([(int)date('Y'), (int)date('Y') - 1] as $y) {
+        $d = DateTime::createFromFormat('M d Y', $first.' '.$y);
+        if ($d && $d->format('Y-m-d') <= date('Y-m-d', strtotime('+14 days'))) return $d->format('Y-m-d');
+    }
+    return null;
+}
+// Every timesheet line for these clients whose work date falls in the month
+function clientMonthEntries($db, $clientIds, $month) {
+    if (!$clientIds) return [];
+    $mStart = $month.'-01'; $mEnd = date('Y-m-t', strtotime($mStart));
+    // Pay periods that overlap the month (by label), plus anything with a stored start date nearby
+    $labels = []; $d = new DateTime($mStart); $d->modify('-13 days'); $end = new DateTime($mEnd);
+    while ($d <= $end) { if ($p = periodForDate($d->format('Y-m-d'))) $labels[$p['period']] = 1; $d->modify('+1 day'); }
+    $labels = array_keys($labels) ?: ['__none__'];
+    $in = implode(',', array_fill(0, count($clientIds), '?'));
+    $lin = implode(',', array_fill(0, count($labels), '?'));
+    $st = $db->prepare("SELECT te.client_id, te.hours, te.deliverable, te.day_index, t.period, t.period_start, u.name AS team_member
+        FROM timesheet_entries te
+        JOIN timesheets t ON te.timesheet_id = t.id
+        JOIN users u ON t.user_id = u.id
+        WHERE te.client_id IN ($in)
+          AND t.status IN ('draft','submitted','under_review','approved')
+          AND (t.period IN ($lin) OR (t.period_start BETWEEN ? AND ?))");
+    $st->execute(array_merge($clientIds, $labels, [date('Y-m-d', strtotime($mStart.' -13 days')), $mEnd]));
+    $out = [];
+    foreach ($st->fetchAll() as $r) {
+        $s = sheetStart($r['period_start'], $r['period']);
+        if (!$s || (float)$r['hours'] == 0) continue;
+        $date = date('Y-m-d', strtotime($s.' +'.(int)$r['day_index'].' days'));
+        if ($date < $mStart || $date > $mEnd) continue;
+        $r['date'] = $date; $out[] = $r;
+    }
+    return $out;
+}
+
 function periodForDate($date) {
     $a = new DateTime('2026-04-27'); $d = new DateTime($date);
     if ($d < $a) return null;
@@ -2861,16 +3022,19 @@ function sendInviteWebhook($name, $email, $role, $newId) {
     if (!$email) return;
     $inviteUrl = getSetting('ghl_invite_webhook_url');
     if (!$inviteUrl) return;
-    $loginUrl = 'https://timesheet.genhead.com/';
+    $loginUrl = appBaseUrl();
+    $setupUrl = issueSetupLink(getDB(), ['id' => $newId], 24 * 7);
     $payload  = [
+        'setup_url'      => $setupUrl,
+        'reset_url'      => $setupUrl,
         'employee_name'  => $name,
         'employee_email' => $email,
         'employee_id'    => 'e' . $newId,
         'role'           => $role,
         'login_url'      => $loginUrl,
         'action'         => 'new_user_invite',
-        // Tell the GHL workflow what kind of credential to prompt for
-        'credential_type' => ($role === 'employee') ? 'pin' : 'password',
+        'credential_type' => 'password',
+        'expires_in'      => '7 days',
     ];
     $ch = curl_init($inviteUrl);
     curl_setopt_array($ch, [

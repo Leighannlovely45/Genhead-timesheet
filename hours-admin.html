@@ -146,7 +146,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
 </div>
 
 <div class="period-bar">
-  <span class="period-label">Pay Period</span>
+  <span class="period-label">Month</span>
   <select class="period-sel" id="period-sel" onchange="loadData()"></select>
   <button class="btn btn-sm" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);color:var(--navy);font-size:.72rem;font-weight:600" onclick="openRefillModal()">&#8635; Refill All Retainers</button>
 </div>
@@ -157,7 +157,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
   <div class="summary-grid" id="summary-grid">
     <div class="sc"><div class="sc-lbl">Total Clients</div><div class="sc-val" id="sc-total">—</div><div class="sc-sub">Active plans</div></div>
     <div class="sc purple"><div class="sc-lbl">Retainer Clients</div><div class="sc-val" id="sc-retainer">—</div><div class="sc-sub">Monthly hours</div></div>
-    <div class="sc warn"><div class="sc-lbl">Hours Used This Period</div><div class="sc-val" id="sc-used">—</div><div class="sc-sub">Across all clients</div></div>
+    <div class="sc warn"><div class="sc-lbl">Hours Used This Month</div><div class="sc-val" id="sc-used">—</div><div class="sc-sub">Across all clients</div></div>
     <div class="sc danger"><div class="sc-lbl">Low Balance</div><div class="sc-val" id="sc-low">—</div><div class="sc-sub">Clients under 20%</div></div>
   </div>
 
@@ -168,7 +168,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
       <button class="btn btn-outline btn-sm" onclick="closeDetail()">&#10005; Close</button>
     </div>
     <div class="detail-grid" id="detail-grid"></div>
-    <div style="font-size:.75rem;font-weight:600;color:var(--navy);margin-bottom:.5rem">Activity This Period</div>
+    <div style="font-size:.75rem;font-weight:600;color:var(--navy);margin-bottom:.5rem">Activity This Month</div>
     <div class="activity-mini" id="detail-activity"></div>
   </div>
 
@@ -198,7 +198,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
           <th>Client</th>
           <th>Plan</th>
           <th>Monthly Hrs</th>
-          <th>Bank This Period</th>
+          <th>Bank This Month</th>
           <th>Used</th>
           <th>Remaining</th>
           <th>Usage</th>
@@ -230,40 +230,34 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
 
 <script>
 const API = 'api.php';
-// Bi-weekly periods from Apr 27 2026 through ~2 months ahead (no end date). PSTARTS months are 1-based here.
-const PSTARTS = (()=>{const out=[];const d=new Date(2026,3,27);const lim=new Date();lim.setDate(lim.getDate()+60);while(d<=lim){out.push([d.getFullYear(),d.getMonth()+1,d.getDate()]);d.setDate(d.getDate()+14);}return out;})();
-const PERIODS = PSTARTS.map(([y,m,dd])=>{const s=new Date(y,m-1,dd),e=new Date(y,m-1,dd+13);const f=x=>x.toLocaleDateString('en-US',{month:'short'})+' '+String(x.getDate()).padStart(2,'0');return f(s)+' - '+f(e);});
+// Calendar months from April 2026 to this month, newest first
+const MONTHS = (()=>{const out=[];const d=new Date(2026,3,1);const now=new Date();while(d.getFullYear()<now.getFullYear()||(d.getFullYear()===now.getFullYear()&&d.getMonth()<=now.getMonth())){out.push({value:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,label:d.toLocaleDateString('en-US',{month:'long',year:'numeric'})});d.setMonth(d.getMonth()+1);}return out.reverse();})();
+const monthLabel = v => (MONTHS.find(m=>m.value===v)||{label:v}).label;
+// Signed-in timesheet session (Admin/HR only)
+let AUTH = null; try { AUTH = localStorage.getItem('ts_auth'); } catch(e) {}
+const _fetch = window.fetch.bind(window);
+window.fetch = (url, init) => _fetch(url, {...(init||{}), headers: {...((init&&init.headers)||{}), ...(AUTH ? {'X-TS-Auth': AUTH} : {})}})
+  .then(r => { if (r.status === 401 || r.status === 403) showSignIn(r.status); return r; });
+function showSignIn(code) {
+  document.getElementById('client-tbody').innerHTML = `<tr><td colspan="8" style="text-align:center;padding:1.5rem;color:var(--danger)">${code===403?'Only Admin and HR can manage client hours.':'Please <a href="./" style="color:var(--teal)">sign in to the timesheet</a> as Admin or HR, then reopen this page.'}</td></tr>`;
+}
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
-
-let currentPidx = 0;
+let currentMonth = MONTHS[0].value;
 let allClients = [];
 let pendingChanges = {}; // clientId -> {total_hours, plan_type, plan_label}
 
 // ── Init ──────────────────────────────────────────────────────
 function init() {
-  // Build period selector
   const sel = document.getElementById('period-sel');
-  PERIODS.forEach((p, i) => {
-    const opt = document.createElement('option');
-    opt.value = i; opt.textContent = p;
-    sel.appendChild(opt);
-  });
-  // Auto-select current period
-  const today = new Date();
-  for (let i = 0; i < PSTARTS.length; i++) {
-    const ps = PSTARTS[i];
-    const start = new Date(ps[0], ps[1]-1, ps[2]);
-    const end = new Date(start); end.setDate(end.getDate()+13);
-    if (today >= start && today <= end) { currentPidx = i; break; }
-    if (today > start) currentPidx = i;
-  }
-  sel.value = currentPidx;
+  MONTHS.forEach(m => { const o = document.createElement('option'); o.value = m.value; o.textContent = m.label; sel.appendChild(o); });
+  sel.value = currentMonth;
+  if (!AUTH) { showSignIn(401); return; }
   loadData();
 }
 
 async function loadData() {
-  currentPidx = parseInt(document.getElementById('period-sel').value);
-  const period = PERIODS[currentPidx];
+  currentMonth = document.getElementById('period-sel').value;
   document.getElementById('client-tbody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span>Loading...</td></tr>';
   pendingChanges = {};
   closeDetail();
@@ -271,7 +265,7 @@ async function loadData() {
   try {
     // Load client banks + client list in parallel
     const [banksRes, clientsRes] = await Promise.all([
-      fetch(`${API}?action=load_client_banks&period=${encodeURIComponent(period)}`).then(r=>r.json()),
+      fetch(`${API}?action=load_client_banks&month=${encodeURIComponent(currentMonth)}`).then(r=>r.json()),
       fetch(`${API}?action=load_clients`).then(r=>r.json())
     ]);
 
@@ -329,7 +323,7 @@ function renderTable(clients) {
     const pendingDot = hasPending ? '<span style="display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-left:.35rem;vertical-align:middle" title="Unsaved changes"></span>' : '';
 
     return `<tr id="row-${c.id}" onclick="showDetail(${c.id})" style="cursor:pointer">
-      <td><strong>${c.name}</strong>${pendingDot}${c.location_id?`<div style="font-size:.68rem;color:var(--mid);margin-top:.1rem;font-family:monospace">${c.location_id.substring(0,16)}...</div>`:''}</td>
+      <td><strong>${esc(c.name)}</strong>${pendingDot}${c.location_id?`<div style="font-size:.68rem;color:var(--mid);margin-top:.1rem;font-family:monospace">${esc(c.location_id.substring(0,16))}...</div>`:''}</td>
       <td onclick="event.stopPropagation()">
         <select class="plan-select" id="plan-${c.id}" onchange="markChange(${c.id})">
           <option value="retainer" ${c.plan==='retainer'?'selected':''}>Retainer</option>
@@ -400,7 +394,7 @@ function markChange(clientId) {
   pendingChanges[clientId] = {
     plan_type: plan,
     total_hours: hrs,
-    plan_label: plan === 'retainer' ? (hrs + ' hrs/period') : plan === 'diy' ? 'DIY Plan' : 'No Plan'
+    plan_label: plan === 'retainer' ? (hrs + ' hrs/month') : plan === 'diy' ? 'DIY Plan' : 'No Plan'
   };
 
   // Update client in allClients for summary
@@ -427,7 +421,7 @@ async function saveSingleClient(clientId) {
   if (!planEl) return;
   const plan = planEl.value;
   const hrs = parseFloat(hrsEl?.value) || 0;
-  const planLabel = plan === 'retainer' ? hrs + ' hrs/period' : plan === 'diy' ? 'DIY Plan' : 'No Plan';
+  const planLabel = plan === 'retainer' ? hrs + ' hrs/month' : plan === 'diy' ? 'DIY Plan' : 'No Plan';
 
   try {
     const res = await fetch(`${API}?action=set_client_hours`, {
@@ -435,8 +429,7 @@ async function saveSingleClient(clientId) {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         client_id: clientId,
-        period: PERIODS[currentPidx],
-        period_index: currentPidx,
+        month: currentMonth,
         total_hours: hrs,
         plan_type: plan,
         plan_label: planLabel
@@ -472,8 +465,7 @@ async function saveAllChanges() {
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
           client_id: parseInt(id),
-          period: PERIODS[currentPidx],
-          period_index: currentPidx,
+          month: currentMonth,
           total_hours: ch.total_hours,
           plan_type: ch.plan_type,
           plan_label: ch.plan_label
@@ -505,7 +497,7 @@ async function showDetail(clientId) {
   document.getElementById('detail-grid').innerHTML = `
     <div class="detail-stat">
       <div class="detail-stat-val">${total || '—'}</div>
-      <div class="detail-stat-lbl">Total Hours This Period</div>
+      <div class="detail-stat-lbl">Total Hours This Month</div>
     </div>
     <div class="detail-stat">
       <div class="detail-stat-val" style="color:var(--danger)">${used.toFixed(1)}</div>
@@ -520,19 +512,19 @@ async function showDetail(clientId) {
   const actEl = document.getElementById('detail-activity');
   actEl.innerHTML = '<span class="spinner"></span> Loading activity...';
   try {
-    const res = await fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(c.location_id)}&period=${encodeURIComponent(PERIODS[currentPidx])}`).then(r=>r.json());
+    const res = await fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(c.location_id)}&month=${encodeURIComponent(currentMonth)}`).then(r=>r.json());
     if (res.success && res.activity && res.activity.length > 0) {
       actEl.innerHTML = `<table>
         <thead><tr><th>Date</th><th>Team Member</th><th>Work Performed</th><th>Hours</th></tr></thead>
         <tbody>${res.activity.map(a => `<tr>
-          <td>${a.date ? new Date(a.date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
-          <td>${a.team_member || '—'}</td>
-          <td>${a.deliverable || 'Support work'}</td>
+          <td>${a.date ? new Date(a.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
+          <td>${esc(a.team_member || '—')}</td>
+          <td>${esc(a.deliverable || 'Support work')}</td>
           <td style="color:var(--danger);font-weight:600">−${parseFloat(a.hours).toFixed(1)} hrs</td>
         </tr>`).join('')}</tbody>
       </table>`;
     } else {
-      actEl.innerHTML = '<div class="no-activity">No activity logged this period.</div>';
+      actEl.innerHTML = '<div class="no-activity">No activity logged this month.</div>';
     }
   } catch(e) {
     actEl.innerHTML = '<div class="no-activity">Could not load activity.</div>';
@@ -546,13 +538,13 @@ function closeDetail() {
 // ── REFILL MODAL ──────────────────────────────────────────────
 function openRefillModal() {
   const retainers = allClients.filter(c => c.plan === 'retainer' || c.plan === 'diy');
-  document.getElementById('refill-period-label').textContent = PERIODS[currentPidx];
+  document.getElementById('refill-period-label').textContent = monthLabel(currentMonth);
   document.getElementById('refill-list').innerHTML = retainers.length === 0
     ? '<div style="padding:1rem;text-align:center;color:var(--mid);font-size:.82rem">No retainer clients found. Set client plans first.</div>'
     : retainers.map(c => `
         <div class="modal-list-item ${c.plan==='diy'?'diy':''}">
           <div>
-            <strong>${c.name}</strong>
+            <strong>${esc(c.name)}</strong>
             <div style="font-size:.72rem;color:var(--mid)">${c.plan==='diy'?'DIY — will be skipped':c.total_hours+' hrs'}</div>
           </div>
           <span class="plan-badge ${c.plan==='retainer'?'plan-retainer':'plan-diy'}">${c.plan==='retainer'?'Retainer':'DIY'}</span>
@@ -575,30 +567,29 @@ async function confirmRefill() {
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
           client_id: c.id,
-          period: PERIODS[currentPidx],
-          period_index: currentPidx,
+          month: currentMonth,
           total_hours: c.total_hours,
           plan_type: 'retainer',
-          plan_label: c.plan_label || c.total_hours + ' hrs/period'
+          plan_label: c.plan_label || c.total_hours + ' hrs/month'
         })
       }).then(r => r.json());
       if (res.success) count++;
     } catch(e) {}
   }
   closeRefillModal();
-  showToast(`&#8635; ${count} retainer client${count!==1?'s':''} refilled for ${PERIODS[currentPidx]}!`);
+  showToast(`&#8635; ${count} retainer client${count!==1?'s':''} refilled for ${monthLabel(currentMonth)}!`);
   await loadData();
 }
 
 // ── EXPORT CSV ────────────────────────────────────────────────
 function exportCSV() {
-  let csv = 'Client,Plan,Total Hours,Used Hours,Remaining,Period\n';
+  let csv = 'Client,Plan,Total Hours,Used Hours,Remaining,Month\n';
   allClients.forEach(c => {
-    csv += `"${c.name}","${c.plan}",${c.total_hours},${c.used_hours},${c.remaining},"${PERIODS[currentPidx]}"\n`;
+    csv += `"${c.name}","${c.plan}",${c.total_hours},${c.used_hours},${c.remaining},"${monthLabel(currentMonth)}"\n`;
   });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-  a.download = `client_hours_${PERIODS[currentPidx].replace(/ /g,'_')}.csv`;
+  a.download = `client_hours_${currentMonth}.csv`;
   a.click();
   showToast('CSV exported.');
 }

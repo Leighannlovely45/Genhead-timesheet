@@ -317,6 +317,7 @@ function fmtDate(d){
   if(isNaN(dt)) return d;
   return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function balanceColor(pct){
   if(pct > 40) return 'green';
   if(pct > 15) return 'yellow';
@@ -382,20 +383,20 @@ function renderPortal(data, selectedPeriod){
 
   // Period options
   const periodOpts = (periods || []).map(p =>
-    `<option value="${p.value}" ${p.value === period ? 'selected' : ''}>${p.label}</option>`
+    `<option value="${esc(p.value)}" ${p.value === period ? 'selected' : ''}>${esc(p.label)}</option>`
   ).join('');
 
   // Activity rows
   const actRows = (activity || []).length === 0
     ? `<div class="no-activity">
         <div class="no-activity-icon">📋</div>
-        No activity logged yet this period.
+        No activity logged yet this month.
        </div>`
     : (activity || []).map(row => `
         <div class="activity-row">
           <span class="act-date">${fmtDate(row.date)}</span>
-          <span class="act-task">${row.deliverable || 'Support work'}</span>
-          <span class="act-member">${row.team_member || 'Genhead Team'}</span>
+          <span class="act-task">${esc(row.deliverable || 'Support work')}</span>
+          <span class="act-member">${esc(row.team_member || 'Genhead Team')}</span>
           <span class="act-hrs">−${fmtHrs(row.hours)} hrs</span>
         </div>`).join('');
 
@@ -408,7 +409,7 @@ function renderPortal(data, selectedPeriod){
         <div class="balance-eyebrow">Remaining Support Hours</div>
         <div class="balance-number ${color}">${fmtHrs(remaining)}<span style="font-size:1.2rem;font-weight:400;color:var(--mid)"> hrs</span></div>
         <div class="balance-sub">
-          <strong>${fmtHrs(total)} hrs</strong> total this period &nbsp;·&nbsp;
+          <strong>${fmtHrs(total)} hrs</strong> total this month &nbsp;·&nbsp;
           <strong style="color:var(--red)">${fmtHrs(used)} hrs</strong> used
         </div>
       </div>
@@ -431,7 +432,7 @@ function renderPortal(data, selectedPeriod){
     <!-- PROGRESS BAR -->
     <div class="progress-wrap">
       <div class="progress-meta">
-        <span>${Math.round(pct)}% remaining this period</span>
+        <span>${Math.round(pct)}% remaining this month</span>
         <span>${fmtHrs(remaining)} of ${fmtHrs(total)} hrs left</span>
       </div>
       <div class="progress-track">
@@ -464,7 +465,7 @@ async function switchPeriod(period){
   document.getElementById('page').innerHTML = `
     <div class="loading-state"><div class="spinner"></div>Loading...</div>`;
   try{
-    const r = await fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(currentLocationId)}&period=${encodeURIComponent(period)}`);
+    const r = await fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(currentLocationId)}&month=${encodeURIComponent(period)}`);
     const data = await r.json();
     if(data.success) renderPortal(data, period);
     else renderError(data.error);

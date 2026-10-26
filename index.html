@@ -397,8 +397,8 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
   <!-- FORGOT PASSWORD -->
   <div class="login-card" id="login-card-forgot" style="display:none">
     <div style="font-size:.78rem;color:rgba(255,255,255,.5);cursor:pointer;margin-bottom:.75rem" onclick="showLoginSelect()">&#8592; Back</div>
-    <h2>Reset your password</h2>
-    <p style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Enter your Genhead email and we'll send you a reset link.</p>
+    <h2 id="forgot-title">Reset your password</h2>
+    <p id="forgot-sub" style="font-size:.82rem;color:rgba(255,255,255,.5);margin:.4rem 0 1rem">Enter your Genhead email and we'll send you a reset link.</p>
     <input type="email" id="forgot-email" placeholder="you@genhead.com" class="lf-input" style="margin-bottom:.75rem">
     <div id="forgot-msg" style="font-size:.78rem;min-height:1.2em;margin-bottom:.5rem;text-align:center"></div>
     <button class="btn btn-primary" style="width:100%" onclick="sendForgotPin()">Send Reset Link</button>
@@ -816,7 +816,7 @@ function buildLoginForm(){
     } else if(e.key==='Escape'){ list.style.display='none'; }
   });
   document.getElementById('lf-level').addEventListener('change', lfLevelChange);
-  document.getElementById('lf-forgot').addEventListener('click', showForgotPin);
+  document.getElementById('lf-forgot').addEventListener('click', ()=>showForgotPin(false));
   [0,1,2,3].forEach(i=>{
     document.getElementById('pin'+i).addEventListener('input', ()=>pinNext(i));
     document.getElementById('pin'+i).addEventListener('keydown', e=>pinKeydown(e,i));
@@ -941,6 +941,8 @@ function lfSubmit(){
           submitBtn.disabled=false;
           if(r.success){
             onAuthSuccess(r,u);
+          } else if(r.needs_setup&&r.verify==="email"){
+            showForgotPin(true);
           } else if(r.needs_setup){
             _pinMode='setup';
             document.getElementById("lf-password").setAttribute("autocomplete","new-password");
@@ -988,6 +990,8 @@ function lfSubmit(){
           submitBtn.disabled=false;
           if(r.success){
             onAuthSuccess(r,u);
+          } else if(r.needs_setup&&r.verify==="email"){
+            showForgotPin(true);
           } else if(r.needs_setup){
             // First-time user — switch to setup mode
             _pinMode='setup';
@@ -1037,7 +1041,10 @@ function pinKeydown(event,idx){
   }
 }
 
-function showForgotPin(){
+function showForgotPin(setup){
+  const t=document.getElementById("forgot-title"),sub=document.getElementById("forgot-sub");
+  if(t) t.textContent=setup===true?"Create your password":"Reset your password";
+  if(sub) sub.textContent=setup===true?"To keep accounts secure, enter the email on your timesheet account. We'll email you a link to create your password.":"Enter your Genhead email and we'll send you a reset link.";
   document.getElementById("login-card-select").style.display="none";
   document.getElementById("login-card-forgot").style.display="";
   document.getElementById("forgot-msg").textContent="";
@@ -1050,7 +1057,7 @@ function sendForgotPin(){
   if(!email){document.getElementById("forgot-msg").style.color="#f87171";document.getElementById("forgot-msg").textContent="Please enter your email.";return;}
   fetch(API_BASE+'?'+new URLSearchParams({action:"forgot_pin",email})).then(r=>r.json()).then(()=>{
     document.getElementById("forgot-msg").style.color="#4ade80";
-    document.getElementById("forgot-msg").textContent="If that email is on file, a reset link is on its way!";
+    document.getElementById("forgot-msg").textContent="If that email is on your account, a link is on its way. Check your inbox (and spam).";
   }).catch(()=>{
     document.getElementById("forgot-msg").style.color="#f87171";
     document.getElementById("forgot-msg").textContent="Something went wrong — please try again.";
@@ -1280,7 +1287,7 @@ function renderTS(uid){
   if(!isViewing){
     const backBtn=cur._vid?`<button class="btn btn-outline" onclick="backDash()">&#8592; Back to Dashboard</button>`:'';
     const projBtn=(cur.role==="employee"&&!cur._vid)?`<button class="btn btn-outline" onclick="openEmployeeProjects()">&#128193; My Projects</button>`:'';
-    h+=`<div class="action-bar">${backBtn}${projBtn}<button class="btn btn-outline" onclick="doExport()">Export CSV</button><button class="btn btn-primary" onclick="doSubmit()">${d.submitted?"Resubmit":"Submit to GHL"}</button></div>`;
+    h+=`<div class="action-bar">${backBtn}${projBtn}<button class="btn btn-outline" onclick="doExport()">Export CSV</button><button class="btn btn-primary" onclick="doSubmit()">${d.submitted?"Resubmit to Manager":"Submit to Manager"}</button></div>`;
   } else {
     h+=`<div class="action-bar"><button class="btn btn-outline" onclick="backDash()">&#8592; Back to Dashboard</button></div>`;
   }
@@ -1551,10 +1558,10 @@ async function doSubmit(){
   };
   if(GHL_WEBHOOK){
     fetch(GHL_WEBHOOK,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
-      .then(()=>showToast("Submitted! GHL workflow triggered. Manager will be notified."))
-      .catch(()=>showToast("Submitted locally. Check GHL webhook URL in Settings."));
+      .then(()=>showToast("Submitted to your manager for review."))
+      .catch(()=>showToast("Submitted to your manager. (The notification webhook didn't respond. Check GHL Setup.)"));
   } else {
-    showToast("Submitted! Add your GHL webhook URL in the GHL Setup tab to auto-notify manager.");
+    showToast("Submitted to your manager for review.");
   }
   if(cur._vid)renderTS(cur._vid);else renderApp();
 }
@@ -1732,7 +1739,7 @@ function renderDash(){
         <input id="team-search" type="text" placeholder="Search by name, email, or role…" oninput="renderTeam()" style="width:100%;padding:.5rem .75rem .5rem 2.1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--dark);font-size:.84rem;box-sizing:border-box">
       </div>
       <select id="team-role-filter" onchange="renderTeam()" style="background:var(--bg);color:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;font-size:.82rem">
-        <option value="">All Roles</option>
+        <option value="">All Roles</option><option value="admin">Admins</option>
         <option value="employee">Employees</option>
         <option value="manager">Managers</option>
         <option value="hr">HR</option>
@@ -1755,6 +1762,7 @@ function renderDash(){
               <option value="employee">Employee</option>
               <option value="manager">Manager</option>
               <option value="hr">HR</option>
+              <option value="admin" id="member-modal-role-admin">Admin</option>
             </select>
           </div>
         </div>
@@ -1763,7 +1771,8 @@ function renderDash(){
           <input id="member-modal-email" type="email" placeholder="jane@genhead.com" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
         </div>
         <div id="member-modal-pw-row" style="margin-bottom:.85rem">
-          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Password (leave blank to set later)</label>
+          <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem" id="member-modal-pw-label">Starting password (optional)</label>
+          <div id="member-modal-pw-hint" style="font-size:.72rem;color:var(--mid);margin:-.1rem 0 .35rem">Leave blank and they'll get an email link to create their own.</div>
           <input id="member-modal-pw" type="password" placeholder="Min 6 characters" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.85rem;box-sizing:border-box">
         </div>
         <input id="member-modal-pin" type="hidden" value="">
@@ -2252,7 +2261,7 @@ function renderTeam(){
   if(!wrap) return;
   const q=(document.getElementById("team-search")?.value||"").toLowerCase();
   const roleFilter=document.getElementById("team-role-filter")?.value||"";
-  let allStaff=EMPS.filter(e=>e.role!=="admin");
+  let allStaff=EMPS.slice();
   if(q) allStaff=allStaff.filter(e=>(e.name||"").toLowerCase().includes(q)||(e.email||"").toLowerCase().includes(q)||(e.role||"").toLowerCase().includes(q));
   if(roleFilter) allStaff=allStaff.filter(e=>e.role===roleFilter);
   if(!allStaff.length){
@@ -2262,10 +2271,14 @@ function renderTeam(){
   const managers=EMPS.filter(e=>e.role==="manager"||e.role==="hr"||e.role==="admin");
   const mgrOpts=managers.map(m=>`<option value="${m.id}">${escHtml(m.name)}</option>`).join("");
   const rows=allStaff.map(e=>{
-    const roleBadge=e.role==="manager"?'<span class="badge-role mgr">Manager</span>':e.role==="hr"?'<span class="badge-role hr">HR</span>':'<span class="badge-role">Employee</span>';
+    const roleBadge=e.role==="admin"?'<span class="badge-role admin">Admin</span>':e.role==="manager"?'<span class="badge-role mgr">Manager</span>':e.role==="hr"?'<span class="badge-role hr">HR</span>':'<span class="badge-role">Employee</span>';
+    const dupOf=EMPS.filter(o=>o.id!==e.id&&((o.email&&e.email&&o.email.toLowerCase()===e.email.toLowerCase())||(o.name||"").trim().toLowerCase()===(e.name||"").trim().toLowerCase()));
+    const dupFlag=dupOf.length?` <span title="Same name or email as another account" style="font-size:.66rem;background:#fef3c7;color:#92400e;border-radius:4px;padding:.05rem .35rem;margin-left:.3rem">Possible duplicate</span>`:"";
+    const canTouch=cur.role==="admin"||e.role!=="admin";
     const isActive=e.active!==false&&e.status!=="inactive";
     const statusDot=isActive?'<span style="color:#10b981;font-size:.78rem">● Active</span>':'<span style="color:#ef4444;font-size:.78rem">● Inactive</span>';
     const credential=e.password_set?'<span style="color:#10b981;font-size:.75rem">Password set</span>':'<span style="color:#f59e0b;font-size:.75rem">No password yet</span>';
+    const linkBtn=canTouch&&e.email?`<button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;margin-right:.35rem" title="${e.password_set?"Email them a link to reset their password":"Email them a link to create their password"}" onclick="sendSetupLink('${e.id}')">${e.password_set?"Reset link":"Send link"}</button>`:"";
     // "Reports To" dropdown — every team member can be assigned a reviewer
     let mgrCell='<span style="color:var(--mid);font-size:.78rem">—</span>';
     {
@@ -2277,19 +2290,20 @@ function renderTeam(){
       </select>`;
     }
     return `<tr>
-      <td><strong>${escHtml(e.name)}</strong></td>
+      <td><strong>${escHtml(e.name)}</strong>${dupFlag}</td>
       <td style="font-size:.78rem;color:var(--mid)">${escHtml(e.email||"—")}</td>
       <td>${roleBadge}</td>
       <td>${statusDot}</td>
       <td>${credential}</td>
       <td>${mgrCell}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;margin-right:.35rem" onclick="editMember('${e.id}')">Edit</button>
-        <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;color:${isActive?'#ef4444':'#10b981'}" onclick="toggleMemberActive('${e.id}',${isActive})">${isActive?"Deactivate":"Reactivate"}</button>
+        ${canTouch?`${linkBtn}<button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;margin-right:.35rem" onclick="editMember('${e.id}')">Edit</button>
+        ${cur.role==="admin"&&dupOf.length?`<button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;margin-right:.35rem" onclick="openMergeModal('${e.id}')">Merge</button>`:""}
+        <button class="btn btn-outline" style="padding:.2rem .55rem;font-size:.72rem;color:${isActive?'#ef4444':'#10b981'}" onclick="toggleMemberActive('${e.id}',${isActive})">${isActive?"Deactivate":"Reactivate"}</button>`:'<span style="font-size:.72rem;color:var(--mid)">Admin only</span>'}
       </td>
     </tr>`;
   }).join("");
-  const total=EMPS.filter(e=>e.role!=="admin").length;
+  const total=EMPS.length;
   const showing=allStaff.length;
   const countNote=(q||roleFilter)&&showing<total?`<div style="font-size:.78rem;color:var(--mid);margin-bottom:.6rem">Showing ${showing} of ${total} members</div>`:"";
   wrap.innerHTML=`${countNote}<div class="billing-tbl"><table>
@@ -2310,6 +2324,65 @@ async function assignManager(empId,mgrId){
       renderTeam(); // revert UI
     }
   }catch(e){showToast("Error: "+e.message);renderTeam();}
+}
+
+// ── PASSWORD SETUP / RESET LINKS ──────────────────────────────────────────
+async function sendSetupLink(uid){
+  const e=EMPS.find(x=>x.id===uid); if(!e) return;
+  const kind=e.password_set?"reset":"setup";
+  if(!(await uiConfirm(`Email ${e.name} a link to ${kind==="setup"?"create":"reset"} their password? It goes to ${e.email}.`,{title:kind==="setup"?"Send setup link":"Send reset link",ok:"Send link"}))) return;
+  const r=await fetch(API_BASE+'?'+new URLSearchParams({action:"send_setup_link",id:uid})).then(x=>x.json()).catch(()=>({success:false,error:"Network error"}));
+  if(!r.success){alert(r.error||"Could not create the link.");return;}
+  showLinkModal(e,r);
+}
+function showLinkModal(e,r){
+  let m=document.getElementById("link-modal");
+  if(!m){m=document.createElement("div");m.id="link-modal";m.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:flex;align-items:center;justify-content:center";document.body.appendChild(m);}
+  m.innerHTML=`<div style="background:var(--bg);border-radius:14px;padding:1.5rem;max-width:460px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <h3 style="margin:0 0 .6rem;color:var(--dark)">${r.kind==="setup"?"Setup":"Reset"} link for ${escHtml(e.name)}</h3>
+    <p style="font-size:.84rem;color:var(--mid);margin:0 0 .8rem">${r.sent?`Emailed to <b>${escHtml(r.email)}</b>.`:`The email couldn't be sent automatically.`} You can also copy the link and send it to them yourself. Only send it to ${escHtml(e.name)}. It works once and expires in ${escHtml(r.expires)}.</p>
+    <input id="link-modal-url" readonly value="${escHtml(r.url)}" style="width:100%;box-sizing:border-box;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .65rem;font-size:.78rem;color:var(--dark)">
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
+      <button class="btn btn-outline" onclick="(function(){const i=document.getElementById('link-modal-url');i.select();try{navigator.clipboard.writeText(i.value);}catch(x){document.execCommand('copy');}showToast('Link copied.');})()">Copy link</button>
+      <button class="btn btn-primary" onclick="document.getElementById('link-modal').remove()">Done</button>
+    </div></div>`;
+}
+
+// ── MERGE DUPLICATE ACCOUNTS (Admin) ──────────────────────────────────────
+function openMergeModal(uid){
+  const a=EMPS.find(x=>x.id===uid); if(!a) return;
+  const dups=EMPS.filter(o=>o.id!==a.id&&((o.email&&a.email&&o.email.toLowerCase()===a.email.toLowerCase())||(o.name||"").trim().toLowerCase()===(a.name||"").trim().toLowerCase()));
+  const all=[a,...dups];
+  const label=e=>`${e.name} · ${e.role} · ${e.email||"no email"}${e.password_set?" · password set":""} (#${String(e.id).replace(/^e/,"")})`;
+  const opts=sel=>all.map(e=>`<option value="${e.id}"${e.id===sel?" selected":""}>${escHtml(label(e))}</option>`).join("");
+  const best=all.slice().sort((x,y)=>(y.password_set?1:0)-(x.password_set?1:0)||(["admin","hr","manager","employee"].indexOf(x.role)-["admin","hr","manager","employee"].indexOf(y.role)))[0];
+  let m=document.getElementById("merge-modal");
+  if(!m){m=document.createElement("div");m.id="merge-modal";m.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:flex;align-items:center;justify-content:center";document.body.appendChild(m);}
+  const other=all.find(e=>e.id!==best.id);
+  m.innerHTML=`<div style="background:var(--bg);border-radius:14px;padding:1.5rem;max-width:520px;width:94%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <h3 style="margin:0 0 .4rem;color:var(--dark)">Merge duplicate accounts</h3>
+    <p style="font-size:.82rem;color:var(--mid);margin:0 0 1rem">Timesheets, approvals, direct reports, tasks, comments and project access move to the account you keep. The duplicate is switched off, not deleted. If both have a timesheet for the same pay period, their lines are combined into one.</p>
+    <label style="font-size:.78rem;font-weight:600;color:var(--mid)">Keep this account (they sign in with this one)</label>
+    <select id="merge-keep" style="width:100%;margin:.3rem 0 .8rem;background:var(--hover);color:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.5rem">${opts(best.id)}</select>
+    <label style="font-size:.78rem;font-weight:600;color:var(--mid)">Merge in and switch off</label>
+    <select id="merge-dup" style="width:100%;margin:.3rem 0 .8rem;background:var(--hover);color:var(--dark);border:1px solid var(--border);border-radius:8px;padding:.5rem">${opts(other.id)}</select>
+    <div id="merge-err" style="color:#ef4444;font-size:.8rem;min-height:1.1em"></div>
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.6rem">
+      <button class="btn btn-outline" onclick="document.getElementById('merge-modal').remove()">Cancel</button>
+      <button class="btn btn-primary" onclick="doMerge()">Merge accounts</button>
+    </div></div>`;
+}
+async function doMerge(){
+  const keep=document.getElementById("merge-keep").value, dup=document.getElementById("merge-dup").value;
+  const err=document.getElementById("merge-err");
+  if(keep===dup){err.textContent="Pick two different accounts.";return;}
+  const k=EMPS.find(e=>e.id===keep), d=EMPS.find(e=>e.id===dup);
+  if(!(await uiConfirm(`Move everything from ${d.name} (#${dup.replace(/^e/,"")}, ${d.role}) into ${k.name} (#${keep.replace(/^e/,"")}, ${k.role}) and switch off #${dup.replace(/^e/,"")}?`,{title:"Merge accounts",ok:"Merge",danger:true}))) return;
+  const r=await fetch(API_BASE+'?'+new URLSearchParams({action:"merge_users",keep_id:keep,dup_id:dup})).then(x=>x.json()).catch(()=>({success:false,error:"Network error"}));
+  if(!r.success){err.textContent=r.error||"Merge failed.";return;}
+  document.getElementById("merge-modal").remove();
+  showToast(`Merged: ${r.moved.timesheets} timesheet(s) moved${r.moved.combined?`, ${r.moved.combined} combined`:""}.`);
+  await loadTeam(); renderTeam();
 }
 
 // ── REPORTS V2 ──────────────────────────────────────────────────────────────
@@ -3166,7 +3239,8 @@ function pmAssignOptions(projectId,selected){
   const proj=_pm.projects.find(p=>parseInt(p.id)===parseInt(projectId));
   const team=new Set(pmTeamIds(proj));
   const sel=String(selected||"").replace(/^e/,"");
-  const active=EMPS.filter(e=>e.active!==false);
+  let active=EMPS.filter(e=>e.active!==false);
+  if(cur&&cur.role==="employee"){const me=myDbId();active=active.filter(e=>{const id=String(e.id).replace(/^e/,"");return team.has(id)||id===me||id===sel;});return active.map(e=>{const id=String(e.id).replace(/^e/,"");return `<option value="${id}" data-name="${escHtml(e.name)}"${id===sel?" selected":""}>${escHtml(e.name)}${id===me?" (me)":""}</option>`;}).join("");}
   const opt=e=>{const id=String(e.id).replace(/^e/,"");return `<option value="${id}" data-name="${escHtml(e.name)}"${id===sel?" selected":""}>${escHtml(e.name)}</option>`;};
   const inTeam=active.filter(e=>team.has(String(e.id).replace(/^e/,"")));
   const others=active.filter(e=>!team.has(String(e.id).replace(/^e/,"")));
@@ -3273,7 +3347,7 @@ function _renderPMBoard(){
     <div><h2>Projects</h2><p>${canManage?'All projects and tasks across the team':'Your assigned &amp; followed tasks'}</p></div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${clientFilterHtml}
-      ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectsView()">📁 All Projects</button>`:''}
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectsView()">📁 ${canManage?'All Projects':'My Projects'}</button>
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks()">My Tasks</button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
@@ -3325,10 +3399,11 @@ function _pmProjectsView(clientFilter){
   const visibleProjects=_pm.clientFilter?_pm.projects.filter(p=>p.client_name===_pm.clientFilter):_pm.projects;
   let h=`
   <div class="dash-top">
-    <div><h2>All Projects</h2><p>${visibleProjects.length} project${visibleProjects.length!==1?'s':''}</p></div>
+    <div><h2>${canManage?'All Projects':'My Projects'}</h2><p>${visibleProjects.length} project${visibleProjects.length!==1?'s':''}</p></div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${clientFilterHtml}
-      <button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks('open')">✓ My Tasks <span style="opacity:.7">${_pm.tasks.filter(t=>String(t.assigned_to||'')===myDbId()&&t.stage!=='done').length}</span></button>
+      ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
   </div>`;
 
@@ -3443,33 +3518,64 @@ async function _pmQuickAssignSave(taskId,sel){
   await fetch(`${API_BASE}?action=update_task&id=${taskId}&assigned_to=${empId}&assigned_name=${encodeURIComponent(empName)}&actor_id=${myDbId()}&actor_name=${encodeURIComponent(cur.name||'')}`).catch(()=>{});
 }
 
-function _pmMyTasks(){
+function _pmMyTasks(filter){
   _pm.view='mytasks';
+  if(filter) _pm.myFilter=filter;
+  const f=_pm.myFilter||'open';
   const root=pmRoot();
-  const myDbId=cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0;
-  const myTasks=_pm.tasks.filter(t=>parseInt(t.assigned_to)===myDbId && t.stage!=='done');
+  const me=myDbId();
+  const today=new Date(); today.setHours(0,0,0,0);
+  const weekEnd=new Date(today); weekEnd.setDate(weekEnd.getDate()+(7-weekEnd.getDay())%7);
+  const dueOf=t=>t.due_date?new Date(String(t.due_date).slice(0,10)+'T00:00:00'):null;
+  const mine=_pm.tasks.filter(t=>String(t.assigned_to||'')===me);
+  const isOpen=t=>t.stage!=='done';
+  const counts={
+    open:mine.filter(isOpen).length,
+    week:mine.filter(t=>isOpen(t)&&dueOf(t)&&dueOf(t)>=today&&dueOf(t)<=weekEnd).length,
+    overdue:mine.filter(t=>isOpen(t)&&dueOf(t)&&dueOf(t)<today).length,
+    done:mine.filter(t=>t.stage==='done').length,
+    all:mine.length
+  };
+  let list=mine.filter(t=>f==='all'?true:f==='done'?t.stage==='done':f==='week'?(isOpen(t)&&dueOf(t)&&dueOf(t)>=today&&dueOf(t)<=weekEnd):f==='overdue'?(isOpen(t)&&dueOf(t)&&dueOf(t)<today):isOpen(t));
+  // Soonest due first; no due date last
+  list.sort((x,y)=>{const a=dueOf(x),b=dueOf(y);if(a&&b)return a-b;if(a)return -1;if(b)return 1;return String(x.title).localeCompare(String(y.title));});
+  const chip=(k,l)=>`<button class="btn ${f===k?'btn-primary':'btn-outline'}" style="font-size:.76rem;padding:.3rem .75rem" onclick="_pmMyTasks('${k}')">${l} <span style="opacity:.75">${counts[k]}</span></button>`;
   let h=`
   <div class="dash-top">
-    <div><h2>My Tasks</h2><p>Tasks assigned to you, excluding Done</p></div>
-    <div><button class="btn btn-outline" onclick="_pm.view='board';_renderPMBoard()">← All Projects</button></div>
+    <div><h2>My Tasks</h2><p>Every task assigned to you, across all projects</p></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="_pmProjectsView()">📁 Projects</button>
+      <button class="btn btn-outline" onclick="_pm.view='board';_renderPMBoard()">Board</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.9rem">
+    ${chip('open','Open')}${chip('week','Due this week')}${chip('overdue','Overdue')}${chip('done','Done')}${chip('all','All')}
   </div>`;
-  if(!myTasks.length){
-    h+=`<div style="padding:3rem;text-align:center;color:var(--mid)">No open tasks assigned to you 🎉</div>`;
+  if(!list.length){
+    h+=`<div style="padding:3rem;text-align:center;color:var(--mid)">${f==='open'?'No open tasks assigned to you 🎉':'Nothing here.'}</div>`;
   } else {
     h+=`<div class="billing-tbl"><table><thead><tr>
-      <th>Task</th><th>Project</th><th>Stage</th><th>Priority</th><th>Due</th><th>Actions</th>
+      <th>Task</th><th>Client</th><th>Project</th><th>Stage</th><th>Due</th><th>Hours</th><th></th>
     </tr></thead><tbody>`;
-    myTasks.forEach(t=>{
-      const proj=_pm.projects.find(p=>p.id===t.project_id)||{name:'—'};
+    list.forEach(t=>{
+      const proj=_pm.projects.find(p=>parseInt(p.id)===parseInt(t.project_id))||{name:t.project_name||'—'};
       const stageLabel=STAGES.find(s=>s.key===t.stage)?.label||t.stage;
-      const dueColor=t.due_date&&new Date(t.due_date)<new Date()?'color:#f87171':'';
+      const due=dueOf(t);
+      const overdue=due&&due<today&&t.stage!=='done';
+      const est=parseFloat(t.estimated_hours)||0;
+      const logged=(parseFloat(t.ts_logged_hours)||0)+(parseFloat(t.logged_hours)||0);
+      const pct=est?Math.round(logged/est*100):0;
+      const col=pct>100?'#ef4444':pct>=80?'#f59e0b':'#03AD8F';
       h+=`<tr>
-        <td><a href="#" style="color:var(--teal);text-decoration:none" onclick="event.preventDefault();_pmOpenTask(${t.id})">${escHtml(t.title)}</a></td>
-        <td><a href="#" style="color:var(--mid);text-decoration:none" onclick="event.preventDefault();_pmProjectDetail(${t.project_id})">${escHtml(proj.name)}</a></td>
+        <td><a href="#" style="color:var(--teal);text-decoration:none;font-weight:600" onclick="event.preventDefault();_pmOpenTask(${t.id})">${escHtml(t.title)}</a>
+          <div style="font-size:.7rem;color:${t.priority==='high'?'#f87171':t.priority==='medium'?'#fb923c':'#4ade80'}">${escHtml(t.priority||'')} priority</div></td>
+        <td style="font-size:.8rem">${escHtml(t.client_name||proj.client_name||'—')}</td>
+        <td style="font-size:.8rem"><a href="#" style="color:var(--mid);text-decoration:none" onclick="event.preventDefault();_pmProjectBoard(${parseInt(t.project_id)})">${escHtml(proj.name)}</a></td>
         <td><span style="font-size:.78rem">${stageLabel}</span></td>
-        <td><span style="font-size:.78rem;color:${t.priority==='high'?'#f87171':t.priority==='medium'?'#fb923c':'#4ade80'}">${t.priority}</span></td>
-        <td style="${dueColor};font-size:.78rem">${t.due_date||'—'}</td>
-        <td><button class="btn btn-outline" style="font-size:.72rem;padding:.2rem .55rem" onclick="_pmMoveModal(${t.id},'${t.stage}')">Move</button></td>
+        <td style="font-size:.8rem;${overdue?'color:#ef4444;font-weight:600':''}">${due?due.toLocaleDateString('en-US',{month:'short',day:'numeric'})+(overdue?' · overdue':''):'—'}</td>
+        <td style="font-size:.78rem;min-width:110px">${logged.toFixed(1)}${est?` / ${est}h`:'h'}
+          ${est?`<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:3px"><div style="height:100%;width:${Math.min(100,pct)}%;background:${col}"></div></div>`:''}</td>
+        <td style="white-space:nowrap"><button class="btn btn-outline" style="font-size:.72rem;padding:.2rem .55rem;margin-right:.3rem" onclick="_pmOpenTask(${t.id})">Open · Log time</button><button class="btn btn-outline" style="font-size:.72rem;padding:.2rem .55rem" onclick="_pmMoveModal(${t.id},'${t.stage}')">Move</button></td>
       </tr>`;
     });
     h+=`</tbody></table></div>`;
@@ -3514,7 +3620,7 @@ function _pmProjectBoard(projectId){
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectDetail(${proj.id})">☰ List View</button>`:''}
-      ${canManage?`<button class="btn btn-primary" onclick="_pmAddTaskModal(${proj.id})">+ Add Task</button>`:''}
+      <button class="btn btn-primary" onclick="_pmAddTaskModal(${proj.id})">+ Add Task</button>
     </div>
   </div>
   <div class="pm-board">`;
@@ -3564,7 +3670,7 @@ async function _pmProjectDetail(projectId){
         <p style="margin:.25rem 0 0">${proj.client_name?escHtml(proj.client_name)+' · ':''}<span class="btype-tag bt-${proj.billing_type||'billable'}">${(BILLING_TYPES.find(b=>b.key===proj.billing_type)||{label:'Billable'}).label}</span></p>
       </div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end">
-        ${canManage?`<button class="btn btn-primary" onclick="_pmAddTaskModal(${projectId})">+ Add Task</button>`:''}
+        <button class="btn btn-primary" onclick="_pmAddTaskModal(${projectId})">+ Add Task</button>
       </div>
     </div>
     <div class="pm-detail-grid">`;
@@ -3628,8 +3734,12 @@ function _pmShowTaskPanel(task){
   const commentsHtml=_pmRenderComments(_pm.comments);
 
   const empOpts=pmAssignOptions(task.project_id,task.assigned_to);
+  const me=myDbId();
+  const canEditTask=canManage||String(task.assigned_to||'')===me||String(task.created_by||'')===me;
+  const projBt=(_pm.projects.find(p=>p.id===task.project_id)||{}).billing_type||'billable';
+  const curBt=task.billing_type||projBt;
 
-  const editSection=canManage?`
+  const editSection=canEditTask?`
     <div style="padding:.75rem 1.25rem;border-bottom:1px solid var(--border);background:var(--hover);border-radius:0">
       <div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.6rem">Edit Task</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
@@ -3645,6 +3755,12 @@ function _pmShowTaskPanel(task){
             <option value="low"${task.priority==='low'?' selected':''}>Low</option>
             <option value="medium"${task.priority==='medium'?' selected':''}>Medium</option>
             <option value="high"${task.priority==='high'?' selected':''}>High</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Billing</label>
+          <select id="pm-edit-billing" class="pm-inp" style="margin:0;font-size:.8rem;padding:.35rem .5rem">
+            ${BILLING_TYPES.map(b=>`<option value="${b.key}"${b.key===curBt?' selected':''}>${b.label}${b.key===projBt?' (project default)':''}</option>`).join('')}
           </select>
         </div>
         <div>
@@ -3678,7 +3794,7 @@ function _pmShowTaskPanel(task){
       <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Assignee</div><div style="font-size:.85rem;color:var(--dark)">${escHtml(task.assigned_name||'Unassigned')}</div></div>
       <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Priority</div><div style="font-size:.85rem;color:${task.priority==='high'?'#f87171':task.priority==='medium'?'#fb923c':'#4ade80'}">${task.priority}</div></div>
       <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Due</div><div style="font-size:.85rem;color:var(--dark)">${task.due_date||'—'}</div></div>
-      <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Billing</div><span class="btype-tag bt-${task.billing_type||'billable'}">${(BILLING_TYPES.find(b=>b.key===task.billing_type)||{label:'Billable'}).label}</span></div>
+      <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Billing</div><span class="btype-tag bt-${curBt}">${(BILLING_TYPES.find(b=>b.key===curBt)||{label:'Billable'}).label}</span></div>
     </div>
     ${task.description?`<div style="padding:.75rem 1.25rem;font-size:.83rem;color:var(--mid);border-bottom:1px solid var(--border)">${escHtml(task.description)}</div>`:''}
     ${editSection}
@@ -3735,13 +3851,14 @@ async function _pmSaveTaskEdits(taskId){
   const due=dueEl?dueEl.value:'';
   const estHours=estHEl?estHEl.value:'';
   const logHours=logHEl?logHEl.value:'';
+  const billing=(document.getElementById('pm-edit-billing')||{}).value||'';
   try{
-    const p=new URLSearchParams({action:'update_task',id:taskId,assigned_to:assignId,assigned_name:assignName,priority,due_date:due,estimated_hours:estHours,logged_hours:logHours,actor_id:myDbId(),actor_name:cur.name});
+    const p=new URLSearchParams({action:'update_task',id:taskId,assigned_to:assignId,assigned_name:assignName,priority,due_date:due,estimated_hours:estHours,logged_hours:logHours,billing_type:billing,actor_id:myDbId(),actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     // Update local state
     const t=_pm.tasks.find(t=>t.id===taskId);
-    if(t){t.assigned_to=assignId;t.assigned_name=assignName;t.priority=priority;t.due_date=due;t.estimated_hours=estHours||null;t.logged_hours=logHours||null;}
+    if(t){t.assigned_to=assignId;t.assigned_name=assignName;t.priority=priority;t.due_date=due;t.estimated_hours=estHours||null;t.logged_hours=logHours||null;if(billing)t.billing_type=billing;}
     // Close panel and re-render
     const panel=document.getElementById('pm-task-panel');
     if(panel)panel.remove();
@@ -4108,6 +4225,9 @@ function _pmTaskModalHTML(){
       <input id="pm-task-desc" type="text" placeholder="Optional details" class="pm-inp">
       <label class="pm-lbl">Assign To</label>
       <select id="pm-task-assign" class="pm-inp"><option value="">— Unassigned —</option>${empOpts}</select>
+      <label class="pm-lbl">Billing</label>
+      <select id="pm-task-billing" class="pm-inp">${BILLING_TYPES.map(b=>`<option value="${b.key}">${b.label}</option>`).join('')}</select>
+      <div id="pm-task-billing-hint" style="font-size:.7rem;color:var(--mid);margin:-.35rem 0 .6rem"></div>
       <label class="pm-lbl">Priority</label>
       <select id="pm-task-priority" class="pm-inp">
         <option value="low">Low</option>
@@ -4141,6 +4261,9 @@ function _pmAddTaskModal(projectId){
   const asg=document.getElementById('pm-task-assign');
   asg.innerHTML=`<option value="">— Unassigned —</option>${pmAssignOptions(proj?proj.id:0,'')}`;
   asg.value='';
+  const pbt=(proj&&BILLING_TYPES.some(b=>b.key===proj.billing_type))?proj.billing_type:'billable';
+  document.getElementById('pm-task-billing').value=pbt;
+  document.getElementById('pm-task-billing-hint').textContent=`Starts as the project's billing type (${(BILLING_TYPES.find(b=>b.key===pbt)||{}).label}). Change it if this task is different.`;
   document.getElementById('pm-task-priority').value='medium';
   document.getElementById('pm-task-stage').value='backlog';
   document.getElementById('pm-task-due').value='';
@@ -4165,7 +4288,8 @@ async function _pmSaveTask(){
   if(!projId){alert('No project selected.');return;}
   if(!title){alert('Task title is required.');return;}
   try{
-    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',estimated_hours:estHours,created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,actor_name:cur.name});
+    const billing=(document.getElementById('pm-task-billing')||{}).value||'';
+    const p=new URLSearchParams({action:'add_task',project_id:projId,title,description:desc||'',assigned_to:assignId||'',assigned_name:assignName||'',priority,stage,due_date:due||'',estimated_hours:estHours,billing_type:billing,created_by:cur.db_id||parseInt((cur.id||'').replace(/^e/,''))||0,actor_name:cur.name});
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
     // Add new task to local cache so board re-renders immediately
@@ -4283,6 +4407,7 @@ function showAddMemberModal(){
   const canSeePay=(cur.role==="admin"||cur.role==="hr");
   document.getElementById("member-modal-rate-row").style.display=canSeePay?"":"none";
   document.getElementById("member-modal-role").onchange=toggleMemberModalFields;
+  memberModalRoleRules();
   const m=document.getElementById("member-modal");
   if(m) m.style.display="flex";
 }
@@ -4301,17 +4426,28 @@ function editMember(uid){
   document.getElementById("member-modal-rate-row").style.display=canSeePay?"":"none";
   if(canSeePay){
     const d=gd(uid,pidx);
-    document.getElementById("member-modal-rate").value=d.rate||"";
+    document.getElementById("member-modal-rate").value=d.rate||e.rate||"";
   }
   document.getElementById("member-modal-title").textContent="Edit "+e.name;
   toggleMemberModalFields();
   document.getElementById("member-modal-role").onchange=toggleMemberModalFields;
+  memberModalRoleRules();
   const m=document.getElementById("member-modal");
   if(m) m.style.display="flex";
 }
 
 function toggleMemberModalFields(){
   // Password shown for all roles now — nothing to toggle
+}
+// Only Admins can see/give the Admin role; HR can't edit an Admin
+function memberModalRoleRules(){
+  const opt=document.getElementById("member-modal-role-admin");
+  const sel=document.getElementById("member-modal-role");
+  const editingAdmin=sel.value==="admin";
+  if(opt){opt.hidden=cur.role!=="admin"&&!editingAdmin;opt.disabled=cur.role!=="admin";}
+  const id=document.getElementById("member-modal-id").value;
+  document.getElementById("member-modal-pw-label").textContent=id?"New password (optional)":"Starting password (optional)";
+  document.getElementById("member-modal-pw-hint").textContent=id?"Leave blank to keep their current password. Or use Send link on the Team board so they choose their own.":"Leave blank and they'll get an email link to create their own.";
 }
 
 function closeMemberModal(){
@@ -4336,7 +4472,7 @@ async function saveMember(){
     let r;
     if(id){
       // Update existing
-      const p={action:"update_employee",id,name,role};
+      const p={action:"update_employee",id,name,role,email};
       if(pin)          p.pin=pin;
       if(pw)           p.pw=pw;
       if(rateVal!=="") p.rate=parseFloat(rateVal)||0;
@@ -4344,26 +4480,21 @@ async function saveMember(){
       if(r.success&&rateVal!==""){const emp=EMPS.find(e=>e.id===id);if(emp)emp._rate=parseFloat(rateVal)||0;gd(id,pidx).rate=rateVal;}
       if(r.success){
         const emp=EMPS.find(e=>e.id===id);
-        if(emp){emp.name=name;emp.role=role;if(pin)emp.pin_set=true;if(pw)emp.password_set=true;}
+        if(emp){emp.name=name;emp.role=role;emp.email=email;if(pin)emp.pin_set=true;if(pw)emp.password_set=true;if(rateVal!=="")emp.rate=parseFloat(rateVal)||0;}
         showToast("Member updated.");
       }
     } else {
       // Add new
-      if(role==="employee"){
-        r=await apiGet({action:"add_employee",name,email,pin:pin||""});
-        if(r.success){
-          // API returns {success,id,name} or {success,employee:{...}}
-          const emp=r.employee||{id:r.id,name:r.name||name,email};
-          EMPS.push({...emp,role:"employee",active:true,status:"active",password_set:false,pin_set:!!(pin||emp.pin_set)});
-        }
-      } else {
-        const p={action:"add_manager",name,email,role};
-        if(pw) p.pw=pw;
-        r=await apiGet(p);
-        if(r.success){EMPS.push({id:r.id,name,email,role,active:true,status:"active",pin_set:false,password_set:!!pw});}
+      if(!email){alert("Email is required so they can sign in and get their setup link.");return;}
+      const p={action:"add_manager",name,email,role};
+      if(pw) p.pw=pw;
+      r=await apiGet(p);
+      if(r.success){
+        if(rateVal!==""&&r.id) await apiGet({action:"update_employee",id:r.id,rate:parseFloat(rateVal)||0});
+        EMPS.push({id:r.id,name,email,role,active:true,status:"active",pin_set:false,password_set:!!pw,rate:rateVal!==""?parseFloat(rateVal)||0:null});
       }
       if(r.success){
-        showToast(`${name} added as ${role}.`);
+        showToast(r.message==="User already exists"?`${name} already has an account with that email.`:`${name} added as ${role}.${pw?"":" A link to create their password was emailed to them."}`);
         if(GHL_WEBHOOK){
           fetch(GHL_WEBHOOK,{method:"POST",headers:{"Content-Type":"application/json"},
             body:JSON.stringify({event:"new_employee",name,email,role,timestamp:new Date().toISOString()})
