@@ -209,6 +209,59 @@ if (in_array($action, ['add_employee','add_manager','update_employee','remove_em
     }
 }
 
+// ── Shared team meeting room (one Zoom room for quick calls) ─────────────
+function meetingState() {
+    $st = json_decode((string)getSetting('meeting_room_state'), true);
+    if (!$st || empty($st['started_at'])) return null;
+    if (time() - (int)$st['started_at'] > 3600) return null;   // frees itself after an hour
+    return $st;
+}
+function meetingPublic($st) {
+    if (!$st) return ['busy' => false];
+    return ['busy' => true, 'by_id' => (int)$st['by_id'], 'by_name' => $st['by_name'], 'started_at' => date('c', (int)$st['started_at']),
+            'minutes' => max(0, (int)floor((time() - (int)$st['started_at']) / 60)), 'task_title' => $st['task_title'] ?? null, 'project_name' => $st['project_name'] ?? null];
+}
+if ($action === 'meeting_status') {
+    echo json_encode(['success'=>true, 'url'=>getSetting('team_meeting_url'), 'room'=>meetingPublic(meetingState())]);
+    exit;
+}
+if ($action === 'meeting_start') {
+    $db = getDB(); $uid = (int)$AUTH['id'];
+    $url = getSetting('team_meeting_url');
+    if (!$url) { echo json_encode(['success'=>false,'error'=>'No team meeting link yet. An Admin or HR can add it in Settings.']); exit; }
+    $cur = meetingState();
+    if ($cur && empty($_GET['join'])) { echo json_encode(['success'=>false,'busy'=>true,'room'=>meetingPublic($cur),'url'=>$url]); exit; }
+    $taskId = (int)($_GET['task_id'] ?? 0); $projectId = (int)($_GET['project_id'] ?? 0);
+    $taskTitle = null; $projectName = null;
+    if ($taskId) { $t = $db->prepare("SELECT t.title, t.project_id, p.name FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?"); $t->execute([$taskId]);
+                   if ($r = $t->fetch()) { $taskTitle = $r['title']; $projectId = (int)$r['project_id']; $projectName = $r['name']; } else $taskId = 0; }
+    if (!$projectName && $projectId) { $p = $db->prepare("SELECT name FROM projects WHERE id = ?"); $p->execute([$projectId]); $projectName = $p->fetchColumn() ?: null; }
+    $invite = array_values(array_unique(array_filter(array_map('intval', explode(',', (string)($_GET['invite'] ?? ''))), function($i) use ($uid) { return $i > 0 && $i !== $uid; })));
+    $note = trim((string)($_GET['note'] ?? ''));
+    if (!$cur) {
+        setSetting('meeting_room_state', json_encode(['by_id'=>$uid,'by_name'=>$AUTH['name'],'started_at'=>time(),'task_id'=>$taskId ?: null,
+                   'project_id'=>$projectId ?: null,'task_title'=>$taskTitle,'project_name'=>$projectName]));
+    }
+    if ($invite) {
+        $in = implode(',', array_fill(0, count($invite), '?'));
+        $a = $db->prepare("SELECT id, name FROM users WHERE status = 'active' AND id IN ($in)"); $a->execute($invite);
+        $people = $a->fetchAll();
+        $ins = $db->prepare("INSERT INTO notifications (user_id, actor_id, actor_name, kind, task_id, project_id, message) VALUES (?,?,?,'meeting',?,?,?)");
+        foreach ($people as $pp) $ins->execute([(int)$pp['id'], $uid, $AUTH['name'], $taskId ?: null, $projectId ?: null, $note !== '' ? substr($note, 0, 300) : null]);
+        if ($taskId && $people) {
+            $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
+               ->execute([$taskId, $uid, $AUTH['name'], ($cur ? 'Joined the team call with ' : 'Started a team call with ') . implode(', ', array_column($people, 'name'))]);
+        }
+    }
+    echo json_encode(['success'=>true, 'url'=>$url, 'room'=>meetingPublic(meetingState())]);
+    exit;
+}
+if ($action === 'meeting_end') {
+    setSetting('meeting_room_state', '');
+    echo json_encode(['success'=>true]);
+    exit;
+}
+
 // ── Notifications (Projects): bell + pop-ups ─────────────────────────────
 if ($action === 'load_notifications') {
     $db = getDB(); $uid = (int)$AUTH['id'];
@@ -219,7 +272,8 @@ if ($action === 'load_notifications') {
                             WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 30");
         $st->execute([$uid]);
         $c = $db->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL"); $c->execute([$uid]);
-        echo json_encode(['success'=>true,'items'=>$st->fetchAll(),'unread'=>(int)$c->fetchColumn()]);
+        echo json_encode(['success'=>true,'items'=>$st->fetchAll(),'unread'=>(int)$c->fetchColumn(),
+                          'room'=>meetingPublic(meetingState()),'room_url'=>getSetting('team_meeting_url')]);
     } catch (Throwable $e) { echo json_encode(['success'=>true,'items'=>[],'unread'=>0]); }
     exit;
 }
@@ -839,7 +893,7 @@ if ($method === 'GET') {
         // Never send secrets. Signed-out visitors only get what the sign-in screen needs.
         $SECRET_KEYS = ['ghl_api_key','webhook_secret','session_secret','manager_password','hr_password'];
         foreach (array_keys($settings) as $k) {
-            if (in_array($k, $SECRET_KEYS, true) || strpos($k, 'pin_reset_') === 0) {
+            if (in_array($k, $SECRET_KEYS, true) || strpos($k, 'pin_reset_') === 0 || $k === 'meeting_room_state') {
                 if (isPayRole($AUTH) && in_array($k, ['ghl_api_key','webhook_secret'], true) && $settings[$k] !== '') {
                     $settings[$k] = '••••••' . substr($settings[$k], -4);   // masked for the Settings screen
                 } else { unset($settings[$k]); }
@@ -2813,7 +2867,12 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url'];
+        if (isset($body['team_meeting_url'])) {
+            $mu = trim((string)$body['team_meeting_url']);
+            if ($mu !== '' && !preg_match('#^https://[^\s<>"]+$#i', $mu)) { echo json_encode(['success'=>false,'error'=>'The meeting link must start with https://']); exit; }
+            $body['team_meeting_url'] = $mu;
+        }
         foreach ($allowed as $key) {
             if (!isset($body[$key])) continue;
             if (strpos((string)$body[$key], '••••') === 0) continue;   // unchanged masked secret

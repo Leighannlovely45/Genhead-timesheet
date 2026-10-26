@@ -66,6 +66,11 @@ div[id$="-modal"][style*="position:fixed"] > div{max-height:none!important;margi
 .topbar-user{font-size:.78rem;color:rgba(255,255,255,.5)}
 .nt-bell{position:relative;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:8px;padding:.25rem .5rem;font-size:.95rem;cursor:pointer;line-height:1.2}
 .nt-bell:hover{background:rgba(255,255,255,.16)}
+.mt-pill{background:rgba(3,173,143,.18);border:1px solid rgba(3,173,143,.55);color:#5eead4;border-radius:999px;padding:.22rem .7rem;font-size:.74rem;cursor:pointer;white-space:nowrap}
+.mt-pill:hover{background:rgba(3,173,143,.3)}
+.nt-pop .nt-join{margin-top:.5rem;display:flex;gap:.4rem}
+.nt-pop .nt-join button{font-size:.74rem;padding:.25rem .7rem;border-radius:6px;border:none;cursor:pointer}
+.mt-person{display:flex;align-items:center;gap:.5rem;padding:.35rem .25rem;font-size:.84rem;color:var(--dark);cursor:pointer}
 .nt-count{position:absolute;top:-6px;right:-7px;background:#ef4444;color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:.05rem .32rem;min-width:1rem;text-align:center}
 .nt-panel{position:absolute;right:0;top:calc(100% + 8px);width:min(360px,92vw);max-height:min(460px,70vh);overflow-y:auto;background:var(--bg,#fff);color:var(--dark);border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.3);z-index:500}
 .nt-item{display:block;padding:.65rem .85rem;border-bottom:1px solid var(--border);cursor:pointer;font-size:.8rem;line-height:1.35}
@@ -445,6 +450,7 @@ div[id$="-modal"][style*="position:fixed"] > div{max-height:none!important;margi
   <div class="topbar">
     <div class="brand">gen<span>head</span> <span style="font-size:.72rem;font-weight:400;color:rgba(255,255,255,.35);letter-spacing:.5px;margin-left:.25rem">Timesheet</span></div>
     <div class="topbar-right">
+      <button id="mt-pill" class="mt-pill" style="display:none" onclick="openMeetModal({})"></button>
       <div style="position:relative">
         <button id="nt-bell" class="nt-bell" onclick="toggleNotifPanel(event)" title="Notifications" aria-label="Notifications">&#128276;<span id="nt-count" class="nt-count" style="display:none"></span></button>
         <div id="nt-panel" class="nt-panel" style="display:none"></div>
@@ -1941,6 +1947,15 @@ function renderDash(){
     <div class="dash-top"><div><h2>Settings</h2><p>Timecard &amp; HR configuration</p></div></div>
     <div style="max-width:660px;display:flex;flex-direction:column;gap:1.25rem">
 
+      <!-- Team meeting room -->
+      <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
+        <h3 style="margin:0 0 .25rem;font-size:1rem;color:var(--dark)">Team Meeting Room (Zoom)</h3>
+        <p style="font-size:.8rem;color:var(--mid);margin:0 0 1rem">The shared support Zoom link used by <b>📹 Meet now</b> in Projects. In Zoom, copy the Personal Meeting Room <i>invite link</i> (the one with the passcode in it). Also turn on "Allow participants to join before host" for that account.</p>
+        <input id="set-meet-url" type="url" placeholder="https://us02web.zoom.us/j/1234567890?pwd=…" style="width:100%;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--dark);font-size:.84rem;box-sizing:border-box;margin-bottom:.8rem">
+        <button class="btn btn-primary" onclick="saveSettingsMeet()">Save Meeting Link</button>
+        <div id="set-meet-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+      </div>
+
       <!-- Overtime Thresholds -->
       <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
         <h3 style="margin:0 0 .25rem;font-size:1rem;color:var(--dark)">Overtime Rules</h3>
@@ -2999,6 +3014,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&cur&&_nt.
 function ntText(n){
   const who=escHtml(n.actor_name||"Someone"), task=escHtml(n.task_title||"a task");
   if(n.kind==="assigned") return `<b>${who}</b> assigned you <b>${task}</b>`;
+  if(n.kind==="meeting") return n.task_title?`📹 <b>${who}</b> wants to meet about <b>${task}</b>`:`📹 <b>${who}</b> wants to meet now${n.project_name?` about <b>${escHtml(n.project_name)}</b>`:""}`;
   return `<b>${who}</b> commented on <b>${task}</b>`;
 }
 function ntAgo(ts){
@@ -3019,6 +3035,8 @@ async function pollNotifications(){
     }
     _nt.lastId=Math.max(_nt.lastId||0,maxId);
     _nt.items=items;
+    _nt.roomUrl=r.room_url||""; _nt.room=r.room||{busy:false};
+    renderMeetPill();
     const c=document.getElementById("nt-count");
     if(c){c.textContent=r.unread>99?"99+":String(r.unread);c.style.display=r.unread?"":"none";}
     const p=document.getElementById("nt-panel"); if(p&&p.style.display!=="none")renderNotifPanel();
@@ -3028,6 +3046,15 @@ function showNotifPop(n){
   let box=document.getElementById("nt-pops");
   if(!box){box=document.createElement("div");box.id="nt-pops";document.body.appendChild(box);}
   const el=document.createElement("div"); el.className="nt-pop";
+  if(n.kind==="meeting"){
+    el.style.borderLeftColor="#38bdf8";
+    el.innerHTML=`<div>${ntText(n)}</div>${n.message?`<div class="nt-msg">${escHtml(n.message)}</div>`:""}
+      <div class="nt-join"><button style="background:#03AD8F;color:#fff" data-a="join">Join call</button><button style="background:rgba(255,255,255,.12);color:#fff" data-a="later">Not now</button></div>`;
+    el.onclick=e=>{const a=e.target.dataset&&e.target.dataset.a; if(!a)return; el.remove(); if(a==="join")openNotif(n); else markNotifRead(n);};
+    box.appendChild(el);
+    setTimeout(()=>el.remove(),90000);
+    return;
+  }
   el.innerHTML=`<div>${ntText(n)}</div>${n.message?`<div class="nt-msg">${escHtml(n.message)}</div>`:""}<div class="nt-msg" style="font-size:.68rem;margin-top:.3rem">${escHtml(n.project_name||"")} · click to open</div>`;
   el.onclick=()=>{el.remove();openNotif(n);};
   box.appendChild(el);
@@ -3059,10 +3086,17 @@ async function markAllNotifsRead(){
   const c=document.getElementById("nt-count"); if(c)c.style.display="none";
   renderNotifPanel();
 }
+function markNotifRead(n){
+  if(n.read_at)return; n.read_at="now";
+  fetch(`${API_BASE}?action=read_notifications&ids=${encodeURIComponent(n.id)}`).then(()=>pollNotifications()).catch(()=>{});
+}
 async function openNotif(n){
-  if(!n.read_at){
-    n.read_at="now";
-    fetch(`${API_BASE}?action=read_notifications&ids=${encodeURIComponent(n.id)}`).then(()=>pollNotifications()).catch(()=>{});
+  markNotifRead(n);
+  if(n.kind==="meeting"){
+    if(_nt.roomUrl){window.open(_nt.roomUrl,"_blank","noopener");
+      fetch(`${API_BASE}?action=meeting_start&join=1${n.task_id?`&task_id=${n.task_id}`:""}`).catch(()=>{});}
+    else showToast("The team meeting link isn't set up yet.");
+    return;
   }
   if(!n.task_id)return;
   const tid=parseInt(n.task_id);
@@ -3076,6 +3110,81 @@ async function openNotif(n){
   }
   if(has()) _pmOpenTask(_pm.tasks.find(t=>parseInt(t.id)===tid).id);
   else showToast("That task isn't available to you anymore.");
+}
+
+// ── MEET NOW: shared team Zoom room ───────────────────────────────────────
+function renderMeetPill(){
+  const p=document.getElementById("mt-pill"); if(!p)return;
+  const r=_nt.room||{};
+  if(r.busy){p.style.display="";p.textContent=`📹 Call in progress · ${r.by_name||"someone"} · ${r.minutes||0} min`;p.title="The team Zoom room is in use. Click to join or end it.";}
+  else p.style.display="none";
+}
+async function openMeetModal(ctx){
+  ctx=ctx||{};
+  const r=await fetch(`${API_BASE}?action=meeting_status&t=${Date.now()}`).then(x=>x.json()).catch(()=>null);
+  if(!r||!r.success){showToast("Couldn't check the meeting room. Try again.");return;}
+  _nt.roomUrl=r.url||""; _nt.room=r.room||{busy:false}; renderMeetPill();
+  let m=document.getElementById("meet-modal");
+  if(!m){m=document.createElement("div");m.id="meet-modal";m.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:700;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:6vh 1rem 5rem";document.body.appendChild(m);
+    m.addEventListener("click",e=>{if(e.target===m)m.remove();});}
+  const box=c=>`<div style="background:var(--bg);border-radius:14px;padding:1.4rem;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">${c}</div>`;
+  if(!r.url){
+    const canSet=cur.role==="admin"||cur.role==="hr";
+    m.innerHTML=box(`<h3 style="margin:0 0 .5rem;color:var(--dark)">📹 Meet now</h3><p style="font-size:.85rem;color:var(--mid)">The shared Zoom link hasn't been added yet. ${canSet?"Add it in <b>Settings → Team Meeting Room</b>.":"Ask an Admin or HR to add it in Settings."}</p>
+      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem">${canSet?`<button class="btn btn-outline" onclick="document.getElementById('meet-modal').remove();switchTab('settings')">Open Settings</button>`:""}<button class="btn btn-primary" onclick="document.getElementById('meet-modal').remove()">OK</button></div>`);
+    return;
+  }
+  const proj=ctx.projectId?_pm.projects.find(p=>parseInt(p.id)===parseInt(ctx.projectId)):null;
+  const team=new Set(proj?pmTeamIds(proj):[]);
+  const task=ctx.taskId?_pm.tasks.find(t=>parseInt(t.id)===parseInt(ctx.taskId)):null;
+  if(task&&task.assigned_to)team.add(String(task.assigned_to));
+  const me=myDbId();
+  const people=EMPS.filter(e=>e.active!==false&&String(e.id).replace(/^e/,"")!==me)
+    .sort((a,b)=>(team.has(String(b.id).replace(/^e/,""))?1:0)-(team.has(String(a.id).replace(/^e/,""))?1:0)||a.name.localeCompare(b.name));
+  const about=task?`about <b>${escHtml(task.title)}</b>`:proj?`about <b>${escHtml(proj.name)}</b>`:"";
+  const room=r.room||{};
+  const busy=room.busy?`<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:.6rem .75rem;font-size:.82rem;color:var(--dark);margin-bottom:.8rem">
+      The team room is in use: <b>${escHtml(room.by_name||"someone")}</b> started a call ${room.minutes||0} min ago${room.task_title?` about <b>${escHtml(room.task_title)}</b>`:""}. You can join it, or end it if the call is over.</div>`:"";
+  m.innerHTML=box(`<h3 style="margin:0 0 .3rem;color:var(--dark)">📹 Meet now ${about}</h3>
+    <p style="font-size:.8rem;color:var(--mid);margin:0 0 .8rem">Opens the team Zoom room and sends the people you pick a pop-up to join.</p>
+    ${busy}
+    <div style="font-size:.75rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem">Invite</div>
+    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:.25rem .5rem;margin-bottom:.7rem">
+      ${people.map(e=>{const id=String(e.id).replace(/^e/,"");return `<label class="mt-person"><input type="checkbox" class="mt-inv" value="${id}"${task&&String(task.assigned_to)===id?" checked":""}> ${escHtml(e.name)}${team.has(id)?' <span style="font-size:.68rem;color:var(--teal)">on this project</span>':""}</label>`;}).join("")||'<div style="color:var(--mid);font-size:.82rem;padding:.5rem">No teammates found.</div>'}
+    </div>
+    <input id="mt-note" type="text" maxlength="200" placeholder="Optional note, e.g. Quick look at the webhook error" style="width:100%;box-sizing:border-box;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .7rem;color:var(--dark);font-size:.84rem;margin-bottom:.9rem">
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap">
+      ${room.busy?`<button class="btn btn-outline" style="color:#ef4444" onclick="endMeeting()">End call</button>`:""}
+      <button class="btn btn-outline" onclick="document.getElementById('meet-modal').remove()">Cancel</button>
+      <button class="btn btn-primary" onclick="startMeeting(${task?parseInt(task.id):0},${proj?parseInt(proj.id):(task?parseInt(task.project_id):0)},${room.busy?1:0})">${room.busy?"Join call":"Start call"}</button>
+    </div>`);
+}
+async function startMeeting(taskId,projectId,join){
+  const invite=[...document.querySelectorAll(".mt-inv:checked")].map(x=>x.value).join(",");
+  const note=(document.getElementById("mt-note")||{}).value||"";
+  // Open the window now (inside the click) so the browser doesn't block it
+  const w=window.open("about:blank","_blank");
+  const q=new URLSearchParams({action:"meeting_start",task_id:taskId||"",project_id:projectId||"",invite,note});
+  if(join)q.set("join","1");
+  const r=await fetch(`${API_BASE}?${q}`).then(x=>x.json()).catch(()=>({success:false,error:"Network error"}));
+  if(r.success&&r.url){
+    if(w){try{w.opener=null;}catch(e){} w.location.href=r.url;} else window.open(r.url,"_blank","noopener");
+    const mm=document.getElementById("meet-modal"); if(mm)mm.remove();
+    showToast(invite?`Call ${join?"joined":"started"}. Your teammates were sent a pop-up to join.`:`Call ${join?"joined":"started"}.`);
+    _nt.room=r.room||_nt.room; renderMeetPill();
+    if(taskId&&document.getElementById("pm-task-panel")) _pmOpenTask(_pm.tasks.find(t=>parseInt(t.id)===parseInt(taskId))?.id);
+  } else {
+    if(w)w.close();
+    if(r.busy){showToast("Someone just started a call in the team room.");openMeetModal({taskId,projectId});}
+    else alert(r.error||"Couldn't start the call.");
+  }
+}
+async function endMeeting(){
+  if(!(await uiConfirm("End the call in the team room? Use this when the call is over so the room shows as free.",{title:"End call",ok:"End call",danger:true})))return;
+  await fetch(`${API_BASE}?action=meeting_end`).catch(()=>{});
+  _nt.room={busy:false}; renderMeetPill();
+  const mm=document.getElementById("meet-modal"); if(mm)mm.remove();
+  showToast("The team room is free.");
 }
 
 function showToast(msg){
@@ -3534,6 +3643,7 @@ function _pmProjectsView(clientFilter){
     <div><h2>${canManage?'All Projects':'My Projects'}</h2><p>${visibleProjects.length} project${visibleProjects.length!==1?'s':''}</p></div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${clientFilterHtml}
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="openMeetModal({})">📹 Meet now</button>
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks('open')">✓ My Tasks <span style="opacity:.7">${_pm.tasks.filter(t=>String(t.assigned_to||'')===myDbId()&&t.stage!=='done').length}</span></button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
@@ -3752,6 +3862,7 @@ function _pmProjectBoard(projectId){
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectDetail(${proj.id})">☰ List View</button>`:''}
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="openMeetModal({projectId:${proj.id}})">📹 Meet now</button>
       <button class="btn btn-primary" onclick="_pmAddTaskModal(${proj.id})">+ Add Task</button>
     </div>
   </div>
@@ -3925,6 +4036,7 @@ function _pmShowTaskPanel(task){
       </div>
       <div style="display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.6rem">
         <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .65rem" onclick="_pmMoveModal(${task.id},'${task.stage}')">→ Move Stage</button>
+        <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .65rem" onclick="openMeetModal({taskId:${task.id},projectId:${parseInt(task.project_id)||0}})">📹 Meet now</button>
         ${task.stage!=='done'?`<button class="btn btn-primary" style="font-size:.75rem;padding:.3rem .65rem;background:var(--teal);border-color:var(--teal)" onclick="_pmCompleteTask(${task.id})">✓ Complete</button>`:''}
         ${String(task.assigned_to)!==String(cur.db_id||cur.id.replace('e',''))?`
         <button id="pm-follow-btn" class="btn ${_pm.taskFollowers&&_pm.taskFollowers.includes(parseInt(cur.db_id||cur.id.replace('e','')))?'btn-primary':'btn-outline'}"
@@ -4472,6 +4584,7 @@ function renderSettings(){
   const period=document.getElementById("set-hr-period");
   if(approval&&appSettings) approval.value=appSettings.hr_approval_mode||"required";
   if(period&&appSettings) period.value=appSettings.hr_pay_period||"biweekly";
+  const mu=document.getElementById("set-meet-url"); if(mu&&appSettings) mu.value=appSettings.team_meeting_url||"";
   // Also populate GHL setup fields (now in GHL tab but same elements)
   const ki=document.getElementById("set-ghl-key");
   const li=document.getElementById("set-ghl-loc");
@@ -4479,6 +4592,15 @@ function renderSettings(){
   if(ki&&appSettings) ki.value=appSettings.ghl_api_key||"";
   if(li&&appSettings) li.value=appSettings.ghl_location_id||"";
   if(sec&&appSettings) sec.value=appSettings.webhook_secret||"";
+}
+
+async function saveSettingsMeet(){
+  const url=document.getElementById("set-meet-url").value.trim();
+  const st=document.getElementById("set-meet-status");
+  if(url&&!/^https:\/\//i.test(url)){st.style.color="#ef4444";st.textContent="The link must start with https://";return;}
+  const r=await api({action:"update_settings",team_meeting_url:url}).catch(()=>({success:false}));
+  if(r.success){appSettings.team_meeting_url=url;st.style.color="#10b981";st.textContent=url?"✓ Meeting link saved. Meet now is ready in Projects.":"Meeting link removed.";showToast("Meeting link saved.");}
+  else{st.style.color="#ef4444";st.textContent=r.error||"Could not save.";}
 }
 
 async function saveSettingsHR(){
