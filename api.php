@@ -463,21 +463,24 @@ if ($action === 'ext_track' && $method === 'POST') {
         $clientId = $client ? (int)$client['id'] : null;
         // ext_location ties the line to the sub-account so the same line is updated each time
         // (the timesheet keeps it when people save); unlinked sub-accounts show the page name
-        $find = $db->prepare("SELECT id FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ? AND source = 'extension'
+        $find = $db->prepare("SELECT id, ext_adjust FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ? AND source = 'extension'
                               AND ext_location = ? AND task_id <=> ? AND ext_session <=> ? LIMIT 1");
         $find->execute([$sheetId, $per['day'], $loc, $taskId, $session]);
-        $existing = $find->fetchColumn();
+        $found = $find->fetch();
+        $existing = $found ? $found['id'] : null;
         $shownLabel = $client ? null : (($label !== '' ? $label : 'Sub-account ' . $loc) . ' (not linked)');
         if ($existing) {
-            $db->prepare("UPDATE timesheet_entries SET hours = ?, client_id = ?, project_id = ?, billing_type = ?, billable = ?, updated_at = NOW() WHERE id = ?")
-               ->execute([$hours, $clientId, $projectId, $billingType, $billingType === 'billable' ? 1 : 0, $existing]);
+            // Tracked time plus any change the person made to this line on their timesheet
+            $shown = max(0, round($hours + (float)($found['ext_adjust'] ?? 0), 4));
+            $db->prepare("UPDATE timesheet_entries SET hours = ?, ext_tracked = ?, client_id = ?, project_id = ?, billing_type = ?, billable = ? WHERE id = ?")
+               ->execute([$shown, $hours, $clientId, $projectId, $billingType, $billingType === 'billable' ? 1 : 0, $existing]);
         } else {
             $row = $db->prepare("SELECT COALESCE(MAX(row_index),-1)+1 FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ?");
             $row->execute([$sheetId, $per['day']]);
             if ($sessionLabel !== '') $deliverable = $deliverable !== '' ? "$deliverable (from $sessionLabel)" : "Tracked session from $sessionLabel";
-            $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location, ext_session)
-                          VALUES (?,?,?,?,?,?,?,?,?,?, 'extension', ?, ?, ?, ?)")
-               ->execute([$sheetId, $clientId, $shownLabel, $deliverable, $hours, $rate, $billingType === 'billable' ? 1 : 0, $billingType, $per['day'], (int)$row->fetchColumn(), $projectId, $taskId, $loc, $session]);
+            $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location, ext_session, ext_tracked, ext_adjust)
+                          VALUES (?,?,?,?,?,?,?,?,?,?, 'extension', ?, ?, ?, ?, ?, 0)")
+               ->execute([$sheetId, $clientId, $shownLabel, $deliverable, $hours, $rate, $billingType === 'billable' ? 1 : 0, $billingType, $per['day'], (int)$row->fetchColumn(), $projectId, $taskId, $loc, $session, $hours]);
         }
         $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
                       total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?) WHERE id = ?")
@@ -895,6 +898,8 @@ if ($method === 'GET') {
         $db = getDB();
         ensureEntryColumns($db);
         $stmt = $db->query("SELECT t.*, u.name as employee, u.email,
+            (SELECT COALESCE(SUM(te.hours * COALESCE(NULLIF(te.pay_rate,0), NULLIF(t.pay_rate,0), u.rate, 0)),0) FROM timesheet_entries te WHERE te.timesheet_id = t.id) AS total_pay,
+            COALESCE(NULLIF(t.pay_rate,0), u.rate) AS pay_rate,
             a.name as approved_by_name
             FROM timesheets t
             JOIN users u ON t.user_id = u.id
@@ -2380,7 +2385,12 @@ if ($method === 'POST') {
         $totalHours  = (float)($body['totalHours'] ?? 0);
         $totalPay    = (float)($body['totalPay']   ?? 0);
         $payRate     = (float)($body['payRate']    ?? 0);
+        // Pay comes from the person's rate on file. The page only knows it for Admin/HR,
+        // so an employee or manager saving their own timesheet used to send 0.
         $entries     = $body['entries'] ?? [];
+
+        $rq = $db->prepare("SELECT rate FROM users WHERE id = ?"); $rq->execute([$dbId]);
+        if (($fileRate = (float)$rq->fetchColumn()) > 0) $payRate = $fileRate;
 
         $periodStarts = payPeriodStarts();
         if (!isset($periodStarts[$periodIndex])) { $x = new DateTime('2026-04-27'); $x->modify('+'.(14*$periodIndex).' days'); $periodStarts[$periodIndex] = [(int)$x->format('Y'),(int)$x->format('n'),(int)$x->format('j')]; }
@@ -2411,8 +2421,20 @@ if ($method === 'POST') {
         }
 
         ensureEntryColumns($db);
+        // Chrome-tracker lines already saved. A timesheet page that was opened earlier doesn't know
+        // about time tracked since, so those lines are kept unless the person deleted them on purpose.
+        $extKey = function($day, $loc, $sess, $task) { return (int)$day.'|'.(string)$loc.'|'.(int)$sess.'|'.(int)$task; };
+        $extOld = [];
+        $xs = $db->prepare("SELECT * FROM timesheet_entries WHERE timesheet_id = ? AND source = 'extension' AND ext_location IS NOT NULL");
+        $xs->execute([$tsId]);
+        foreach ($xs->fetchAll() as $x) $extOld[$extKey($x['day_index'], $x['ext_location'], $x['ext_session'], $x['task_id'])] = $x;
+        $extDeleted = [];
+        foreach ((array)($body['deletedExt'] ?? []) as $dk) {
+            if (is_array($dk)) $extDeleted[$extKey($dk['day'] ?? -1, $dk['extloc'] ?? '', $dk['extsess'] ?? 0, $dk['task'] ?? 0)] = 1;
+        }
+        $extSeen = [];
         $db->prepare("DELETE FROM timesheet_entries WHERE timesheet_id = ?")->execute([$tsId]);
-        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location, ext_session) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $entryStmt = $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location, ext_session, ext_tracked, ext_adjust) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($entries as $i => $en) {
             if (empty($en['hrs']) && empty($en['co'])) continue;
             $clientId = null;
@@ -2436,8 +2458,37 @@ if ($method === 'POST') {
             $extLoc   = $source === 'extension' ? (trim((string)($en['extloc'] ?? '')) ?: null) : null;
             $extSess  = $source === 'extension' ? ((int)($en['extsess'] ?? 0) ?: null) : null;
             $projectId = (int)($en['proj'] ?? 0) ?: null;
-            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', (float)($en['hrs']??0), $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId, $taskLink, $extLoc, $extSess]);
+            $hrs = (float)($en['hrs'] ?? 0); $tracked = null; $adjust = 0;
+            if ($source === 'extension' && $extLoc) {
+                $k = $extKey($dayIdx, $extLoc, $extSess, $taskLink);
+                $extSeen[$k] = 1;
+                if (isset($extOld[$k])) {
+                    $o = $extOld[$k];
+                    $tracked = $o['ext_tracked'] !== null ? (float)$o['ext_tracked'] : (float)$o['hours'] - (float)$o['ext_adjust'];
+                    $orig = isset($en['orig']) && $en['orig'] !== '' ? (float)$en['orig'] : null;
+                    if ($orig !== null && abs($hrs - $orig) < 0.00005) {
+                        // Hours not changed on this page: keep what's saved (the tracker may have added time since)
+                        $hrs = (float)$o['hours']; $adjust = (float)$o['ext_adjust'];
+                    } else {
+                        // The person changed the hours: remember the difference so the tracker keeps it
+                        $adjust = round($hrs - $tracked, 4);
+                    }
+                }
+            }
+            $entryStmt->execute([$tsId, $clientId, $label !== '' ? $label : null, $en['del']??'', $hrs, $payRate, $billable, $billingType, $dayIdx, $rowIdx, $source, $projectId, $taskLink, $extLoc, $extSess, $tracked, $adjust]);
         }
+        // Put back tracker lines this page didn't include (unless deleted on purpose)
+        foreach ($extOld as $k => $o) {
+            if (isset($extSeen[$k]) || isset($extDeleted[$k])) continue;
+            $r = $db->prepare("SELECT COALESCE(MAX(row_index),-1)+1 FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ?");
+            $r->execute([$tsId, $o['day_index']]);
+            $entryStmt->execute([$tsId, $o['client_id'], $o['client_label'], $o['deliverable'], $o['hours'], $o['pay_rate'], $o['billable'], $o['billing_type'], $o['day_index'], (int)$r->fetchColumn(),
+                                 'extension', $o['project_id'], $o['task_id'], $o['ext_location'], $o['ext_session'], $o['ext_tracked'], $o['ext_adjust']]);
+        }
+        // Totals from what's actually saved
+        $db->prepare("UPDATE timesheet_entries SET pay_rate = ? WHERE timesheet_id = ? AND (pay_rate IS NULL OR pay_rate = 0)")->execute([$payRate, $tsId]);
+        $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
+                      total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?) WHERE id = ?")->execute([$tsId, $tsId, $tsId]);
 
         if ($submitted) {
             checkOvertime($db, $tsId, $dbId, $entries);
@@ -2869,6 +2920,8 @@ function ensureEntryColumns($db) {
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN task_id INT DEFAULT NULL"); } catch (Exception $e) {}
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN ext_location VARCHAR(100) DEFAULT NULL"); } catch (Exception $e) {}
     try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN ext_session INT DEFAULT NULL"); } catch (Exception $e) {}
+    try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN ext_tracked DECIMAL(10,4) DEFAULT NULL"); } catch (Exception $e) {}
+    try { $db->exec("ALTER TABLE timesheet_entries ADD COLUMN ext_adjust DECIMAL(10,4) NOT NULL DEFAULT 0"); } catch (Exception $e) {}
 }
 
 // Pay period containing a date — calculated from the first period (Apr 27 2026), no end date

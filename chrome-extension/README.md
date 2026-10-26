@@ -46,7 +46,7 @@ Genhead timesheet automatically.
   as the name. Admin/HR can rename them right from the tracker; everyone else should let them know.
 - **Submitted timesheet**: new time can't be added to a submitted or approved period. Ask your
   reviewer to return it.
-- Tracker lines update live during the day. If you change the hours of a tracker line on the
-  timesheet, the tracker will overwrite it while you keep working in that account that day —
-  make hour corrections at the end of the day.
+- Tracker lines update live during the day. You can change a tracker line's hours on your
+  timesheet at any time: your change is kept, and new tracked time is added on top of it.
+- Saving your timesheet never removes tracker lines you didn't delete yourself.
 - Signed in for 14 days, then it asks again. No time is lost while signed out on this computer.

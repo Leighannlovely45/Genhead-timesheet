@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-24.3');
+define('SCHEMA_VERSION', '2026-10-26.2');
 
 function ensureSchema($db) {
     static $done = false;
@@ -130,6 +130,8 @@ function ensureSchema($db) {
     $add('timesheet_entries', 'task_id',      "INT NULL");
     $add('timesheet_entries', 'ext_location', "VARCHAR(100) NULL");
     $add('timesheet_entries', 'ext_session',  "INT NULL");
+    $add('timesheet_entries', 'ext_tracked',  "DECIMAL(10,4) NULL");
+    $add('timesheet_entries', 'ext_adjust',   "DECIMAL(10,4) NOT NULL DEFAULT 0");
     $add('timesheet_entries', 'updated_at',   "TIMESTAMP NULL DEFAULT NULL");
 
     $add('timesheets', 'period_index', "INT NULL");
@@ -153,6 +155,15 @@ function ensureSchema($db) {
     // Legacy rows: billable=0 with no billing type were non-billable
     if ($hasCol('timesheet_entries', 'billing_type') && $hasCol('timesheet_entries', 'billable')) {
         $exec("UPDATE timesheet_entries SET billing_type = CASE WHEN billable = 0 THEN 'nonbillable' ELSE 'billable' END WHERE billing_type IS NULL");
+    }
+
+    // Lines saved with no pay rate (people saving their own timesheet sent 0): use the rate on file
+    if ($hasCol('users', 'rate') && $hasCol('timesheet_entries', 'pay_rate')) {
+        $exec("UPDATE timesheet_entries te JOIN timesheets t ON t.id = te.timesheet_id JOIN users u ON u.id = t.user_id
+               SET te.pay_rate = u.rate WHERE (te.pay_rate IS NULL OR te.pay_rate = 0) AND u.rate > 0");
+        $exec("UPDATE timesheets t JOIN users u ON u.id = t.user_id SET t.pay_rate = u.rate WHERE (t.pay_rate IS NULL OR t.pay_rate = 0) AND u.rate > 0");
+        $exec("UPDATE timesheets t JOIN (SELECT timesheet_id, SUM(hours * pay_rate) AS p FROM timesheet_entries GROUP BY timesheet_id) x ON x.timesheet_id = t.id
+               SET t.total_pay = x.p WHERE x.p > 0");
     }
 
     try {

@@ -550,7 +550,7 @@ function gd(uid,p){
 function pfl(v){const n=parseFloat(v);return isNaN(n)?0:n;}
 // Rows for one day, in display order
 function dayRows(d,day){return d.entries.filter(e=>e.day===day).sort((a,b)=>a.ei-b.ei);}
-const MAX_ROWS_PER_DAY=15;
+const MAX_ROWS_PER_DAY=40;
 
 // ── TIMECARD STATUS + REVIEW HELPERS ──────────────────────────────────────
 const STATUS_META={
@@ -592,6 +592,7 @@ function entriesFromDB(list){
       co:e.client_name||"",
       del:e.deliverable||"",
       hrs:e.hours!=null?String(parseFloat(e.hours)):"",
+      orig:e.hours!=null?String(parseFloat(e.hours)):"",
       bt:e.billing_type||(String(e.billable)==="0"?"nonbillable":BT_DEFAULT)});
   });
   for(let day=0;day<14;day++){
@@ -1414,12 +1415,28 @@ function delRow(day,ei){
   if(cur._vid&&cur._vid!==cur.id)return;
   const d=gd(uid,pidx);
   if(dayRows(d,day).length<=1)return;
+  // Deleting a Chrome-tracker line on purpose: tell the server so it doesn't keep it
+  const gone=d.entries.find(e=>e.day===day&&e.ei===ei);
+  if(gone&&gone.src==="extension"&&gone.extloc){(d.deletedExt=d.deletedExt||[]).push({day,extloc:gone.extloc,extsess:gone.extsess||0,task:gone.task||0});}
   d.entries=d.entries.filter(e=>!(e.day===day&&e.ei===ei));
   // Re-number the remaining rows for that day so indexes stay 0,1,2…
   dayRows(d,day).forEach((r,i)=>{r.ei=i;});
   renderTS(uid);
   queueAutoSave();
 }
+
+// Coming back to this tab (e.g. after working in GenSuite): pull in hours the Chrome tracker added
+document.addEventListener("visibilitychange",async()=>{
+  if(document.hidden||!cur||(cur._vid&&cur._vid!==cur.id))return;
+  if(!document.querySelector(".entry-row"))return;              // only on the timesheet screen
+  if(_autoSaveTimer)return;                                       // unsaved typing: don't touch it
+  const a=document.activeElement; if(a&&a.closest&&a.closest(".entry-row"))return;
+  const uid=cur.id,pi=pidx,d=gd(uid,pi);
+  if(!d.loaded||d.submitted)return;
+  const before=JSON.stringify(d.entries);
+  await loadDraft(uid,pi);
+  if(JSON.stringify(d.entries)!==before&&pi===pidx&&!_autoSaveTimer) renderTS(uid);
+});
 
 // ── LOAD SAVED TIMESHEET (drafts, submissions, Chrome-extension hours) ───
 async function loadDraft(uid,pi){
@@ -1453,6 +1470,7 @@ function queueAutoSave(){
   const uid=cur.id,pi=pidx;
   if(_autoSaveTimer)clearTimeout(_autoSaveTimer);
   _autoSaveTimer=setTimeout(()=>{
+    _autoSaveTimer=null;
     const d=gd(uid,pi);
     // Never auto-save over an already-submitted/approved sheet (that would flip it back to draft)
     if(d.loaded&&!d.submitted) saveTimesheet(uid,pi,false).then(ok=>{if(ok)flashSaved("\u2713 Auto-saved");});
@@ -1474,7 +1492,7 @@ async function saveTimesheet(uid,pi,submit){
   for(let day=0;day<14;day++){
     dayRows(d,day).forEach((en,i)=>{
       if(!(en.hrs||en.co||en.del))return;
-      flat.push({day,dayName:DAYS[day%7],task:en.task||"",extloc:en.extloc||"",extsess:en.extsess||"",co:en.co||"",proj:en.proj||"",del:en.del||"",hrs:en.hrs||"",bt:en.bt||BT_DEFAULT,rowIndex:i,src:en.src||""});
+      flat.push({day,dayName:DAYS[day%7],task:en.task||"",extloc:en.extloc||"",extsess:en.extsess||"",co:en.co||"",proj:en.proj||"",del:en.del||"",hrs:en.hrs||"",orig:en.orig??"",bt:en.bt||BT_DEFAULT,rowIndex:i,src:en.src||""});
       allH+=pfl(en.hrs);
     });
   }
@@ -1489,11 +1507,12 @@ async function saveTimesheet(uid,pi,submit){
     payRate:rt,
     submitted:!!submit,
     isDraft:!submit,
-    entries:flat
+    entries:flat,
+    deletedExt:d.deletedExt||[]
   };
   try{
     const res=await fetch(`${API_BASE}?action=save_timesheet`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(record)}).then(r=>r.json());
-    if(res&&res.success)return true;
+    if(res&&res.success){d.deletedExt=[];return true;}
     console.warn("save_timesheet failed",res);
   }catch(e){console.warn("save_timesheet error",e);}
   return false;
