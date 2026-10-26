@@ -209,6 +209,33 @@ if (in_array($action, ['add_employee','add_manager','update_employee','remove_em
     }
 }
 
+// ── Notifications (Projects): bell + pop-ups ─────────────────────────────
+if ($action === 'load_notifications') {
+    $db = getDB(); $uid = (int)$AUTH['id'];
+    try {
+        $st = $db->prepare("SELECT n.id, n.kind, n.task_id, n.project_id, n.actor_name, n.message, n.created_at, n.read_at,
+                                   t.title AS task_title, p.name AS project_name
+                            FROM notifications n LEFT JOIN tasks t ON t.id = n.task_id LEFT JOIN projects p ON p.id = n.project_id
+                            WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 30");
+        $st->execute([$uid]);
+        $c = $db->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL"); $c->execute([$uid]);
+        echo json_encode(['success'=>true,'items'=>$st->fetchAll(),'unread'=>(int)$c->fetchColumn()]);
+    } catch (Throwable $e) { echo json_encode(['success'=>true,'items'=>[],'unread'=>0]); }
+    exit;
+}
+if ($action === 'read_notifications') {
+    $db = getDB(); $uid = (int)$AUTH['id'];
+    $ids = array_filter(array_map('intval', explode(',', (string)($_GET['ids'] ?? ''))));
+    if ($ids) {
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $db->prepare("UPDATE notifications SET read_at = NOW() WHERE user_id = ? AND read_at IS NULL AND id IN ($in)")->execute(array_merge([$uid], $ids));
+    } else {
+        $db->prepare("UPDATE notifications SET read_at = NOW() WHERE user_id = ? AND read_at IS NULL")->execute([$uid]);
+    }
+    echo json_encode(['success'=>true]);
+    exit;
+}
+
 // Email someone a link to create (or reset) their password; the link is also returned so Admin/HR can pass it on
 if ($action === 'send_setup_link') {
     $db = getDB();
@@ -1469,6 +1496,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         $actorName=trim($body['actor_name']??'') ?: 'Someone';
         $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
            ->execute([$taskId,$createdBy,$actorName,"Task created and added to ".(["backlog"=>"Backlog","todo"=>"To Do","inprogress"=>"In Progress","inreview"=>"In Review","done"=>"Done"][$stage] ?? ucfirst($stage))]);
+        if ($assignedTo && (int)$assignedTo !== (int)$createdBy) notifyTask($db, $taskId, $createdBy, $actorName, 'assigned', null, [(int)$assignedTo]);
         echo json_encode(['success'=>true,'id'=>$taskId]);
         exit;
     }
@@ -1496,14 +1524,17 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         if (isset($body['logged_hours'])   && $body['logged_hours']!=='')    { $fields[]='logged_hours = ?';    $params[]=(float)$body['logged_hours']; }
         if (!$fields) { echo json_encode(['success'=>false,'error'=>'nothing to update']); exit; }
         $params[]=$id;
+        $pa = $db->prepare("SELECT assigned_to FROM tasks WHERE id = ?"); $pa->execute([$id]); $prevAssignee = (int)$pa->fetchColumn();
         $db->prepare("UPDATE tasks SET ".implode(',',$fields)." WHERE id=?")->execute($params);
-        if (!empty($body['assigned_to']) && (int)$body['assigned_to']) {
+        if (!empty($body['assigned_to']) && (int)$body['assigned_to'] && (int)$body['assigned_to'] !== $prevAssignee) {
             $pj = $db->prepare("SELECT project_id FROM tasks WHERE id = ?");
             $pj->execute([$id]);
             addProjectMember($db, (int)$pj->fetchColumn(), (int)$body['assigned_to']);
             $actorName=trim($body['actor_name']??'')?:'Someone';
             $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
                ->execute([$id,(int)($body['actor_id']??0),$actorName,"Assigned to ".(trim($body['assigned_name']??'')?:'a team member')]);
+            if ((int)$body['assigned_to'] !== (int)($body['actor_id'] ?? 0))
+                notifyTask($db, $id, (int)($body['actor_id'] ?? 0), $actorName, 'assigned', null, [(int)$body['assigned_to']]);
         }
         // Activity log for stage move
         if (isset($body['stage']) && array_key_exists($body['stage'],$stageMap)) {
@@ -1531,7 +1562,9 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         if (!$taskId || !$userId || !$comment) { echo json_encode(['success'=>false,'error'=>'task_id, user_id, comment required']); exit; }
         $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,0)")
            ->execute([$taskId,$userId,$userName,$comment]);
-        echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
+        $newCommentId = (int)$db->lastInsertId();
+        notifyTask($db, $taskId, $userId, $userName, 'comment', $comment);
+        echo json_encode(['success'=>true,'id'=>$newCommentId]);
         exit;
     }
     // ── ARCHIVE PROJECT (GET — the page sends it this way) ─────────────────
@@ -1948,7 +1981,9 @@ if ($method === 'POST') {
         if (!$taskId || !$userId || !$comment) { echo json_encode(['success'=>false,'error'=>'task_id, user_id, comment required']); exit; }
         $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,0)")
            ->execute([$taskId,$userId,$userName,$comment]);
-        echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
+        $newCommentId = (int)$db->lastInsertId();
+        notifyTask($db, $taskId, $userId, $userName, 'comment', $comment);
+        echo json_encode(['success'=>true,'id'=>$newCommentId]);
         exit;
     }
 
@@ -2925,6 +2960,34 @@ function ensureEntryColumns($db) {
 }
 
 // Pay period containing a date — calculated from the first period (Apr 27 2026), no end date
+// Notify people about a task: everyone on the task's project, the person assigned and followers
+// (never the person who did it). $only limits it to specific people (e.g. the new assignee).
+function notifyTask($db, $taskId, $actorId, $actorName, $kind, $text = null, $only = null) {
+    try {
+        $t = $db->prepare("SELECT id, title, project_id, assigned_to FROM tasks WHERE id = ?"); $t->execute([(int)$taskId]);
+        if (!($task = $t->fetch())) return;
+        if ($only !== null) $ids = $only;
+        else {
+            $ids = [(int)$task['assigned_to']];
+            $m = $db->prepare("SELECT user_id FROM project_members WHERE project_id = ?"); $m->execute([(int)$task['project_id']]);
+            $ids = array_merge($ids, array_map('intval', $m->fetchAll(PDO::FETCH_COLUMN)));
+            try { $f = $db->prepare("SELECT user_id FROM task_followers WHERE task_id = ?"); $f->execute([(int)$taskId]);
+                  $ids = array_merge($ids, array_map('intval', $f->fetchAll(PDO::FETCH_COLUMN))); } catch (Throwable $e) {}
+        }
+        $ids = array_values(array_unique(array_filter($ids, function($i) use ($actorId) { return $i > 0 && $i !== (int)$actorId; })));
+        if (!$ids) return;
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $a = $db->prepare("SELECT id FROM users WHERE status = 'active' AND id IN ($in)"); $a->execute($ids);
+        if ((!$actorName || $actorName === 'Someone') && $actorId) {
+            $an = $db->prepare("SELECT name FROM users WHERE id = ?"); $an->execute([(int)$actorId]); $actorName = $an->fetchColumn() ?: $actorName;
+        }
+        $msg = $text !== null ? (function_exists('mb_substr') ? mb_substr(trim($text), 0, 300) : substr(trim($text), 0, 300)) : null;
+        $ins = $db->prepare("INSERT INTO notifications (user_id, actor_id, actor_name, kind, task_id, project_id, message) VALUES (?,?,?,?,?,?,?)");
+        foreach ($a->fetchAll(PDO::FETCH_COLUMN) as $uid)
+            $ins->execute([(int)$uid, (int)$actorId ?: null, $actorName ?: 'Someone', $kind, (int)$taskId, (int)$task['project_id'], $msg]);
+    } catch (Throwable $e) { error_log('notifyTask: ' . $e->getMessage()); }
+}
+
 // ── Tasks: everyone can add tasks to projects they're on; employees assign within the project team
 function taskRulesCheck($db, $auth, $projectId, $assignee) {
     if (!$auth) return 'Please sign in.';

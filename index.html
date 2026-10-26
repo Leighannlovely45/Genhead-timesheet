@@ -64,6 +64,19 @@ div[id$="-modal"][style*="position:fixed"] > div{max-height:none!important;margi
 .brand span{color:var(--teal)}
 .topbar-right{display:flex;align-items:center;gap:.75rem}
 .topbar-user{font-size:.78rem;color:rgba(255,255,255,.5)}
+.nt-bell{position:relative;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:8px;padding:.25rem .5rem;font-size:.95rem;cursor:pointer;line-height:1.2}
+.nt-bell:hover{background:rgba(255,255,255,.16)}
+.nt-count{position:absolute;top:-6px;right:-7px;background:#ef4444;color:#fff;border-radius:10px;font-size:.62rem;font-weight:700;padding:.05rem .32rem;min-width:1rem;text-align:center}
+.nt-panel{position:absolute;right:0;top:calc(100% + 8px);width:min(360px,92vw);max-height:min(460px,70vh);overflow-y:auto;background:var(--bg,#fff);color:var(--dark);border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.3);z-index:500}
+.nt-item{display:block;padding:.65rem .85rem;border-bottom:1px solid var(--border);cursor:pointer;font-size:.8rem;line-height:1.35}
+.nt-item:hover{background:var(--hover)}
+.nt-item.unread{background:rgba(3,173,143,.08)}
+.nt-item .nt-msg{color:var(--mid);margin-top:.15rem;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.nt-item .nt-time{font-size:.68rem;color:var(--mid);margin-top:.2rem}
+#nt-pops{position:fixed;right:1rem;bottom:4.5rem;z-index:600;display:flex;flex-direction:column;gap:.5rem;width:min(340px,92vw)}
+.nt-pop{background:#0f172a;color:#fff;border-left:4px solid #03AD8F;border-radius:10px;padding:.7rem .85rem;box-shadow:0 12px 32px rgba(0,0,0,.35);font-size:.8rem;cursor:pointer;animation:ntIn .25s ease-out}
+.nt-pop .nt-msg{color:rgba(255,255,255,.7);margin-top:.2rem}
+@keyframes ntIn{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
 .topbar-user strong{color:#fff}
 .badge-role{font-size:.68rem;padding:.18rem .6rem;background:rgba(3,173,143,.2);border:1px solid rgba(3,173,143,.35);border-radius:20px;color:var(--teal);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 .badge-role.mgr{background:rgba(53,29,114,.25);border-color:rgba(167,139,250,.4);color:#a78bfa}
@@ -432,6 +445,10 @@ div[id$="-modal"][style*="position:fixed"] > div{max-height:none!important;margi
   <div class="topbar">
     <div class="brand">gen<span>head</span> <span style="font-size:.72rem;font-weight:400;color:rgba(255,255,255,.35);letter-spacing:.5px;margin-left:.25rem">Timesheet</span></div>
     <div class="topbar-right">
+      <div style="position:relative">
+        <button id="nt-bell" class="nt-bell" onclick="toggleNotifPanel(event)" title="Notifications" aria-label="Notifications">&#128276;<span id="nt-count" class="nt-count" style="display:none"></span></button>
+        <div id="nt-panel" class="nt-panel" style="display:none"></div>
+      </div>
       <span class="badge-role" id="tb-role-badge"></span>
       <div class="topbar-user"><strong id="tb-name"></strong></div>
       <button class="btn-sm" onclick="logout()">Log out</button>
@@ -1085,6 +1102,7 @@ function submitResetPin(){
 
 function doLogin(u){
   cur=u;document.getElementById("tb-name").textContent=u.name;
+  startNotifications();
   const badge=document.getElementById("tb-role-badge");
   const roleMap={employee:"Employee",manager:"Manager",hr:"HR",admin:"Admin"};
   badge.textContent=roleMap[u.role]||u.role;
@@ -2966,6 +2984,98 @@ function backDash(){
   cur=cur._prev||cur;
   document.getElementById("tb-name").textContent=cur.name;
   renderApp();
+}
+
+// ── NOTIFICATIONS (Projects) ──────────────────────────────────────────────
+// Comments on tasks you're assigned to or on projects you're on, and new assignments.
+// Checked every 30 seconds while signed in; new ones pop up in the corner.
+let _nt={items:[],lastId:null,timer:null,busy:false};
+function startNotifications(){
+  if(_nt.timer)clearInterval(_nt.timer);
+  _nt.lastId=null; pollNotifications();
+  _nt.timer=setInterval(()=>{if(!document.hidden)pollNotifications();},30000);
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&cur&&_nt.timer)pollNotifications();});
+function ntText(n){
+  const who=escHtml(n.actor_name||"Someone"), task=escHtml(n.task_title||"a task");
+  if(n.kind==="assigned") return `<b>${who}</b> assigned you <b>${task}</b>`;
+  return `<b>${who}</b> commented on <b>${task}</b>`;
+}
+function ntAgo(ts){
+  const d=new Date(String(ts).replace(" ","T")); if(isNaN(d))return "";
+  const m=Math.round((Date.now()-d.getTime())/60000);
+  if(m<1)return "just now"; if(m<60)return m+" min ago"; if(m<1440)return Math.round(m/60)+" h ago";
+  return d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+}
+async function pollNotifications(){
+  if(!cur||_nt.busy)return; _nt.busy=true;
+  try{
+    const r=await fetch(`${API_BASE}?action=load_notifications&t=${Date.now()}`).then(x=>x.json());
+    if(!r||!r.success)return;
+    const items=r.items||[];
+    const maxId=items.reduce((m,n)=>Math.max(m,parseInt(n.id)||0),0);
+    if(_nt.lastId!==null){
+      items.filter(n=>(parseInt(n.id)||0)>_nt.lastId&&!n.read_at).reverse().slice(-3).forEach(showNotifPop);
+    }
+    _nt.lastId=Math.max(_nt.lastId||0,maxId);
+    _nt.items=items;
+    const c=document.getElementById("nt-count");
+    if(c){c.textContent=r.unread>99?"99+":String(r.unread);c.style.display=r.unread?"":"none";}
+    const p=document.getElementById("nt-panel"); if(p&&p.style.display!=="none")renderNotifPanel();
+  }catch(e){}finally{_nt.busy=false;}
+}
+function showNotifPop(n){
+  let box=document.getElementById("nt-pops");
+  if(!box){box=document.createElement("div");box.id="nt-pops";document.body.appendChild(box);}
+  const el=document.createElement("div"); el.className="nt-pop";
+  el.innerHTML=`<div>${ntText(n)}</div>${n.message?`<div class="nt-msg">${escHtml(n.message)}</div>`:""}<div class="nt-msg" style="font-size:.68rem;margin-top:.3rem">${escHtml(n.project_name||"")} · click to open</div>`;
+  el.onclick=()=>{el.remove();openNotif(n);};
+  box.appendChild(el);
+  setTimeout(()=>el.remove(),10000);
+}
+function renderNotifPanel(){
+  const p=document.getElementById("nt-panel"); if(!p)return;
+  const items=_nt.items||[];
+  p.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem .85rem;border-bottom:1px solid var(--border)">
+      <b style="font-size:.85rem">Notifications</b>
+      ${items.some(n=>!n.read_at)?`<a href="#" style="font-size:.74rem;color:var(--teal)" onclick="event.preventDefault();markAllNotifsRead()">Mark all read</a>`:""}
+    </div>`+(items.length?items.map((n,i)=>`<div class="nt-item${n.read_at?"":" unread"}" onclick="openNotifAt(${i})">
+      <div>${ntText(n)}</div>${n.message?`<div class="nt-msg">${escHtml(n.message)}</div>`:""}
+      <div class="nt-time">${escHtml(n.project_name||"")}${n.project_name?" · ":""}${ntAgo(n.created_at)}</div></div>`).join("")
+      :`<div style="padding:1.5rem;text-align:center;color:var(--mid);font-size:.82rem">No notifications yet. You'll see comments on your tasks and projects here.</div>`);
+}
+function toggleNotifPanel(e){
+  if(e)e.stopPropagation();
+  const p=document.getElementById("nt-panel"); if(!p)return;
+  const open=p.style.display==="none";
+  p.style.display=open?"":"none";
+  if(open){renderNotifPanel();pollNotifications();}
+}
+document.addEventListener("click",e=>{const p=document.getElementById("nt-panel");if(p&&p.style.display!=="none"&&!e.target.closest("#nt-panel")&&!e.target.closest("#nt-bell"))p.style.display="none";});
+function openNotifAt(i){const n=(_nt.items||[])[i];if(n){document.getElementById("nt-panel").style.display="none";openNotif(n);}}
+async function markAllNotifsRead(){
+  await fetch(`${API_BASE}?action=read_notifications`).catch(()=>{});
+  (_nt.items||[]).forEach(n=>{if(!n.read_at)n.read_at="now";});
+  const c=document.getElementById("nt-count"); if(c)c.style.display="none";
+  renderNotifPanel();
+}
+async function openNotif(n){
+  if(!n.read_at){
+    n.read_at="now";
+    fetch(`${API_BASE}?action=read_notifications&ids=${encodeURIComponent(n.id)}`).then(()=>pollNotifications()).catch(()=>{});
+  }
+  if(!n.task_id)return;
+  const tid=parseInt(n.task_id);
+  const has=()=>_pm.tasks.some(t=>parseInt(t.id)===tid);
+  const root=document.getElementById("projects-root");
+  const onProjects=root&&root.offsetParent!==null;
+  if(!onProjects||!has()){
+    if(document.getElementById("tab-projects")) switchTab("projects"); else openEmployeeProjects();
+    await new Promise(r=>setTimeout(r,50));
+    for(let i=0;i<100&&_pm.loading;i++) await new Promise(r=>setTimeout(r,100));
+  }
+  if(has()) _pmOpenTask(_pm.tasks.find(t=>parseInt(t.id)===tid).id);
+  else showToast("That task isn't available to you anymore.");
 }
 
 function showToast(msg){

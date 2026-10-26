@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-26.2');
+define('SCHEMA_VERSION', '2026-10-26.3');
 
 function ensureSchema($db) {
     static $done = false;
@@ -93,6 +93,19 @@ function ensureSchema($db) {
         after_state TEXT NULL,
         ip_address VARCHAR(64) NULL,
         created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+    )");
+    $exec("CREATE TABLE IF NOT EXISTS notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        actor_id INT NULL,
+        actor_name VARCHAR(255) NULL,
+        kind VARCHAR(30) NOT NULL,
+        task_id INT NULL,
+        project_id INT NULL,
+        message TEXT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        read_at DATETIME NULL,
+        INDEX (user_id, id)
     )");
     $exec("CREATE TABLE IF NOT EXISTS timesheet_comments (
         id INT AUTO_INCREMENT PRIMARY KEY,
