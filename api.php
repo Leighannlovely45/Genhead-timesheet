@@ -722,8 +722,8 @@ if ($method === 'GET') {
         $sql    = "SELECT p.*, COALESCE(p.client_name, (SELECT c.name FROM clients c WHERE c.id = p.client_id)) AS client_name, u.name AS creator_name,
                    (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS task_count,
                    (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.stage = 'done') AS done_count,
-                   (SELECT GROUP_CONCAT(pm.user_id ORDER BY um.name SEPARATOR ',') FROM project_members pm JOIN users um ON um.id = pm.user_id WHERE pm.project_id = p.id) AS member_ids,
-                   (SELECT GROUP_CONCAT(um.name ORDER BY um.name SEPARATOR ', ') FROM project_members pm JOIN users um ON um.id = pm.user_id WHERE pm.project_id = p.id) AS member_names
+                   (SELECT GROUP_CONCAT(pm.user_id ORDER BY um.name SEPARATOR ',') FROM project_members pm JOIN users um ON um.id = pm.user_id AND um.status = 'active' WHERE pm.project_id = p.id) AS member_ids,
+                   (SELECT GROUP_CONCAT(um.name ORDER BY um.name SEPARATOR ', ') FROM project_members pm JOIN users um ON um.id = pm.user_id AND um.status = 'active' WHERE pm.project_id = p.id) AS member_names
                    FROM projects p LEFT JOIN users u ON u.id = p.created_by";
         $params = [];
         if ($status) { $sql .= " WHERE p.status = ?"; $params[] = $status; }
@@ -1463,7 +1463,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         // Activity log
         $actorName=trim($body['actor_name']??'') ?: 'Someone';
         $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")
-           ->execute([$taskId,$createdBy,$actorName,"Task created and added to ".ucfirst($stage)]);
+           ->execute([$taskId,$createdBy,$actorName,"Task created and added to ".(["backlog"=>"Backlog","todo"=>"To Do","inprogress"=>"In Progress","inreview"=>"In Review","done"=>"Done"][$stage] ?? ucfirst($stage))]);
         echo json_encode(['success'=>true,'id'=>$taskId]);
         exit;
     }

@@ -14,7 +14,11 @@
   --border:#e2e8f0;--alt:#f8fafc;--bg:#fff;
   --danger:#ef4444;--success:#10b981;--gold:#f59e0b;
 }
-body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-height:100vh}
+body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-height:100vh;padding-bottom:4rem}
+/* Pop-ups: never cut off. The overlay scrolls, with room at the bottom so nothing hides behind the taskbar */
+div[id$="-modal"][style*="position:fixed"]{align-items:flex-start!important;overflow-y:auto!important;padding:4vh 0 5rem!important;box-sizing:border-box}
+div[id$="-modal"][style*="position:fixed"] > div{max-height:none!important;margin:0 auto}
+.pm-panel-box::-webkit-scrollbar{width:8px}.pm-panel-box::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
 .screen{display:none}.screen.active{display:block}
 
 /* LOGIN */
@@ -253,9 +257,8 @@ body{font-family:'DM Sans',sans-serif;background:#f1f5f9;color:var(--dark);min-h
   --stage-inreview-bg:#2e1065;--stage-inreview-card:#581c87;
   --stage-done-bg:#022c22;    --stage-done-card:#064e3b;
 }
-.pm-board{display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem;align-items:start;overflow-x:auto;padding-bottom:.75rem}
-@media(max-width:900px){.pm-board{grid-template-columns:repeat(3,minmax(190px,1fr));}}
-@media(max-width:600px){.pm-board{grid-template-columns:repeat(2,minmax(160px,1fr));}}
+.pm-board{display:grid;grid-template-columns:repeat(5,minmax(210px,1fr));gap:.75rem;align-items:start;overflow-x:auto;padding-bottom:.75rem}
+@media(max-width:600px){.pm-board{grid-template-columns:repeat(5,minmax(200px,1fr));}}
 /* Column lanes */
 .pm-col{border-radius:12px;padding:.65rem;min-height:240px;transition:background .15s}
 .pm-col.stage-backlog  {background:var(--stage-backlog-bg);}
@@ -3729,7 +3732,7 @@ function _pmShowTaskPanel(task){
 
   const panel=document.createElement('div');
   panel.id='pm-task-panel';
-  panel.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end;justify-content:flex-end;padding:1rem';
+  panel.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-start;justify-content:flex-end;padding:1rem 1rem 4.5rem';
 
   const commentsHtml=_pmRenderComments(_pm.comments);
 
@@ -3782,13 +3785,25 @@ function _pmShowTaskPanel(task){
     </div>`:'';
 
   panel.innerHTML=`
-  <div style="background:var(--bg);border-radius:14px;width:min(520px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)">
-    <div style="padding:1.25rem 1.25rem .75rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
-      <div>
-        <div style="font-size:.75rem;color:var(--mid);margin-bottom:.2rem">${escHtml(proj.name)} · ${stageLabel}</div>
-        <div style="font-size:1.05rem;font-weight:600;color:var(--dark)">${escHtml(task.title)}</div>
+  <div class="pm-panel-box" style="background:var(--bg);border-radius:14px;width:min(560px,100%);max-height:100%;overflow-y:auto;overscroll-behavior:contain;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+    <div style="position:sticky;top:0;z-index:2;background:var(--bg);border-radius:14px 14px 0 0;padding:1.1rem 1.25rem .7rem;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem">
+        <div>
+          <div style="font-size:.75rem;color:var(--mid);margin-bottom:.2rem">${escHtml(proj.name)} · ${stageLabel}</div>
+          <div style="font-size:1.05rem;font-weight:600;color:var(--dark)">${escHtml(task.title)}</div>
+        </div>
+        <button onclick="document.getElementById('pm-task-panel').remove()" style="background:none;border:none;color:var(--mid);font-size:1.3rem;cursor:pointer;padding:.1rem .35rem" title="Close">✕</button>
       </div>
-      <button onclick="document.getElementById('pm-task-panel').remove()" style="background:none;border:none;color:var(--mid);font-size:1.3rem;cursor:pointer;padding:.1rem .35rem">✕</button>
+      <div style="display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.6rem">
+        <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .65rem" onclick="_pmMoveModal(${task.id},'${task.stage}')">→ Move Stage</button>
+        ${task.stage!=='done'?`<button class="btn btn-primary" style="font-size:.75rem;padding:.3rem .65rem;background:var(--teal);border-color:var(--teal)" onclick="_pmCompleteTask(${task.id})">✓ Complete</button>`:''}
+        ${String(task.assigned_to)!==String(cur.db_id||cur.id.replace('e',''))?`
+        <button id="pm-follow-btn" class="btn ${_pm.taskFollowers&&_pm.taskFollowers.includes(parseInt(cur.db_id||cur.id.replace('e','')))?'btn-primary':'btn-outline'}"
+          style="font-size:.75rem;padding:.3rem .65rem"
+          onclick="_pmToggleFollow(${task.id})">
+          ${_pm.taskFollowers&&_pm.taskFollowers.includes(parseInt(cur.db_id||cur.id.replace('e','')))?'★ Following':'☆ Follow'}
+        </button>`:''}
+      </div>
     </div>
     <div style="padding:.85rem 1.25rem;display:flex;gap:1.25rem;flex-wrap:wrap;border-bottom:1px solid var(--border)">
       <div><div style="font-size:.7rem;color:var(--mid);margin-bottom:.15rem">Assignee</div><div style="font-size:.85rem;color:var(--dark)">${escHtml(task.assigned_name||'Unassigned')}</div></div>
@@ -3799,24 +3814,14 @@ function _pmShowTaskPanel(task){
     ${task.description?`<div style="padding:.75rem 1.25rem;font-size:.83rem;color:var(--mid);border-bottom:1px solid var(--border)">${escHtml(task.description)}</div>`:''}
     ${editSection}
     ${pmLogTimeHTML(task)}
-    <div style="flex:1;overflow-y:auto;padding:.75rem 1.25rem">
+    <div style="padding:.75rem 1.25rem;border-bottom:1px solid var(--border)">
       <div style="font-size:.75rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.6rem">Activity & Comments</div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem">
+        <input id="pm-comment-input" type="text" placeholder="Add a comment…" style="flex:1;min-width:0;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--dark);font-size:.85rem"
+          onkeydown="if(event.key==='Enter')_pmSubmitComment(${task.id})">
+        <button class="btn btn-primary" style="font-size:.82rem;padding:.45rem .9rem" onclick="_pmSubmitComment(${task.id})">Save</button>
+      </div>
       <div id="pm-comments-list">${commentsHtml||'<div style="color:var(--mid);font-size:.82rem">No comments yet.</div>'}</div>
-    </div>
-    <div style="padding:.75rem 1.25rem;border-top:1px solid var(--border);display:flex;gap:.5rem">
-      <input id="pm-comment-input" type="text" placeholder="Add a comment…" style="flex:1;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;color:var(--dark);font-size:.85rem"
-        onkeydown="if(event.key==='Enter')_pmSubmitComment(${task.id})">
-      <button class="btn btn-primary" style="font-size:.82rem;padding:.45rem .9rem" onclick="_pmSubmitComment(${task.id})">Save</button>
-    </div>
-    <div style="padding:.5rem 1.25rem .85rem;display:flex;gap:.5rem;flex-wrap:wrap">
-      <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .65rem" onclick="_pmMoveModal(${task.id},'${task.stage}')">→ Move Stage</button>
-      ${task.stage!=='done'?`<button class="btn btn-primary" style="font-size:.75rem;padding:.3rem .65rem;background:var(--teal);border-color:var(--teal)" onclick="_pmCompleteTask(${task.id})">✓ Complete</button>`:''}
-      ${String(task.assigned_to)!==String(cur.db_id||cur.id.replace('e',''))?`
-      <button id="pm-follow-btn" class="btn ${_pm.taskFollowers&&_pm.taskFollowers.includes(parseInt(cur.db_id||cur.id.replace('e','')))?'btn-primary':'btn-outline'}"
-        style="font-size:.75rem;padding:.3rem .65rem"
-        onclick="_pmToggleFollow(${task.id})">
-        ${_pm.taskFollowers&&_pm.taskFollowers.includes(parseInt(cur.db_id||cur.id.replace('e','')))?'★ Following':'☆ Follow'}
-      </button>`:''}
     </div>
   </div>`;
   document.body.appendChild(panel);
