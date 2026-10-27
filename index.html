@@ -2093,6 +2093,17 @@ function renderDash(){
           <input class="ghl-input" id="set-ticket-email" type="text" value="${escHtml(appSettings.ticket_team_email!=null&&appSettings.ticket_team_email!==''?appSettings.ticket_team_email:'support@genhead.com')}" onchange="api({action:'update_settings',ticket_team_email:this.value.trim()}).then(r=>{if(r&&r.success===false){showToast(r.error||'Could not save.');return;}appSettings.ticket_team_email=this.value.trim();showToast('Ticket inbox saved.');})">
         </div>
         <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
+          <label style="font-weight:600">Update tickets from GenSuite</label>
+          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Lets a GenSuite workflow change a ticket here, so the client portal stays in sync. In the workflow add a <b>Webhook</b> action (POST) to the link below with: <code>ticket</code> = the ticket number (e.g. GH-0012, sent to GenSuite as <code>ticket_number</code>) and <code>status</code> = <code>Completed</code>, <code>In progress</code>, <code>Waiting on client</code> or <code>New</code>. Optional: <code>reply</code> (emailed to the client and shown in their portal), <code>note</code> (internal), <code>by</code> (who did it), <code>quiet</code>=true (no client email). Completed and Waiting on client email the client, same as in Ticketing.</p>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+            <input class="ghl-input" id="wh-inbound-url" readonly placeholder="Click Show link" style="flex:1;min-width:240px">
+            <button class="btn btn-outline" style="font-size:.78rem" onclick="showInboundLink(0)">Show link</button>
+            <button class="btn btn-outline" style="font-size:.78rem" onclick="copyInboundLink()">Copy</button>
+            <button class="btn btn-outline" style="font-size:.78rem;color:#ef4444" onclick="showInboundLink(1)" title="Makes a new secret link. The old one stops working.">New link</button>
+          </div>
+          <p style="font-size:.72rem;color:var(--mid);margin-top:.3rem">The link has a secret key. Keep it in GenSuite only.</p>
+        </div>
+        <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
           <label style="font-weight:600">Support Hours Invoice Webhook URL</label>
           <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Fires when an Admin or HR approves a support-hours request in Ticketing. In GenSuite, start a workflow with an Inbound Webhook trigger, find the contact by <code>contact_email</code>, and create and send the invoice from these fields: <code>item_name</code>, <code>item_description</code>, <code>quantity</code>, <code>unit_price</code>, <code>amount</code>, <code>recurring</code> (true for monthly add-ons), <code>client_name</code>, <code>ticket_number</code>. Leave blank to use the ticket webhook (event <code>invoice_requested</code>).</p>
           <input class="ghl-input" id="wh-invoice-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${escHtml(appSettings.ghl_invoice_webhook_url||'')}" onchange="api({action:'update_settings',ghl_invoice_webhook_url:this.value.trim()}).then(()=>{appSettings.ghl_invoice_webhook_url=this.value.trim();showToast('Invoice webhook saved.');})">
@@ -3097,6 +3108,8 @@ function ntText(n){
   const who=escHtml(n.actor_name||"Someone"), task=escHtml(n.task_title||"a task");
   if(n.kind==="assigned") return `<b>${who}</b> assigned you <b>${task}</b>`;
   if(n.kind==="ticket") return `🎫 New support request from <b>${escHtml(n.ticket_client||n.actor_name||"a client")}</b>: <b>${escHtml(n.ticket_subject||n.message||"")}</b>`;
+  if(n.kind==="ticket_reply") return `💬 <b>${escHtml(n.actor_name||"The client")}</b> (${escHtml(n.ticket_client||"client")}) replied on <b>${escHtml(n.ticket_subject||"")}</b>`;
+  if(n.kind==="ticket_status") return `🎫 GenSuite updated <b>${escHtml(n.ticket_subject||"")}</b>: ${escHtml(n.message||"")}`;
   if(n.kind==="ticket_assigned") return `🎫 <b>${who}</b> assigned you a support request: <b>${escHtml(n.ticket_subject||"")}</b>`;
   if(n.kind==="meeting") return n.task_title?`📹 <b>${who}</b> wants to meet about <b>${task}</b>`:`📹 <b>${who}</b> wants to meet now${n.project_name?` about <b>${escHtml(n.project_name)}</b>`:""}`;
   return `<b>${who}</b> commented on <b>${task}</b>`;
@@ -3316,9 +3329,12 @@ async function openTicket(id){
     <div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border)">
       ${t.task_id?`<div style="font-size:.84rem">🔗 This request has a task. <a href="#" style="color:var(--teal)" onclick="event.preventDefault();document.getElementById('tk-panel').remove();_pmOpenTask(${t.task_id})">Open the task</a></div>`
       :`<div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Make it a task</div>
-        <div style="display:flex;gap:.5rem"><select id="tk-proj" style="${sel};flex:1">${projects.length?projects.map(pp=>`<option value="${pp.id}">${escHtml(pp.name)}${pp.client_name?` · ${escHtml(pp.client_name)}`:""}</option>`).join(""):'<option value="">No projects you can add to</option>'}</select>
+        <div style="display:flex;gap:.5rem"><select id="tk-proj" style="${sel};flex:1">${(()=>{const sup=projects.find(pp=>pp.name==="Client Support"&&String(pp.client_id||"")===String(t.client_id||""));
+          const top=`<option value="support">🎧 Client Support · ${escHtml(t.client_name||"No client")}${sup?"":" (new project, made for you)"}</option>`;
+          const rest=projects.filter(pp=>pp!==sup);
+          return top+(rest.length?`<optgroup label="Or add it to an existing project">${rest.map(pp=>`<option value="${pp.id}">${escHtml(pp.name)}${pp.client_name?` · ${escHtml(pp.client_name)}`:""}</option>`).join("")}</optgroup>`:"");})()}</select>
         <button class="btn btn-outline" style="font-size:.78rem;padding:.35rem .8rem" onclick="ticketToTask(${t.id})">Create task</button></div>
-        <div style="font-size:.7rem;color:var(--mid);margin-top:.3rem">Adds a To Do task with the request details, assigned to the same person. Time logged on it counts toward the client.</div>`}
+        <div style="font-size:.7rem;color:var(--mid);margin-top:.3rem">Adds a To Do task with the request details, assigned to the same person. Client Support keeps one-off requests together for each client, so you don't need a project first. Time logged on it counts toward the client.</div>`}
     </div>
     <div style="padding:.85rem 1.25rem">
       <div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Conversation & notes</div>
@@ -3330,8 +3346,8 @@ async function openTicket(id){
       </div>
       ${notes.slice().reverse().map(n=>n.is_activity==1
         ?`<div style="font-size:.74rem;color:var(--mid);padding:.3rem 0;border-bottom:1px solid var(--border)">${escHtml(n.user_name||"")} · ${escHtml(n.note)} · ${escHtml(fmtTs(n.created_at))}</div>`
-        :`<div style="padding:.55rem .7rem;margin:.45rem 0;border-radius:8px;${n.is_public==1?"background:rgba(3,173,143,.08);border-left:3px solid #03AD8F":"background:var(--hover);border-left:3px solid #94a3b8"}">
-            <div style="font-size:.72rem;color:var(--mid);margin-bottom:.2rem"><b style="color:var(--dark)">${escHtml(n.user_name||"")}</b> · ${n.is_public==1?"Reply to client":"Internal note"} · ${escHtml(fmtTs(n.created_at))}</div>
+        :`<div style="padding:.55rem .7rem;margin:.45rem 0;border-radius:8px;${n.is_public==1&&n.user_id==null?"background:rgba(53,29,114,.07);border-left:3px solid #351D72":n.is_public==1?"background:rgba(3,173,143,.08);border-left:3px solid #03AD8F":"background:var(--hover);border-left:3px solid #94a3b8"}">
+            <div style="font-size:.72rem;color:var(--mid);margin-bottom:.2rem"><b style="color:var(--dark)">${escHtml(n.user_name||"")}</b> · ${n.is_public==1&&n.user_id==null?"💬 Client replied":n.is_public==1?"Reply to client":"Internal note"} · ${escHtml(fmtTs(n.created_at))}</div>
             <div style="font-size:.84rem;color:var(--dark);white-space:pre-wrap">${escHtml(n.note)}</div></div>`).join("")}
     </div>
   </div>`;
@@ -3389,6 +3405,16 @@ async function approveHours(id){
   await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);
 }
 function fmtTs(ts){const d=new Date(String(ts||"").replace(" ","T"));return isNaN(d)?"":d.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
+async function showInboundLink(regen){
+  if(regen&&!(await uiConfirm("Make a new secret link? The current link stops working, so update it in your GenSuite workflow.",{title:"New link",ok:"Make new link",danger:true})))return;
+  const r=await fetch(`${API_BASE}?action=ticket_inbound_info${regen?"&regenerate=1":""}`).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't load the link.");return;}
+  document.getElementById("wh-inbound-url").value=r.url; if(regen)showToast("New link made. Paste it into GenSuite.");
+}
+async function copyInboundLink(){
+  const el=document.getElementById("wh-inbound-url"); if(!el.value)await showInboundLink(0);
+  try{await navigator.clipboard.writeText(el.value);showToast("Link copied.");}catch(e){el.select();showToast("Press Ctrl+C to copy.");}
+}
 async function archiveTicket(id,on){
   await updateTicket(id,{archived:on?1:0});
   showToast(on?"Archived. Find it under 🗄 Archived.":"Restored to the Ticketing lists.");
@@ -3437,7 +3463,8 @@ async function ticketToTask(id){
   if(!pid){showToast("Pick a project first.");return;}
   const r=await fetch(`${API_BASE}?action=ticket_to_task&id=${id}&project_id=${encodeURIComponent(pid)}`).then(x=>x.json()).catch(()=>({success:false}));
   if(!r.success){showToast(r.error||"Couldn't create the task.");return;}
-  showToast("Task created from the request.");
+  showToast(pid==="support"?"Task created on this client's Client Support project.":"Task created from the request.");
+  if(pid==="support"){const pr=await fetch(`api.php?action=load_projects&t=${Date.now()}`).then(x=>x.json()).catch(()=>null);if(pr&&pr.projects)_pm.projects=pr.projects;}
   const tRes=await fetch(`api.php?action=load_tasks&t=${Date.now()}`).then(x=>x.json()).catch(()=>null);
   if(tRes&&tRes.tasks)_pm.tasks=tRes.tasks;
   await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);

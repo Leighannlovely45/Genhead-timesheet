@@ -150,7 +150,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // ─────────────────────────────────────────
 // Open without signing in: sign-in/reset flows, the login name list, the Chrome
 // extension, the client hours portal & hours-bank admin, and secret-protected GHL hooks.
-$PUBLIC_ACTIONS = ['submit_ticket','client_tickets','client_ticket_file','verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
+$PUBLIC_ACTIONS = ['submit_ticket','client_tickets','client_reply','gensuite_ticket_status','client_ticket_file','verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
                    'upsert_time','client_hours','get_client_by_location',
                    'load_clients','ghl_add','fire_webhook'];
 $ROLE_RULES = [
@@ -412,7 +412,7 @@ function ticketRow($db, $id) {
 }
 function ticketNote($db, $tid, $uid, $name, $note, $public = 0, $activity = 0) {
     $db->prepare("INSERT INTO ticket_notes (ticket_id, user_id, user_name, note, is_public, is_activity) VALUES (?,?,?,?,?,?)")
-       ->execute([(int)$tid, $uid ?: null, $name, $note, $public ? 1 : 0, $activity ? 1 : 0]);
+       ->execute([(int)$tid, $uid === 0 ? 0 : ($uid ?: null), $name, $note, $public ? 1 : 0, $activity ? 1 : 0]);
     $db->prepare("UPDATE tickets SET updated_at = NOW() WHERE id = ?")->execute([(int)$tid]);
 }
 function canWorkTicket($auth, $t) {
@@ -469,10 +469,10 @@ if ($action === 'client_tickets') {
     $st = $db->prepare("SELECT id, category, priority, subject, status, created_at, updated_at FROM tickets WHERE client_id = ? ORDER BY id DESC LIMIT 50");
     $st->execute([(int)$client['id']]);
     $out = [];
-    $nq = $db->prepare("SELECT user_name, note, created_at FROM ticket_notes WHERE ticket_id = ? AND is_public = 1 ORDER BY id");
+    $nq = $db->prepare("SELECT user_id, user_name, note, created_at FROM ticket_notes WHERE ticket_id = ? AND is_public = 1 ORDER BY id");
     foreach ($st->fetchAll() as $t) {
         $nq->execute([(int)$t['id']]);
-        $replies = array_map(function($n){ return ['from'=>trim(explode(' ', (string)$n['user_name'])[0]) ?: 'Genhead', 'text'=>$n['note'], 'at'=>$n['created_at']]; }, $nq->fetchAll());
+        $replies = array_map(function($n){ $client = $n['user_id'] === null; return ['from'=>$client ? 'You' : (trim(explode(' ', (string)$n['user_name'])[0]) ?: 'Genhead'), 'mine'=>$client, 'text'=>$n['note'], 'at'=>$n['created_at']]; }, $nq->fetchAll());
         $fq = $db->prepare("SELECT token, name FROM ticket_files WHERE ticket_id = ? ORDER BY id"); $fq->execute([(int)$t['id']]);
         $out[] = ['number'=>ticketNo($t['id']), 'subject'=>$t['subject'], 'files'=>$fq->fetchAll(), 'category'=>$TICKET_CATEGORIES[$t['category']] ?? $t['category'],
                   'priority'=>$t['priority'], 'status'=>$t['status'], 'status_label'=>$TICKET_STATUSES[$t['status']] ?? $t['status'],
@@ -497,7 +497,7 @@ if ($action === 'ticket_detail') {
     $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
     if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
     unset($t['ip']); $t['number'] = ticketNo($t['id']);
-    $n = $db->prepare("SELECT id, user_name, note, is_public, is_activity, created_at FROM ticket_notes WHERE ticket_id = ? ORDER BY id"); $n->execute([(int)$t['id']]);
+    $n = $db->prepare("SELECT id, user_id, user_name, note, is_public, is_activity, created_at FROM ticket_notes WHERE ticket_id = ? ORDER BY id"); $n->execute([(int)$t['id']]);
     $fq = $db->prepare("SELECT token, name, mime, size, width, height FROM ticket_files WHERE ticket_id = ? ORDER BY id"); $fq->execute([(int)$t['id']]);
     echo json_encode(['success'=>true,'ticket'=>$t,'notes'=>$n->fetchAll(),'files'=>$fq->fetchAll(),'rate'=>(float)(getSetting('support_hour_rate', '80') ?: 80),'can_approve'=>in_array($AUTH['role'], ['admin','hr'], true)]);
     exit;
@@ -516,6 +516,85 @@ if ($action === 'client_ticket_file') {
     $row = $f->fetch();
     if (!$row) { http_response_code(404); echo 'Not found'; exit; }
     sendTicketFile($row);
+}
+// Client answers on their request from the portal (public: the portal link carries their sub-account id)
+function clientReplyIn($db, $t, $name, $note, $via) {
+    global $TICKET_STATUSES;
+    ticketNote($db, $t['id'], null, $name, mb_substr($note, 0, 5000), 1, 0);
+    if (in_array($t['status'], ['waiting','resolved'], true)) {
+        $db->prepare("UPDATE tickets SET status = 'in_progress', resolved_at = NULL WHERE id = ?")->execute([(int)$t['id']]);
+        ticketNote($db, $t['id'], null, $name, 'Status: ' . $TICKET_STATUSES['in_progress'] . ($t['status'] === 'resolved' ? ' (reopened by the client)' : ' (client replied)'), 0, 1);
+    }
+    $t2 = ticketRow($db, (int)$t['id']);
+    $ids = $t2['assigned_to'] ? [(int)$t2['assigned_to']] : $db->query("SELECT id FROM users WHERE status = 'active' AND role IN ('admin','hr','manager')")->fetchAll(PDO::FETCH_COLUMN);
+    ticketNotify($db, 'ticket_reply', $t2, $ids, 0, $name, 'Client replied: ' . mb_substr($note, 0, 200));
+    ticketHook('ticket_client_reply', $t2, ['reply' => $note, 'reply_from' => $name, 'via' => $via]);
+    $lines = ['Client' => $t2['client_name'] ?? '', 'From' => $name, 'Ticket' => ticketNo($t2['id']) . ' · ' . $t2['subject'], 'Status' => $TICKET_STATUSES[$t2['status']] ?? $t2['status'], 'Reply' => $note];
+    $subj = 'Client replied [' . ticketNo($t2['id']) . '] ' . ($t2['client_name'] ?? '') . ': ' . $t2['subject'];
+    $sent = [];
+    foreach (array_filter(array_map('trim', explode(',', (string)getSetting('ticket_team_email', 'support@genhead.com')))) as $one) { teamMail($one, $subj, $lines, $t2); $sent[] = strtolower($one); }
+    if ($t2['assigned_to']) { $em = $db->prepare("SELECT email FROM users WHERE id = ?"); $em->execute([(int)$t2['assigned_to']]); $e = (string)$em->fetchColumn(); if ($e && !in_array(strtolower($e), $sent, true)) teamMail($e, $subj, $lines, $t2); }
+    return $t2;
+}
+if ($action === 'client_reply' && $method === 'POST') {
+    $db = getDB(); $b = json_decode(file_get_contents('php://input'), true) ?: [];
+    $client = clientByLocation($db, trim((string)($b['location_id'] ?? '')));
+    $num = (int)preg_replace('/\D/', '', (string)($b['ticket'] ?? ''));
+    $q = $db->prepare("SELECT id FROM tickets WHERE id = ? AND client_id = ?"); $q->execute([$num, $client ? (int)$client['id'] : -1]);
+    $t = ($id = $q->fetchColumn()) ? ticketRow($db, (int)$id) : null;
+    if (!$t) { echo json_encode(['success'=>false,'error'=>'We couldn\'t find that request. Please refresh the page.']); exit; }
+    $note = trim((string)($b['note'] ?? ''));
+    if (mb_strlen($note) < 2) { echo json_encode(['success'=>false,'error'=>'Write a short reply first.']); exit; }
+    $r1 = $db->prepare("SELECT COUNT(*) FROM ticket_notes WHERE ticket_id = ? AND user_id IS NULL AND is_public = 1 AND created_at > (NOW() - INTERVAL 10 MINUTE)"); $r1->execute([(int)$t['id']]);
+    if ((int)$r1->fetchColumn() >= 10) { echo json_encode(['success'=>false,'error'=>'You\'ve sent several replies in a short time. Please wait a few minutes.']); exit; }
+    $name = trim((string)($b['name'] ?? '')) ?: ($t['contact_name'] ?: 'Client');
+    $shots = !empty($b['images']) ? saveTicketImages($db, (int)$t['id'], $b['images'], (array)($b['image_names'] ?? [])) : 0;
+    clientReplyIn($db, $t, mb_substr($name, 0, 100), $note . ($shots ? "\n\n📎 Added $shots screenshot" . ($shots > 1 ? 's' : '') : ''), 'portal');
+    echo json_encode(['success'=>true]);
+    exit;
+}
+// GenSuite → Timesheet: a workflow webhook updates a ticket (secret key required)
+if ($action === 'gensuite_ticket_status') {
+    $db = getDB();
+    $in = array_merge($_GET, $_POST, json_decode(file_get_contents('php://input'), true) ?: []);
+    $key = (string)getSetting('ticket_inbound_key', '');
+    $given = (string)($in['key'] ?? ($_SERVER['HTTP_X_TS_KEY'] ?? ''));
+    if ($key === '' || !hash_equals($key, $given)) { http_response_code(403); echo json_encode(['success'=>false,'error'=>'Bad key']); exit; }
+    $num = (int)preg_replace('/\D/', '', (string)($in['ticket'] ?? ($in['ticket_number'] ?? ($in['number'] ?? ''))));
+    $t = $num ? ticketRow($db, $num) : null;
+    if (!$t) { echo json_encode(['success'=>false,'error'=>'Ticket not found. Send ticket=GH-0012.']); exit; }
+    $raw = strtolower(trim((string)($in['status'] ?? '')));
+    $map = ['completed'=>'resolved','complete'=>'resolved','resolved'=>'resolved','done'=>'resolved','closed'=>'resolved','won'=>'resolved',
+            'in progress'=>'in_progress','in_progress'=>'in_progress','working'=>'in_progress','open'=>'in_progress',
+            'waiting'=>'waiting','waiting on client'=>'waiting','waiting on you'=>'waiting','new'=>'new'];
+    $status = $map[$raw] ?? null;
+    $by = trim((string)($in['by'] ?? '')) ?: 'GenSuite';
+    $reply = trim((string)($in['reply'] ?? ''));
+    $note = trim((string)($in['note'] ?? ''));
+    if (!$status && $reply === '' && $note === '') { echo json_encode(['success'=>false,'error'=>'Send status=Completed, In progress, Waiting on client or New (or a note/reply).']); exit; }
+    if ($note !== '') ticketNote($db, $t['id'], null, $by . ' (GenSuite)', mb_substr($note, 0, 5000), 0, 0);
+    if ($reply !== '') {
+        ticketNote($db, $t['id'], 0, $by, mb_substr($reply, 0, 5000), 1, 0);   // 0 = team side, so the portal shows it as Genhead
+        ticketEmail(ticketRow($db, (int)$t['id']), 'reply', ['reply' => $reply, 'from' => $by]);
+    }
+    $changed = false;
+    if ($status && $status !== $t['status']) {
+        $db->prepare("UPDATE tickets SET status = ?, resolved_at = ? WHERE id = ?")->execute([$status, $status === 'resolved' ? date('Y-m-d H:i:s') : null, (int)$t['id']]);
+        ticketNote($db, $t['id'], null, $by, 'Status: ' . $TICKET_STATUSES[$status] . ' (from GenSuite)', 0, 1);
+        $t2 = ticketRow($db, (int)$t['id']); $changed = true;
+        $quiet = in_array(strtolower((string)($in['quiet'] ?? '')), ['1','true','yes'], true);
+        if (in_array($status, ['waiting','resolved'], true) && !$quiet && ticketEmail($t2, 'status')) ticketNote($db, $t['id'], null, $by, 'Emailed ' . $t2['contact_email'] . ' about the status change', 0, 1);
+        if ($t2['assigned_to']) ticketNotify($db, 'ticket_status', $t2, [(int)$t2['assigned_to']], 0, 'GenSuite', ticketNo($t2['id']) . ' is now ' . $TICKET_STATUSES[$status]);
+    }
+    echo json_encode(['success'=>true, 'ticket'=>ticketNo($t['id']), 'status'=>ticketRow($db, (int)$t['id'])['status'], 'changed'=>$changed]);
+    exit;
+}
+if ($action === 'ticket_inbound_info') {
+    if (!in_array($AUTH['role'], ['admin','hr'], true)) { echo json_encode(['success'=>false,'error'=>'Admins only']); exit; }
+    $key = (string)getSetting('ticket_inbound_key', '');
+    if ($key === '' || !empty($_GET['regenerate'])) { $key = bin2hex(random_bytes(16)); setSetting('ticket_inbound_key', $key); }
+    echo json_encode(['success'=>true, 'url'=>appBaseUrl() . 'api.php?action=gensuite_ticket_status&key=' . $key]);
+    exit;
 }
 if ($action === 'delete_ticket') {
     $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
@@ -657,11 +736,18 @@ if ($action === 'ticket_to_task') {
     $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
     if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
     if ($t['task_id']) { echo json_encode(['success'=>false,'error'=>'This ticket already has a task.']); exit; }
-    $pid = (int)($_GET['project_id'] ?? 0);
+    $support = ($_GET['project_id'] ?? '') === 'support';
+    if ($support) {
+        // No project needed: the ticket goes on the client's "Client Support" project, made the first time
+        $pid = supportProjectFor($db, $t, (int)$AUTH['id']);
+        addProjectMember($db, $pid, (int)$AUTH['id']);
+    } else $pid = (int)($_GET['project_id'] ?? 0);
     $pb = $db->prepare("SELECT id, billing_type FROM projects WHERE id = ? AND status != 'archived'"); $pb->execute([$pid]);
     if (!($proj = $pb->fetch())) { echo json_encode(['success'=>false,'error'=>'Pick a project.']); exit; }
-    $chk = taskRulesCheck($db, $AUTH, $pid, (int)$t['assigned_to'] ?: null);
-    if ($chk !== true) { echo json_encode(['success'=>false,'error'=>$chk]); exit; }
+    if (!$support) {
+        $chk = taskRulesCheck($db, $AUTH, $pid, (int)$t['assigned_to'] ?: null);
+        if ($chk !== true) { echo json_encode(['success'=>false,'error'=>$chk]); exit; }
+    }
     $desc = trim(ticketNo($t['id']) . ' from ' . ($t['contact_name'] ?: 'client') . "\n\n" . ($t['details'] ?? '') . ($t['link'] ? "\n\nLink: " . $t['link'] : ''));
     $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,billing_type,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
        ->execute([$pid, mb_substr('[' . ticketNo($t['id']) . '] ' . $t['subject'], 0, 255), $desc, $t['assigned_to'] ?: null, $t['assigned_name'] ?: null,
@@ -671,8 +757,18 @@ if ($action === 'ticket_to_task') {
     $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")->execute([$taskId, (int)$AUTH['id'], $AUTH['name'], 'Created from support ticket ' . ticketNo($t['id'])]);
     $db->prepare("UPDATE tickets SET task_id = ?, status = IF(status = 'new', 'in_progress', status) WHERE id = ?")->execute([$taskId, (int)$t['id']]);
     ticketNote($db, $t['id'], (int)$AUTH['id'], $AUTH['name'], 'Turned into a task', 0, 1);
-    echo json_encode(['success'=>true,'task_id'=>$taskId]);
+    echo json_encode(['success'=>true,'task_id'=>$taskId,'project_id'=>$pid]);
     exit;
+}
+function supportProjectFor($db, $t, $uid) {
+    $cid = $t['client_id'] ? (int)$t['client_id'] : null;
+    $q = $db->prepare("SELECT id FROM projects WHERE name = 'Client Support' AND " . ($cid ? "client_id = ?" : "client_id IS NULL") . " AND status != 'archived' ORDER BY id LIMIT 1");
+    $q->execute($cid ? [$cid] : []);
+    if ($id = $q->fetchColumn()) return (int)$id;
+    $cn = $t['client_name'] ?? null;
+    $db->prepare("INSERT INTO projects (name, client_id, client_name, status, billing_type, description, created_by) VALUES ('Client Support', ?, ?, 'active', 'billable', ?, ?)")
+       ->execute([$cid, $cn, 'Support requests from ' . ($cn ?: 'clients') . ' that came in through the client portal.', $uid ?: null]);
+    return (int)$db->lastInsertId();
 }
 
 // ── Shared team meeting room (one Zoom room for quick calls) ─────────────

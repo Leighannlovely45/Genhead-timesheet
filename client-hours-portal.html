@@ -129,6 +129,12 @@ select.month:focus{outline:none;border-color:var(--teal)}
 .c-urgent{background:var(--red-soft);color:#991B1B}
 .reply{margin-top:10px;background:#F8FAFC;border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:8px;padding:10px 12px;font-size:13.5px;color:var(--body);white-space:pre-wrap}
 .reply .rf{font-size:12px;color:var(--mid);margin-bottom:3px;font-weight:600}
+.reply.mine{background:#fff;border-left-color:#351D72}
+.rbox{margin-top:10px}
+.rbox textarea{width:100%;box-sizing:border-box;min-height:74px;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:13.5px;resize:vertical}
+.rbox .ra{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.rbox .btn{padding:7px 13px;font-size:13px}
+.rerr{color:#B91C1C;font-size:12.5px}
 
 /* Form (dialog) */
 .ov{position:fixed;inset:0;background:rgba(11,23,57,.45);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px 64px;overflow-y:auto;z-index:50}
@@ -400,8 +406,25 @@ function requestsHTML() {
       <div class="req-s">${esc(t.subject)}</div>
       <div class="req-m">${esc(t.category)} · Sent ${esc(fmtDate(t.created_at, { month: 'short', day: 'numeric', year: 'numeric' }))}${t.updated_at && t.updated_at !== t.created_at ? ` · Updated ${esc(fmtDate(t.updated_at))}` : ''}</div>
       ${(t.files || []).length ? `<div class="req-shots">${t.files.map(f => { const u = `${API}?action=client_ticket_file&location_id=${encodeURIComponent(LOC)}&token=${encodeURIComponent(f.token)}`; return `<a href="${u}" target="_blank" rel="noopener" title="${esc(f.name)}"><img src="${u}" alt="${esc(f.name)}" loading="lazy"></a>`; }).join('')}</div>` : ''}
-      ${(t.replies || []).map(r => `<div class="reply"><div class="rf">${esc(r.from)} from Genhead · ${esc(fmtDate(r.at))}</div>${esc(r.text)}</div>`).join('')}
+      ${(t.replies || []).map(r => r.mine ? `<div class="reply mine"><div class="rf">You replied · ${esc(fmtDate(r.at))}</div>${esc(r.text)}</div>` : `<div class="reply"><div class="rf">${esc(r.from)} from Genhead · ${esc(fmtDate(r.at))}</div>${esc(r.text)}</div>`).join('')}
+      <div class="rbox" id="rb-${esc(t.number)}"><button class="btn btn-ghost" onclick="openReply('${esc(t.number)}')">${ICONS.chat} ${t.status === 'resolved' ? 'Still need help? Reply' : 'Reply'}</button></div>
     </div>`).join('')}</div>`;
+}
+function openReply(no) {
+  const box = document.getElementById('rb-' + no); if (!box) return;
+  box.innerHTML = `<textarea id="rt-${no}" placeholder="Write your reply to the Genhead team…" aria-label="Your reply"></textarea>
+    <div class="ra"><button class="btn btn-primary" id="rs-${no}" onclick="sendReply('${no}')">Send reply</button><button class="btn btn-ghost" onclick="refreshTickets()">Cancel</button><span class="rerr" id="re-${no}"></span></div>`;
+  document.getElementById('rt-' + no).focus();
+}
+async function sendReply(no) {
+  const ta = document.getElementById('rt-' + no), btn = document.getElementById('rs-' + no), er = document.getElementById('re-' + no);
+  const note = (ta.value || '').trim(); if (note.length < 2) { er.textContent = 'Write a short reply first.'; ta.focus(); return; }
+  btn.disabled = true; btn.textContent = 'Sending…'; er.textContent = '';
+  try {
+    const r = await fetch(`${API}?action=client_reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location_id: LOC, ticket: no, note, name: store.get('gh_contact_name') }) }).then(x => x.json());
+    if (!r.success) { er.textContent = r.error || 'Couldn\'t send. Please try again.'; btn.disabled = false; btn.textContent = 'Send reply'; return; }
+    await refreshTickets();
+  } catch (x) { er.textContent = 'We couldn\'t reach Genhead. Check your connection and try again.'; btn.disabled = false; btn.textContent = 'Send reply'; }
 }
 
 // ── New request form ──
