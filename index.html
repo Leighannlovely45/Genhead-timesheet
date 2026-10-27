@@ -3199,7 +3199,7 @@ async function openNotif(n){
 
 // ── TICKETING (client support requests) ───────────────────────────────────
 let _tk={list:[],filter:"open",client:"",openCount:0,meta:null};
-const TK_STATUS={new:"New",in_progress:"In progress",waiting:"Waiting on client",resolved:"Resolved"};
+const TK_STATUS={new:"New",in_progress:"In progress",waiting:"Waiting on client",resolved:"Completed"};
 const TK_COLORS={new:"#2563eb",in_progress:"#03AD8F",waiting:"#d97706",resolved:"#64748b"};
 async function loadTickets(){
   const r=await fetch(`${API_BASE}?action=load_tickets&t=${Date.now()}`).then(x=>x.json()).catch(()=>null);
@@ -3221,11 +3221,12 @@ function renderTickets(filter){
   _pm.view="tickets";
   if(filter!==undefined)_tk.filter=filter;
   const root=pmRoot(); if(!root)return;
-  const f=_tk.filter, all=_tk.list;
+  const f=_tk.filter, everything=_tk.list;
+  const all=f==="archived"?everything.filter(t=>t.archived==1):everything.filter(t=>t.archived!=1);
   const byClient=_tk.client?all.filter(t=>t.client_name===_tk.client):all;
   const me=myDbId();
-  const counts={mine:byClient.filter(t=>t.status!=="resolved"&&String(t.assigned_to||"")===me).length,unassigned:byClient.filter(t=>t.status!=="resolved"&&!t.assigned_to).length,open:byClient.filter(t=>t.status!=="resolved").length,new:byClient.filter(t=>t.status==="new").length,in_progress:byClient.filter(t=>t.status==="in_progress").length,waiting:byClient.filter(t=>t.status==="waiting").length,resolved:byClient.filter(t=>t.status==="resolved").length,all:byClient.length};
-  const list=byClient.filter(t=>f==="all"?true:f==="open"?t.status!=="resolved":f==="mine"?(t.status!=="resolved"&&String(t.assigned_to||"")===me):f==="unassigned"?(t.status!=="resolved"&&!t.assigned_to):t.status===f);
+  const counts={archived:everything.filter(t=>t.archived==1).length,mine:byClient.filter(t=>t.status!=="resolved"&&String(t.assigned_to||"")===me).length,unassigned:byClient.filter(t=>t.status!=="resolved"&&!t.assigned_to).length,open:byClient.filter(t=>t.status!=="resolved").length,new:byClient.filter(t=>t.status==="new").length,in_progress:byClient.filter(t=>t.status==="in_progress").length,waiting:byClient.filter(t=>t.status==="waiting").length,resolved:byClient.filter(t=>t.status==="resolved").length,all:byClient.length};
+  const list=byClient.filter(t=>f==="all"||f==="archived"?true:f==="open"?t.status!=="resolved":f==="mine"?(t.status!=="resolved"&&String(t.assigned_to||"")===me):f==="unassigned"?(t.status!=="resolved"&&!t.assigned_to):t.status===f);
   const chip=(k,l)=>`<button class="btn ${f===k?"btn-primary":"btn-outline"}" style="font-size:.76rem;padding:.3rem .75rem" onclick="renderTickets('${k}')">${l} <span style="opacity:.75">${counts[k]}</span></button>`;
   const clients=[...new Set(all.map(t=>t.client_name).filter(Boolean))].sort();
   const pri=p=>p==="urgent"?'<span style="color:#ef4444;font-weight:700">Urgent</span>':p==="low"?'<span style="color:var(--mid)">Low</span>':"Normal";
@@ -3239,7 +3240,7 @@ function renderTickets(filter){
     </div>
   </div>
   <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.9rem">
-    ${chip("open","Open")}${chip("mine","Assigned to me")}${chip("unassigned","Unassigned")}${chip("new","New")}${chip("in_progress","In progress")}${chip("waiting","Waiting on client")}${chip("resolved","Resolved")}${chip("all","All")}
+    ${chip("open","Open")}${chip("mine","Assigned to me")}${chip("unassigned","Unassigned")}${chip("new","New")}${chip("in_progress","In progress")}${chip("waiting","Waiting on client")}${chip("resolved","Completed")}${chip("all","All")}${canAssignTk()?chip("archived","🗄 Archived"):""}
   </div>
   ${list.length?`<div class="billing-tbl"><table><thead><tr><th>#</th><th>Request</th><th>Client</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Age</th></tr></thead><tbody>
     ${list.map(t=>`<tr style="cursor:pointer" onclick="openTicket(${t.id})">
@@ -3250,7 +3251,7 @@ function renderTickets(filter){
       <td>${tkChip(t.status)}</td>
       <td style="font-size:.8rem" onclick="event.stopPropagation()">${canAssignTk()?`<select style="font-size:.78rem;padding:.2rem .4rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--dark);max-width:150px" onchange="quickAssign(${t.id},this.value)"><option value="">— Unassigned —</option>${EMPS.filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>{const id=String(e.id).replace(/^e/,"");return `<option value="${id}"${String(t.assigned_to||"")===id?" selected":""}>${escHtml(e.name)}</option>`;}).join("")}</select>`:escHtml(t.assigned_name||"—")}</td>
       <td style="font-size:.78rem;color:var(--mid)">${tkAge(t.created_at)}</td></tr>`).join("")}
-  </tbody></table></div>`:`<div style="padding:3rem;text-align:center;color:var(--mid)">${f==="open"?"No open support requests 🎉":"Nothing here."}<div style="font-size:.78rem;margin-top:.4rem">Clients send requests from the Support page in their GenSuite account.</div></div>`}`;
+  </tbody></table></div>`:`<div style="padding:3rem;text-align:center;color:var(--mid)">${f==="open"?"No open support requests 🎉":f==="archived"?"No archived requests.":"Nothing here."}<div style="font-size:.78rem;margin-top:.4rem">Clients send requests from the Support page in their GenSuite account.</div></div>`}`;
 }
 function canAssignTk(){return cur.role==="admin"||cur.role==="hr"||cur.role==="manager";}
 async function quickAssign(id,uid){
@@ -3265,6 +3266,7 @@ async function openTicket(id){
   if(!r||!r.success){showToast((r&&r.error)||"Couldn't open that ticket.");return;}
   const t=r.ticket, notes=r.notes||[];
   const canAssign=cur.role==="admin"||cur.role==="hr"||cur.role==="manager";
+  if(canAssign&&!(CLIENTS||[]).length){await fetch(API_BASE+"?action=load_clients").then(x=>x.json()).then(d=>{if(d.success&&d.clients)CLIENTS=d.clients;}).catch(()=>{});}
   const staff=EMPS.filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
   const projects=_pm.projects.filter(p=>p.status!=="archived").sort((a,b)=>((b.client_name===t.client_name)-(a.client_name===t.client_name))||String(a.name).localeCompare(b.name));
   let p=document.getElementById("tk-panel"); if(p)p.remove();
@@ -3278,13 +3280,30 @@ async function openTicket(id){
           <div style="font-size:1.05rem;font-weight:600;color:var(--dark);margin-top:.2rem">${escHtml(t.subject)}</div></div>
         <button onclick="document.getElementById('tk-panel').remove()" style="background:none;border:none;color:var(--mid);font-size:1.3rem;cursor:pointer" title="Close">✕</button>
       </div>
+      ${canAssign?`<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.55rem">
+        ${t.status!=="resolved"?`<button class="btn btn-primary" style="font-size:.75rem;padding:.3rem .7rem" onclick="updateTicket(${t.id},{status:'resolved'})" title="Marks it Completed and emails the client">✓ Complete</button>`:`<button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .7rem" onclick="updateTicket(${t.id},{status:'in_progress',quiet:1})">↺ Reopen</button>`}
+        <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .7rem" onclick="archiveTicket(${t.id},${t.archived==1?0:1})">${t.archived==1?"↩ Restore from archive":"🗄 Archive"}</button>
+        <button class="btn btn-outline" style="font-size:.75rem;padding:.3rem .7rem;color:#ef4444;border-color:#fca5a5" onclick="deleteTicket(${t.id})">🗑 Delete</button>
+      </div>`:(String(t.assigned_to||"")===myDbId()&&t.status!=="resolved"?`<div style="margin-top:.55rem"><button class="btn btn-primary" style="font-size:.75rem;padding:.3rem .7rem" onclick="updateTicket(${t.id},{status:'resolved'})">✓ Complete</button></div>`:"")}
+      ${t.archived==1?`<div style="font-size:.75rem;color:#92400e;background:#fef3c7;border-radius:6px;padding:.25rem .5rem;margin-top:.5rem;display:inline-block">Archived: hidden from the Ticketing lists</div>`:""}
       <div style="font-size:.78rem;color:var(--mid);margin-top:.4rem">From <b style="color:var(--dark)">${escHtml(t.contact_name||"")}</b> · <a href="mailto:${escHtml(t.contact_email||"")}" style="color:var(--teal)">${escHtml(t.contact_email||"")}</a> · ${escHtml(fmtTs(t.created_at))}</div>
     </div>
     <div style="padding:.9rem 1.25rem;border-bottom:1px solid var(--border)">
       <div style="font-size:.86rem;color:var(--dark);white-space:pre-wrap;line-height:1.5">${escHtml(t.details||"")}</div>
-      ${(r.files||[]).length?`<div id="tk-shots" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem">${r.files.map(f=>`<a href="#" data-token="${escHtml(f.token)}" title="${escHtml(f.name)} (click to open full size)" style="display:block;width:120px;height:84px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--hover)" onclick="event.preventDefault();openTicketFile(this.dataset.token)"><img alt="${escHtml(f.name)}" style="width:100%;height:100%;object-fit:cover"></a>`).join("")}</div>`:""}
+      ${(r.files||[]).length?`<div style="margin-top:.8rem;font-size:.7rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em">📎 Screenshots from the client (${r.files.length}) · click to view full size</div><div id="tk-shots" style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.4rem">${r.files.map(f=>`<a href="#" data-token="${escHtml(f.token)}" data-name="${escHtml(f.name)}" title="${escHtml(f.name)} (click to open full size)" style="position:relative;display:flex;align-items:center;justify-content:center;width:170px;height:118px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--hover);color:var(--mid);font-size:.72rem;text-decoration:none" onclick="event.preventDefault();openTicketFile(this.dataset.token,this.dataset.name)"><span class="tk-shot-msg">Loading…</span><img alt="${escHtml(f.name)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none"></a>`).join("")}</div>`:""}
       ${t.link?`<div style="margin-top:.5rem;font-size:.8rem">🔗 <a href="${escHtml(/^https?:\/\//i.test(t.link)?t.link:"#")}" target="_blank" rel="noopener" style="color:var(--teal);word-break:break-all">${escHtml(t.link)}</a></div>`:""}
     </div>
+    ${canAssign?`<div style="padding:.85rem 1.25rem 0;background:var(--hover)">
+      <label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Client</label>
+      <div style="display:flex;gap:.4rem">
+        <select id="tk-client" style="${sel};flex:1" onchange="if(this.value==='__new')newClientForTicket(${t.id});else if(this.value)updateTicket(${t.id},{client_id:this.value})">
+          ${t.client_id?"":'<option value="">— No client —</option>'}
+          ${(CLIENTS||[]).filter(c=>c.active!=0).slice().sort((a,b)=>String(a.name).localeCompare(b.name)).map(c=>`<option value="${c.id}"${String(c.id)===String(t.client_id)?" selected":""}>${escHtml(c.name)}</option>`).join("")}
+          ${cur.role==="admin"||cur.role==="hr"?'<option value="__new">+ Add a new client…</option>':""}
+        </select>
+      </div>
+      <div style="font-size:.68rem;color:var(--mid);margin-top:.25rem">Moving a ticket changes whose portal it shows in and which client's hours it uses.</div>
+    </div>`:""}
     <div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border);background:var(--hover);display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem">
       <div><label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Status</label>
         <select style="${sel}" title="Waiting on client and Resolved also email the client" onchange="updateTicket(${t.id},{status:this.value})">${Object.entries(TK_STATUS).map(([k,v])=>`<option value="${k}"${t.status===k?" selected":""}>${v}</option>`).join("")}</select></div>
@@ -3319,17 +3338,17 @@ async function openTicket(id){
   document.body.appendChild(p);
   p.addEventListener("click",e=>{if(e.target===p)p.remove();});
   // Screenshots load with the sign-in header (plain <img> links can't carry it)
-  document.querySelectorAll("#tk-shots a").forEach(async a=>{const u=await ticketFileUrl(a.dataset.token);if(u)a.querySelector("img").src=u;});
+  document.querySelectorAll("#tk-shots a").forEach(async a=>{const u=await ticketFileUrl(a.dataset.token);const im=a.querySelector("img"),m=a.querySelector(".tk-shot-msg");if(u){im.src=u;im.style.display="block";if(m)m.remove();}else if(m){m.textContent="Couldn't load (click to retry)";}});
 }
 const _tkFileCache={};
 async function ticketFileUrl(token){
   if(_tkFileCache[token])return _tkFileCache[token];
   try{const r=await fetch(`${API_BASE}?action=ticket_file&token=${encodeURIComponent(token)}`);if(!r.ok)return null;return _tkFileCache[token]=URL.createObjectURL(await r.blob());}catch(e){return null;}
 }
-async function openTicketFile(token){
-  const u=await ticketFileUrl(token); if(!u){showToast("Couldn't open that screenshot.");return;}
-  const v=document.createElement("div");v.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:800;display:flex;align-items:center;justify-content:center;padding:2rem;cursor:zoom-out";
-  v.innerHTML=`<img src="${u}" style="max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)">`;
+async function openTicketFile(token,name){
+  const u=await ticketFileUrl(token); if(!u){showToast("Couldn't open that screenshot. Try signing in again.");return;}
+  const v=document.createElement("div");v.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:800;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8rem;padding:2rem;cursor:zoom-out";
+  v.innerHTML=`<img src="${u}" style="max-width:100%;max-height:calc(100% - 3.5rem);border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)"><div style="display:flex;gap:.5rem"><a class="btn btn-primary" style="font-size:.8rem;text-decoration:none" download="${escHtml(name||"screenshot")}" href="${u}" onclick="event.stopPropagation()">⬇ Download</a><button class="btn btn-outline" style="font-size:.8rem;background:#fff">Close</button></div>`;
   v.onclick=()=>v.remove(); document.body.appendChild(v);
 }
 // ── Approve & invoice (support-hours requests) ──
@@ -3370,6 +3389,35 @@ async function approveHours(id){
   await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);
 }
 function fmtTs(ts){const d=new Date(String(ts||"").replace(" ","T"));return isNaN(d)?"":d.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
+async function archiveTicket(id,on){
+  await updateTicket(id,{archived:on?1:0});
+  showToast(on?"Archived. Find it under 🗄 Archived.":"Restored to the Ticketing lists.");
+}
+async function deleteTicket(id){
+  const t=(_tk.list||[]).find(x=>x.id===id)||{};
+  if(!(await uiConfirm(`Permanently delete ${t.number||"this ticket"}${t.subject?` "${t.subject}"`:""}? Its notes, replies and screenshots are deleted too, and the client won't see it anymore. To just hide it, use Archive instead.`,{title:"Delete ticket",ok:"Delete",danger:true})))return;
+  const r=await fetch(`${API_BASE}?action=delete_ticket&id=${id}`).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't delete.");return;}
+  const p=document.getElementById("tk-panel"); if(p)p.remove();
+  showToast("Ticket deleted."); await loadTickets(); renderTickets();
+}
+async function newClientForTicket(id){
+  const sel=document.getElementById("tk-client");
+  if(document.getElementById("tk-newclient")){document.getElementById("tk-newclient").focus();return;}
+  const box=document.createElement("div");
+  box.style.cssText="display:flex;gap:.4rem;margin-top:.4rem";
+  box.innerHTML=`<input id="tk-newclient" placeholder="New client name" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:.35rem .5rem;font-size:.82rem;color:var(--dark)"><button class="btn btn-primary" style="font-size:.75rem;padding:.3rem .7rem">Add &amp; move</button>`;
+  sel.parentNode.after(box); const prev=sel.querySelector("option[selected]"); sel.value=prev?prev.value:"";
+  const inp=box.querySelector("input"); inp.focus();
+  box.querySelector("button").onclick=async()=>{
+    const name=inp.value.trim(); if(!name){inp.focus();return;}
+    const r=await api({action:"add_client",name,type:"ghl_instance",billable:1}).catch(()=>({success:false}));
+    if(!r.success||!r.id){showToast(r.error||"Couldn't add the client.");return;}
+    await fetch(API_BASE+"?action=load_clients").then(x=>x.json()).then(d=>{if(d.success&&d.clients)CLIENTS=d.clients;}).catch(()=>{});
+    await updateTicket(id,{client_id:r.id});
+    showToast(`${name} added and the ticket moved to them. Link their sub-account in Clients so it shows in their portal.`);
+  };
+}
 async function updateTicket(id,changes){
   const r=await fetch(`${API_BASE}?`+new URLSearchParams({action:"update_ticket",id,...changes})).then(x=>x.json()).catch(()=>({success:false}));
   if(!r.success){showToast(r.error||"Couldn't update the ticket.");return;}

@@ -166,7 +166,7 @@ $ROLE_RULES = [
     'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
     'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'], 'ext_rename_client'=>['admin','hr'],
     'load_client_banks'=>['admin','hr'], 'set_client_hours'=>['admin','hr'],
-    'send_setup_link'=>['admin','hr'], 'test_email'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'approve_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'],
+    'send_setup_link'=>['admin','hr'], 'test_email'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'delete_ticket'=>['admin','hr','manager'], 'approve_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'],
 ];
 // Removed: one-time setup helpers that let anyone create admins or change PINs
 if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
@@ -240,7 +240,7 @@ if ($action === 'delete_client_purchase') {
 
 // ── SUPPORT TICKETS ───────────────────────────────────────────────────────
 // Clients file requests from the Support portal; the team works them in Projects → Ticketing.
-$TICKET_STATUSES   = ['new' => 'New', 'in_progress' => 'In progress', 'waiting' => 'Waiting on you', 'resolved' => 'Resolved'];
+$TICKET_STATUSES   = ['new' => 'New', 'in_progress' => 'In progress', 'waiting' => 'Waiting on you', 'resolved' => 'Completed'];
 $TICKET_CATEGORIES = ['issue' => 'Something isn\'t working', 'change' => 'Change request', 'new_build' => 'New build or feature', 'question' => 'Question / how-to', 'hours' => 'Support hours', 'billing' => 'Billing'];
 $TICKET_PRIORITY   = ['low' => 'Low', 'normal' => 'Normal', 'urgent' => 'Urgent'];
 function ticketNo($id) { return 'GH-' . str_pad((string)(int)$id, 4, '0', STR_PAD_LEFT); }
@@ -288,8 +288,8 @@ function ticketEmail($t, $kind, $text = '') {
     } else {
         $label = $TICKET_STATUSES[$t['status']] ?? $t['status'];
         if ($t['status'] === 'waiting') $label = 'Waiting on you';
-        $subject = "[$no] " . ($t['status'] === 'resolved' ? 'Resolved' : 'Status update') . ': ' . $t['subject'];
-        $lead = $t['status'] === 'resolved' ? "Hi $first, we've marked your request as resolved. If anything still isn't right, just reply to this email."
+        $subject = "[$no] " . ($t['status'] === 'resolved' ? 'Completed' : 'Status update') . ': ' . $t['subject'];
+        $lead = $t['status'] === 'resolved' ? "Hi $first, we've marked your request as complete. If anything still isn't right, just reply to this email."
               : ($t['status'] === 'waiting' ? "Hi $first, we need a little more from you to keep going on this request. Please reply to this email with the details."
               : "Hi $first, your request is now: $label.");
         $body = '';
@@ -485,7 +485,7 @@ if ($action === 'client_tickets') {
 if ($action === 'load_tickets') {
     $db = getDB();
     $where = in_array($AUTH['role'], ['admin','hr','manager'], true) ? '1=1' : 't.assigned_to = ' . (int)$AUTH['id'];
-    $rows = $db->query("SELECT t.id, t.client_id, t.contact_name, t.category, t.priority, t.subject, t.status, t.assigned_to, t.task_id, t.created_at, t.updated_at,
+    $rows = $db->query("SELECT t.id, t.client_id, t.contact_name, t.category, t.priority, t.subject, t.status, t.assigned_to, t.task_id, t.created_at, t.updated_at, COALESCE(t.archived,0) AS archived,
                                c.name AS client_name, u.name AS assigned_name, (SELECT COUNT(*) FROM ticket_files f WHERE f.ticket_id = t.id) AS file_count
                         FROM tickets t LEFT JOIN clients c ON c.id = t.client_id LEFT JOIN users u ON u.id = t.assigned_to
                         WHERE $where ORDER BY FIELD(t.status,'new','in_progress','waiting','resolved'), FIELD(t.priority,'urgent','normal','low'), t.id DESC LIMIT 500")->fetchAll();
@@ -517,6 +517,20 @@ if ($action === 'client_ticket_file') {
     if (!$row) { http_response_code(404); echo 'Not found'; exit; }
     sendTicketFile($row);
 }
+if ($action === 'delete_ticket') {
+    $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
+    if (!$t) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
+    $fq = $db->prepare("SELECT token, mime FROM ticket_files WHERE ticket_id = ?"); $fq->execute([(int)$t['id']]);
+    $ext = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+    foreach ($fq->fetchAll() as $f) @unlink(ticketUploadDir() . '/' . $f['token'] . '.' . ($ext[$f['mime']] ?? 'bin'));
+    $db->prepare("DELETE FROM ticket_files WHERE ticket_id = ?")->execute([(int)$t['id']]);
+    $db->prepare("DELETE FROM ticket_notes WHERE ticket_id = ?")->execute([(int)$t['id']]);
+    $db->prepare("DELETE FROM notifications WHERE task_id = ? AND kind LIKE 'ticket%'")->execute([(int)$t['id']]);
+    $db->prepare("DELETE FROM tickets WHERE id = ?")->execute([(int)$t['id']]);
+    if (function_exists('logAudit')) { try { logAudit(null, (int)$AUTH['id'], 'ticket_deleted', ['number' => ticketNo($t['id']), 'subject' => $t['subject'], 'client' => $t['client_name']], null); } catch (Throwable $e) {} }
+    echo json_encode(['success'=>true]);
+    exit;
+}
 if ($action === 'update_ticket') {
     $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
     if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
@@ -544,6 +558,19 @@ if ($action === 'update_ticket') {
                          'Priority' => $TICKET_PRIORITY[$t['priority']] ?? $t['priority'], 'Subject' => $t['subject'], 'Details' => $t['details'] ?? ''], $t);
                 }
             }
+        }
+    }
+    if (isset($_GET['client_id']) && in_array($AUTH['role'], ['admin','hr','manager'], true) && (int)$_GET['client_id'] !== (int)$t['client_id']) {
+        $cq = $db->prepare("SELECT id, name, location_id, ghl_contact_id FROM clients WHERE id = ? AND active = 1"); $cq->execute([(int)$_GET['client_id']]);
+        if (!($nc = $cq->fetch())) { echo json_encode(['success'=>false,'error'=>'Client not found.']); exit; }
+        $db->prepare("UPDATE tickets SET client_id = ?, location_id = ? WHERE id = ?")->execute([(int)$nc['id'], $nc['location_id'] ?: ($nc['ghl_contact_id'] ?: $t['location_id']), (int)$t['id']]);
+        ticketNote($db, $t['id'], $uid, $who, 'Moved to client ' . $nc['name'] . ($t['client_name'] ? ' (was ' . $t['client_name'] . ')' : ''), 0, 1);
+    }
+    if (isset($_GET['archived']) && in_array($AUTH['role'], ['admin','hr','manager'], true)) {
+        $ar = !empty($_GET['archived']) && $_GET['archived'] !== '0' ? 1 : 0;
+        if ($ar !== (int)($t['archived'] ?? 0)) {
+            $db->prepare("UPDATE tickets SET archived = ? WHERE id = ?")->execute([$ar, (int)$t['id']]);
+            ticketNote($db, $t['id'], $uid, $who, $ar ? 'Archived' : 'Restored from archive', 0, 1);
         }
     }
     $t2 = ticketRow($db, (int)$t['id']);
