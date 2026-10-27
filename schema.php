@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-27.1');
+define('SCHEMA_VERSION', '2026-10-27.2');
 
 function ensureSchema($db) {
     static $done = false;
@@ -195,6 +195,21 @@ function ensureSchema($db) {
     $add('clients', 'plan_type',      "VARCHAR(20) NULL");
     $add('clients', 'plan_label',     "VARCHAR(100) NULL");
     $add('clients', 'monthly_hours',  "DECIMAL(8,2) NULL");
+    $add('clients', 'gm_monthly_hours', "DECIMAL(8,2) NULL");
+    $add('client_hours_bank', 'gm_hours', "DECIMAL(8,2) NULL");
+    $add('users', 'is_gm', "TINYINT(1) NOT NULL DEFAULT 0");
+    $exec("CREATE TABLE IF NOT EXISTS client_hour_purchases (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        client_id INT NOT NULL,
+        hours DECIMAL(8,2) NOT NULL,
+        kind VARCHAR(20) NOT NULL DEFAULT 'support',
+        note VARCHAR(255) NULL,
+        purchased_on DATE NOT NULL,
+        ticket_id INT NULL,
+        created_by INT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (client_id)
+    )");
 
     // Legacy rows: billable=0 with no billing type were non-billable
     if ($hasCol('timesheet_entries', 'billing_type') && $hasCol('timesheet_entries', 'billable')) {

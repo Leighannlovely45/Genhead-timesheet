@@ -75,6 +75,11 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
 .plan-retainer{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
 .plan-diy{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
 .plan-none{background:#f1f5f9;color:#64748b;border:1px solid var(--border)}
+.hb-num{font-weight:700;font-family:'DM Mono',ui-monospace,monospace}
+.hb-sub{font-size:.68rem;color:var(--mid);margin-top:.15rem;line-height:1.35}
+.hb-tag{display:inline-block;font-size:.62rem;font-weight:700;border-radius:4px;padding:.02rem .3rem;margin-right:.2rem}
+.t-ro{background:#E0F7F4;color:#065f52}.t-buy{background:#fef3c7;color:#92400e}.t-exp{background:#fee2e2;color:#991b1b}
+.pur-row{display:flex;justify-content:space-between;gap:.5rem;padding:.45rem 0;border-bottom:1px solid var(--border);font-size:.8rem}
 
 /* PROGRESS BAR */
 .mini-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:4px;min-width:80px}
@@ -148,7 +153,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
 <div class="period-bar">
   <span class="period-label">Month</span>
   <select class="period-sel" id="period-sel" onchange="loadData()"></select>
-  <button class="btn btn-sm" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);color:var(--navy);font-size:.72rem;font-weight:600" onclick="openRefillModal()">&#8635; Refill All Retainers</button>
+  <span style="font-size:.72rem;color:rgba(0,0,0,.6)">Plan hours refill automatically each month. Support hours roll over 90 days; Growth Manager hours reset monthly; bought hours never expire.</span>
 </div>
 
 <div class="container">
@@ -156,8 +161,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
   <!-- SUMMARY CARDS -->
   <div class="summary-grid" id="summary-grid">
     <div class="sc"><div class="sc-lbl">Total Clients</div><div class="sc-val" id="sc-total">—</div><div class="sc-sub">Active plans</div></div>
-    <div class="sc purple"><div class="sc-lbl">Retainer Clients</div><div class="sc-val" id="sc-retainer">—</div><div class="sc-sub">Monthly hours</div></div>
-    <div class="sc warn"><div class="sc-lbl">Hours Used This Month</div><div class="sc-val" id="sc-used">—</div><div class="sc-sub">Across all clients</div></div>
+    <div class="sc purple"><div class="sc-lbl">Lift / Scale / Custom</div><div class="sc-val" id="sc-retainer">—</div><div class="sc-sub">Clients with monthly hours</div></div>
+    <div class="sc warn"><div class="sc-lbl">Hours Used This Month</div><div class="sc-val" id="sc-used">—</div><div class="sc-sub">Support + Growth Manager</div></div>
     <div class="sc danger"><div class="sc-lbl">Low Balance</div><div class="sc-val" id="sc-low">—</div><div class="sc-sub">Clients under 20%</div></div>
   </div>
 
@@ -179,8 +184,10 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
       <input type="text" class="search-box" id="search-box" placeholder="Search clients..." oninput="filterTable()">
       <select class="filter-sel" id="filter-plan" onchange="filterTable()">
         <option value="">All Plans</option>
-        <option value="retainer">Retainer</option>
-        <option value="diy">DIY</option>
+        <option value="diy">DIY (Launch)</option>
+        <option value="lift">Lift</option>
+        <option value="scale">Scale</option>
+        <option value="retainer">Custom retainer</option>
         <option value="none">No Plan</option>
       </select>
     </div>
@@ -197,16 +204,15 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
         <tr>
           <th>Client</th>
           <th>Plan</th>
-          <th>Monthly Hrs</th>
-          <th>Bank This Month</th>
-          <th>Used</th>
-          <th>Remaining</th>
-          <th>Usage</th>
+          <th title="Support hours included each month">Support / mo</th>
+          <th title="Growth Manager hours included each month">GM / mo</th>
+          <th>Support hours this month</th>
+          <th>Growth Manager this month</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="client-tbody">
-        <tr><td colspan="8" class="loading"><span class="spinner"></span>Loading clients...</td></tr>
+        <tr><td colspan="7" class="loading"><span class="spinner"></span>Loading clients...</td></tr>
       </tbody>
     </table>
   </div>
@@ -245,9 +251,9 @@ function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;',
 
 let currentMonth = MONTHS[0].value;
 let allClients = [];
-let pendingChanges = {}; // clientId -> {total_hours, plan_type, plan_label}
+let PLANS = {};
+let pendingChanges = {};
 
-// ── Init ──────────────────────────────────────────────────────
 function init() {
   const sel = document.getElementById('period-sel');
   MONTHS.forEach(m => { const o = document.createElement('option'); o.value = m.value; o.textContent = m.label; sel.appendChild(o); });
@@ -258,341 +264,158 @@ function init() {
 
 async function loadData() {
   currentMonth = document.getElementById('period-sel').value;
-  document.getElementById('client-tbody').innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span>Loading...</td></tr>';
-  pendingChanges = {};
-  closeDetail();
-
+  document.getElementById('client-tbody').innerHTML = '<tr><td colspan="7" class="loading"><span class="spinner"></span>Loading...</td></tr>';
+  pendingChanges = {}; closeDetail();
   try {
-    // Load client banks + client list in parallel
-    const [banksRes, clientsRes] = await Promise.all([
-      fetch(`${API}?action=load_client_banks&month=${encodeURIComponent(currentMonth)}`).then(r=>r.json()),
-      fetch(`${API}?action=load_clients`).then(r=>r.json())
-    ]);
-
-    // Merge — banks has usage data, clients has full list
-    const banks = banksRes.success ? (banksRes.banks || []) : [];
-    const allClientList = clientsRes.success ? (clientsRes.clients || []) : [];
-
-    // Build merged list — include all active clients
-    allClients = allClientList
-      .filter(c => c.active)
-      .map(c => {
-        const bank = banks.find(b => b.id === c.id) || {};
-        return {
-          id: c.id,
-          name: c.name,
-          location_id: c.location_id || c.ghl_contact_id || '',
-          plan: bank.plan || c.plan_type || 'none',
-          plan_label: bank.plan_label || c.plan_label || '',
-          total_hours: parseFloat(bank.total_hours ?? c.monthly_hours ?? 0),
-          included: parseFloat(bank.included ?? bank.total_hours ?? c.monthly_hours ?? 0),
-          rollover: parseFloat(bank.rollover ?? 0),
-          used_hours: parseFloat(bank.used_hours ?? 0),
-          remaining: parseFloat(bank.remaining ?? bank.total_hours ?? c.monthly_hours ?? 0),
-          type: c.type
-        };
-      });
-
-    renderTable(allClients);
-    updateSummary(allClients);
-  } catch(e) {
-    document.getElementById('client-tbody').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:1rem">Failed to load data. Check API connection.</td></tr>';
-    console.error(e);
+    const res = await fetch(`${API}?action=load_client_banks&month=${encodeURIComponent(currentMonth)}`).then(r => r.json());
+    if (!res.success) return;
+    PLANS = res.plans || {};
+    allClients = (res.banks || []).map(b => ({ ...b, support: b.support || {}, gm: b.gm || {} }));
+    renderTable(allClients); updateSummary(allClients);
+  } catch (e) {
+    document.getElementById('client-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:1rem">Failed to load data. Check API connection.</td></tr>';
   }
 }
 
-// ── RENDER TABLE ──────────────────────────────────────────────
+const PLAN_NAMES = { diy: 'DIY (Launch)', lift: 'Lift', scale: 'Scale', retainer: 'Custom retainer', none: 'No plan' };
+function supportCell(c) {
+  const S = c.support;
+  if (c.plan === 'none' && !S.available && !S.used) return '<span style="color:var(--mid)">—</span>';
+  const pct = S.available > 0 ? Math.max(0, Math.min(100, S.remaining / S.available * 100)) : 0;
+  const fill = pct > 40 ? 'fill-green' : pct > 15 ? 'fill-yellow' : 'fill-red';
+  const tags = [];
+  if (S.rollover > 0) tags.push(`<span class="hb-tag t-ro">+${S.rollover} rolled</span>`);
+  if (S.purchased > 0) tags.push(`<span class="hb-tag t-buy">${S.purchased} bought</span>`);
+  if (S.expiring > 0) tags.push(`<span class="hb-tag t-exp">${S.expiring} expire this month</span>`);
+  return `<div><span class="hb-num">${S.remaining}</span> <span style="font-size:.75rem;color:var(--mid)">of ${S.available} left · ${S.used} used</span></div>
+    ${S.available > 0 ? `<div class="mini-bar"><div class="mini-fill ${fill}" style="width:${pct}%"></div></div>` : ''}
+    <div class="hb-sub">${tags.join('')}${S.over > 0 ? `<span class="hb-tag t-exp">${S.over} over</span>` : ''}</div>`;
+}
+function gmCell(c) {
+  const G = c.gm;
+  if (!G.included && !G.used) return '<span style="color:var(--mid)">—</span>';
+  return `<div><span class="hb-num">${G.used}</span> <span style="font-size:.75rem;color:var(--mid)">of ${G.included} used</span></div>${G.over > 0 ? `<div class="hb-sub"><span class="hb-tag t-exp">${G.over} over</span></div>` : ''}`;
+}
 function renderTable(clients) {
   const tbody = document.getElementById('client-tbody');
-  if (!clients.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--mid);padding:1.5rem">No clients found. Sync from GHL in the Timesheet Portal → Clients tab.</td></tr>';
-    return;
-  }
-
+  if (!clients.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--mid);padding:1.5rem">No clients found. Sync from GHL in the Timesheet Portal → Clients tab.</td></tr>'; return; }
   tbody.innerHTML = clients.map(c => {
-    const total = c.total_hours;
-    const used = c.used_hours;
-    const remaining = c.remaining;
-    const pct = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
-    const fillClass = pct > 40 ? 'fill-green' : pct > 15 ? 'fill-yellow' : 'fill-red';
-    const remColor = pct > 40 ? 'style="color:var(--teal)"' : pct > 15 ? 'style="color:var(--gold)"' : 'style="color:var(--danger)"';
-
-    const planBadgeClass = c.plan === 'retainer' ? 'plan-retainer' : c.plan === 'diy' ? 'plan-diy' : 'plan-none';
-    const planLabel = c.plan === 'retainer' ? (c.plan_label || 'Retainer') : c.plan === 'diy' ? 'DIY' : 'No Plan';
-
-    // Pending change indicator
-    const hasPending = !!pendingChanges[c.id];
-    const pendingDot = hasPending ? '<span style="display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-left:.35rem;vertical-align:middle" title="Unsaved changes"></span>' : '';
-
+    const pend = pendingChanges[c.id] ? '<span style="display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-left:.35rem;vertical-align:middle" title="Unsaved changes"></span>' : '';
+    const fixed = c.plan === 'diy' || c.plan === 'none';
     return `<tr id="row-${c.id}" onclick="showDetail(${c.id})" style="cursor:pointer">
-      <td><strong>${esc(c.name)}</strong>${pendingDot}${c.location_id?`<div style="font-size:.68rem;color:var(--mid);margin-top:.1rem;font-family:monospace">${esc(c.location_id.substring(0,16))}...</div>`:''}</td>
-      <td onclick="event.stopPropagation()">
-        <select class="plan-select" id="plan-${c.id}" onchange="markChange(${c.id})">
-          <option value="retainer" ${c.plan==='retainer'?'selected':''}>Retainer</option>
-          <option value="diy" ${c.plan==='diy'?'selected':''}>DIY</option>
-          <option value="none" ${c.plan==='none'?'selected':''}>No Plan</option>
-        </select>
-      </td>
-      <td onclick="event.stopPropagation()">
-        <input type="number" class="hrs-input" id="hrs-${c.id}" value="${c.included||''}" min="0" step="0.5" placeholder="0" title="Hours included each month" onchange="markChange(${c.id})" ${c.plan==='diy'?'disabled style="opacity:.4"':''}>
-      </td>
-      <td><strong>${total ? total + ' hrs' : '—'}</strong>${c.rollover > 0 ? `<div style="font-size:.68rem;color:var(--teal);margin-top:.1rem">incl. ${c.rollover} rolled over</div>` : ''}</td>
-      <td style="color:var(--danger)">${used ? used + ' hrs' : '0 hrs'}</td>
-      <td ${remColor}><strong>${total ? remaining + ' hrs' : '—'}</strong></td>
-      <td>
-        ${total > 0 ? `
-          <div style="font-size:.72rem;color:var(--mid);margin-bottom:3px">${Math.round(pct)}% left</div>
-          <div class="mini-bar"><div class="mini-fill ${fillClass}" style="width:${pct}%"></div></div>
-        ` : '<span style="font-size:.72rem;color:var(--mid)">—</span>'}
-      </td>
-      <td onclick="event.stopPropagation()">
-        <div style="display:flex;gap:.35rem">
-          <button class="btn btn-primary btn-sm" onclick="saveSingleClient(${c.id})">Save</button>
-          <button class="btn btn-outline btn-sm" onclick="showDetail(${c.id})">&#128065; View</button>
-        </div>
-      </td>
+      <td><strong>${esc(c.name)}</strong>${pend}${c.location_id ? `<div style="font-size:.68rem;color:var(--mid);margin-top:.1rem;font-family:monospace">${esc(c.location_id.substring(0, 16))}...</div>` : ''}</td>
+      <td onclick="event.stopPropagation()"><select class="plan-select" id="plan-${c.id}" onchange="planPicked(${c.id})">${Object.keys(PLAN_NAMES).map(k => `<option value="${k}" ${c.plan === k ? 'selected' : ''}>${PLAN_NAMES[k]}</option>`).join('')}</select></td>
+      <td onclick="event.stopPropagation()"><input type="number" class="hrs-input" id="hrs-${c.id}" value="${fixed ? '' : (c.monthly_support || '')}" min="0" step="0.5" placeholder="${fixed ? '—' : '0'}" onchange="markChange(${c.id})" ${fixed ? 'disabled style="opacity:.4"' : ''}></td>
+      <td onclick="event.stopPropagation()"><input type="number" class="hrs-input" id="gm-${c.id}" value="${fixed ? '' : (c.monthly_gm || '')}" min="0" step="0.5" placeholder="${fixed ? '—' : '0'}" onchange="markChange(${c.id})" ${fixed ? 'disabled style="opacity:.4"' : ''}></td>
+      <td>${supportCell(c)}</td>
+      <td>${gmCell(c)}</td>
+      <td onclick="event.stopPropagation()"><div style="display:flex;gap:.35rem;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="saveSingleClient(${c.id})">Save</button>
+        <button class="btn btn-outline btn-sm" onclick="openAddHours(${c.id})" title="Record hours the client bought">+ Hours</button>
+        <button class="btn btn-outline btn-sm" onclick="showDetail(${c.id})">&#128065; View</button></div></td>
     </tr>`;
   }).join('');
 }
-
-// ── SUMMARY CARDS ─────────────────────────────────────────────
 function updateSummary(clients) {
-  const retainers = clients.filter(c => c.plan === 'retainer');
-  const totalUsed = clients.reduce((s, c) => s + c.used_hours, 0);
-  const lowBalance = clients.filter(c => {
-    if (!c.total_hours) return false;
-    const pct = (c.remaining / c.total_hours) * 100;
-    return pct <= 20 && c.plan === 'retainer';
-  });
-  document.getElementById('sc-total').textContent = clients.length;
-  document.getElementById('sc-retainer').textContent = retainers.length;
-  document.getElementById('sc-used').textContent = totalUsed.toFixed(1) + ' hrs';
-  document.getElementById('sc-low').textContent = lowBalance.length;
+  document.getElementById('sc-total').textContent = clients.filter(c => c.plan !== 'none').length;
+  document.getElementById('sc-retainer').textContent = clients.filter(c => ['lift', 'scale', 'retainer'].includes(c.plan)).length;
+  document.getElementById('sc-used').textContent = clients.reduce((t, c) => t + (c.support.used || 0) + (c.gm.used || 0), 0).toFixed(1) + ' hrs';
+  document.getElementById('sc-low').textContent = clients.filter(c => c.support.available > 0 && c.support.remaining / c.support.available <= .2).length;
 }
-
-// ── FILTER ────────────────────────────────────────────────────
 function filterTable() {
-  const search = document.getElementById('search-box').value.toLowerCase();
-  const plan = document.getElementById('filter-plan').value;
-  const filtered = allClients.filter(c => {
-    const matchSearch = !search || c.name.toLowerCase().includes(search);
-    const matchPlan = !plan || c.plan === plan;
-    return matchSearch && matchPlan;
-  });
-  renderTable(filtered);
+  const q = document.getElementById('search-box').value.toLowerCase(), plan = document.getElementById('filter-plan').value;
+  renderTable(allClients.filter(c => (!q || c.name.toLowerCase().includes(q)) && (!plan || c.plan === plan)));
 }
-
-// ── MARK CHANGE ───────────────────────────────────────────────
-function markChange(clientId) {
-  const planEl = document.getElementById('plan-' + clientId);
-  const hrsEl = document.getElementById('hrs-' + clientId);
-  if (!planEl) return;
-  const plan = planEl.value;
-  const hrs = parseFloat(hrsEl?.value) || 0;
-
-  // Enable/disable hours input based on plan
-  if (hrsEl) hrsEl.disabled = plan === 'diy';
-
-  pendingChanges[clientId] = {
-    plan_type: plan,
-    total_hours: hrs,
-    plan_label: plan === 'retainer' ? (hrs + ' hrs/month') : plan === 'diy' ? 'DIY Plan' : 'No Plan'
-  };
-
-  // Update client in allClients for summary
-  const c = allClients.find(x => x.id === clientId);
-  if (c) { c.plan = plan; c.included = hrs; c.total_hours = hrs + (c.rollover || 0); }
-
-  // Show pending dot
-  const row = document.getElementById('row-' + clientId);
-  if (row) {
-    const nameCell = row.querySelector('td:first-child strong');
-    if (nameCell && !nameCell.nextSibling?.title) {
-      const dot = document.createElement('span');
-      dot.style.cssText = 'display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-left:.35rem;vertical-align:middle';
-      dot.title = 'Unsaved changes';
-      nameCell.after(dot);
-    }
-  }
+// Picking Lift or Scale fills in the hours from the pricing; DIY / No plan have none
+function planPicked(id) {
+  const plan = document.getElementById('plan-' + id).value, d = PLANS[plan] || {};
+  const h = document.getElementById('hrs-' + id), g = document.getElementById('gm-' + id);
+  const fixed = plan === 'diy' || plan === 'none';
+  [h, g].forEach(el => { el.disabled = fixed; el.style.opacity = fixed ? .4 : 1; });
+  if (fixed) { h.value = ''; g.value = ''; }
+  else { if (d.support != null) h.value = d.support; if (d.gm != null) g.value = d.gm; }
+  markChange(id);
 }
-
-// ── SAVE SINGLE ───────────────────────────────────────────────
-async function saveSingleClient(clientId) {
-  const planEl = document.getElementById('plan-' + clientId);
-  const hrsEl = document.getElementById('hrs-' + clientId);
-  if (!planEl) return;
-  const plan = planEl.value;
-  const hrs = parseFloat(hrsEl?.value) || 0;
-  const planLabel = plan === 'retainer' ? hrs + ' hrs/month' : plan === 'diy' ? 'DIY Plan' : 'No Plan';
-
-  try {
-    const res = await fetch(`${API}?action=set_client_hours`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        client_id: clientId,
-        month: currentMonth,
-        total_hours: hrs,
-        plan_type: plan,
-        plan_label: planLabel
-      })
-    }).then(r => r.json());
-
-    if (res.success) {
-      delete pendingChanges[clientId];
-      const c = allClients.find(x => x.id === clientId);
-      if (c) { c.plan = plan; c.included = hrs; c.total_hours = hrs + (c.rollover || 0); c.plan_label = planLabel; }
-      // Remove pending dot
-      const row = document.getElementById('row-' + clientId);
-      if (row) row.querySelectorAll('span[title="Unsaved changes"]').forEach(d => d.remove());
-      showToast('Saved!');
-    } else {
-      showToast('Error: ' + (res.error || 'Could not save'));
-    }
-  } catch(e) {
-    showToast('Network error — try again.');
-  }
+function markChange(id) {
+  const plan = document.getElementById('plan-' + id).value;
+  pendingChanges[id] = { plan_type: plan, total_hours: parseFloat(document.getElementById('hrs-' + id).value) || 0, gm_hours: parseFloat(document.getElementById('gm-' + id).value) || 0 };
+  const row = document.getElementById('row-' + id);
+  const strong = row && row.querySelector('td:first-child strong');
+  if (strong && !row.querySelector('[title="Unsaved changes"]')) strong.insertAdjacentHTML('afterend', '<span style="display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-left:.35rem;vertical-align:middle" title="Unsaved changes"></span>');
 }
-
-// ── SAVE ALL ─────────────────────────────────────────────────
+async function saveOne(id) {
+  const ch = pendingChanges[id] || (markChange(id), pendingChanges[id]);
+  const res = await fetch(`${API}?action=set_client_hours`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: id, month: currentMonth, ...ch }) }).then(r => r.json()).catch(() => ({ success: false }));
+  if (res.success) delete pendingChanges[id];
+  return res.success;
+}
+async function saveSingleClient(id) { if (await saveOne(id)) { showToast('Saved!'); await loadData(); } else showToast('Could not save — try again.'); }
 async function saveAllChanges() {
-  const ids = Object.keys(pendingChanges);
-  if (!ids.length) { showToast('No unsaved changes.'); return; }
-  let saved = 0;
-  for (const id of ids) {
-    const ch = pendingChanges[id];
-    try {
-      const res = await fetch(`${API}?action=set_client_hours`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          client_id: parseInt(id),
-          month: currentMonth,
-          total_hours: ch.total_hours,
-          plan_type: ch.plan_type,
-          plan_label: ch.plan_label
-        })
-      }).then(r => r.json());
-      if (res.success) { delete pendingChanges[id]; saved++; }
-    } catch(e) {}
-  }
-  showToast(`${saved} client${saved!==1?'s':''} saved!`);
-  await loadData();
+  const ids = Object.keys(pendingChanges); if (!ids.length) { showToast('No unsaved changes.'); return; }
+  let n = 0; for (const id of ids) if (await saveOne(parseInt(id))) n++;
+  showToast(`${n} client${n !== 1 ? 's' : ''} saved!`); await loadData();
 }
 
-// ── CLIENT DETAIL ─────────────────────────────────────────────
-async function showDetail(clientId) {
-  const c = allClients.find(x => x.id === clientId);
-  if (!c) return;
+// ── Record bought hours (DIY packs, à-la-carte, extra blocks) ──
+function openAddHours(id) {
+  const c = allClients.find(x => x.id === id); if (!c) return;
+  const m = document.createElement('div'); m.className = 'modal-overlay'; m.id = 'buy-modal';
+  m.innerHTML = `<div class="modal-box"><h3>+ Add bought hours · ${esc(c.name)}</h3>
+    <p>Support hours the client paid for (5-hr pack $400, à-la-carte $80/hr, or an extra block). They're used after any plan hours and never expire.</p>
+    <div style="display:flex;gap:.4rem;margin:.6rem 0 .8rem">${[1, 5, 10, 20].map(n => `<button class="btn btn-outline btn-sm" onclick="document.getElementById('buy-h').value=${n}">${n} hr${n > 1 ? 's' : ''}</button>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+      <label style="font-size:.78rem;font-weight:600">Hours<input id="buy-h" type="number" min="0.5" step="0.5" class="hrs-input" style="width:100%;margin-top:.25rem"></label>
+      <label style="font-size:.78rem;font-weight:600">Date<input id="buy-d" type="date" class="hrs-input" style="width:100%;margin-top:.25rem;text-align:left" value="${new Date().toISOString().slice(0, 10)}"></label>
+    </div>
+    <label style="font-size:.78rem;font-weight:600;display:block;margin-top:.6rem">Note (optional)<input id="buy-n" type="text" class="hrs-input" style="width:100%;margin-top:.25rem;text-align:left" placeholder="e.g. 5-hr pack, invoice #1042"></label>
+    <div class="modal-actions"><button class="btn btn-outline" onclick="document.getElementById('buy-modal').remove()">Cancel</button><button class="btn btn-primary" onclick="saveAddHours(${id})">Add hours</button></div></div>`;
+  document.body.appendChild(m);
+}
+async function saveAddHours(id) {
+  const h = parseFloat(document.getElementById('buy-h').value);
+  if (!(h > 0)) { showToast('Enter the number of hours.'); return; }
+  const r = await fetch(`${API}?action=add_client_hours`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: id, hours: h, date: document.getElementById('buy-d').value, note: document.getElementById('buy-n').value }) }).then(x => x.json()).catch(() => ({ success: false }));
+  if (!r.success) { showToast(r.error || 'Could not add hours.'); return; }
+  document.getElementById('buy-modal').remove(); showToast(`${h} hours added.`); await loadData();
+}
 
-  document.getElementById('detail-title').textContent = c.name;
-  const panel = document.getElementById('detail-panel');
-  panel.classList.add('open');
-  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
-
-  const total = c.total_hours;
-  const used = c.used_hours;
-  const remaining = c.remaining;
-  const pct = total > 0 ? Math.round((remaining / total) * 100) : 0;
-  const remColor = pct > 40 ? 'green' : pct > 15 ? '' : 'red';
-
+// ── Client detail ──
+async function showDetail(id) {
+  const c = allClients.find(x => x.id === id); if (!c) return;
+  document.getElementById('detail-title').textContent = `${c.name} · ${PLAN_NAMES[c.plan] || c.plan}`;
+  const panel = document.getElementById('detail-panel'); panel.classList.add('open'); panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const S = c.support, G = c.gm;
   document.getElementById('detail-grid').innerHTML = `
-    <div class="detail-stat">
-      <div class="detail-stat-val">${total || '—'}</div>
-      <div class="detail-stat-lbl">Total Hours This Month</div>
-    </div>
-    <div class="detail-stat">
-      <div class="detail-stat-val" style="color:var(--danger)">${used.toFixed(1)}</div>
-      <div class="detail-stat-lbl">Hours Used</div>
-    </div>
-    <div class="detail-stat">
-      <div class="detail-stat-val ${remColor}">${remaining.toFixed(1)}</div>
-      <div class="detail-stat-lbl">Hours Remaining (${pct}%)</div>
-    </div>`;
-
-  // Load activity
-  const actEl = document.getElementById('detail-activity');
-  actEl.innerHTML = '<span class="spinner"></span> Loading activity...';
+    <div class="detail-stat"><div class="detail-stat-val">${S.available || 0}</div><div class="detail-stat-lbl">Support available (${S.included || 0} plan${S.rollover ? ` + ${S.rollover} rolled` : ''}${S.purchased ? ` + ${S.purchased} bought` : ''})</div></div>
+    <div class="detail-stat"><div class="detail-stat-val" style="color:var(--danger)">${S.used || 0}</div><div class="detail-stat-lbl">Support used</div></div>
+    <div class="detail-stat"><div class="detail-stat-val">${G.used || 0} / ${G.included || 0}</div><div class="detail-stat-lbl">Growth Manager used</div></div>`;
+  const actEl = document.getElementById('detail-activity'); actEl.innerHTML = '<span class="spinner"></span> Loading activity...';
   try {
-    const res = await fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(c.location_id)}&month=${encodeURIComponent(currentMonth)}`).then(r=>r.json());
-    if (res.success && res.activity && res.activity.length > 0) {
-      actEl.innerHTML = `<table>
-        <thead><tr><th>Date</th><th>Team Member</th><th>Work Performed</th><th>Hours</th></tr></thead>
-        <tbody>${res.activity.map(a => `<tr>
-          <td>${a.date ? new Date(a.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
-          <td>${esc(a.team_member || '—')}</td>
-          <td>${esc(a.deliverable || 'Support work')}</td>
-          <td style="color:var(--danger);font-weight:600">−${parseFloat(a.hours).toFixed(1)} hrs</td>
-        </tr>`).join('')}</tbody>
-      </table>`;
-    } else {
-      actEl.innerHTML = '<div class="no-activity">No activity logged this month.</div>';
-    }
-  } catch(e) {
-    actEl.innerHTML = '<div class="no-activity">Could not load activity.</div>';
-  }
+    const [res, pur] = await Promise.all([
+      fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(c.location_id)}&month=${encodeURIComponent(currentMonth)}`).then(r => r.json()),
+      fetch(`${API}?action=client_purchases&client_id=${id}`).then(r => r.json()).catch(() => ({ purchases: [] }))]);
+    const acts = (res.success && res.activity) || [];
+    const pList = (pur.purchases || []);
+    actEl.innerHTML = (acts.length ? `<table><thead><tr><th>Date</th><th>Team Member</th><th>Work Performed</th><th>Type</th><th>Hours</th></tr></thead><tbody>${acts.map(a => `<tr>
+        <td>${a.date ? new Date(a.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
+        <td>${esc(a.team_member || '—')}</td><td>${esc(a.deliverable || 'Support work')}</td><td>${a.type === 'gm' ? 'Growth Manager' : 'Support'}</td>
+        <td style="color:var(--danger);font-weight:600">−${parseFloat(a.hours).toFixed(1)} hrs</td></tr>`).join('')}</tbody></table>` : '<div class="no-activity">No activity logged this month.</div>')
+      + `<div style="font-size:.75rem;font-weight:600;color:var(--navy);margin:1rem 0 .4rem">Bought hours</div>`
+      + (pList.length ? pList.map(p => `<div class="pur-row"><span>${esc(p.purchased_on)} · <b>${parseFloat(p.hours)} hrs</b>${p.note ? ` · ${esc(p.note)}` : ''}</span><span style="color:var(--mid)">${esc(p.added_by || '')}</span></div>`).join('') : '<div class="no-activity" style="padding:.5rem 0">None recorded.</div>');
+  } catch (e) { actEl.innerHTML = '<div class="no-activity">Could not load activity.</div>'; }
 }
+function closeDetail() { document.getElementById('detail-panel').classList.remove('open'); }
+function openRefillModal() {}
+function closeRefillModal() { const m = document.getElementById('refill-modal'); if (m) m.classList.add('hidden'); }
 
-function closeDetail() {
-  document.getElementById('detail-panel').classList.remove('open');
-}
-
-// ── REFILL MODAL ──────────────────────────────────────────────
-function openRefillModal() {
-  const retainers = allClients.filter(c => c.plan === 'retainer' || c.plan === 'diy');
-  document.getElementById('refill-period-label').textContent = monthLabel(currentMonth);
-  document.getElementById('refill-list').innerHTML = retainers.length === 0
-    ? '<div style="padding:1rem;text-align:center;color:var(--mid);font-size:.82rem">No retainer clients found. Set client plans first.</div>'
-    : retainers.map(c => `
-        <div class="modal-list-item ${c.plan==='diy'?'diy':''}">
-          <div>
-            <strong>${esc(c.name)}</strong>
-            <div style="font-size:.72rem;color:var(--mid)">${c.plan==='diy'?'DIY — will be skipped':c.included+' hrs'}</div>
-          </div>
-          <span class="plan-badge ${c.plan==='retainer'?'plan-retainer':'plan-diy'}">${c.plan==='retainer'?'Retainer':'DIY'}</span>
-        </div>`).join('');
-  document.getElementById('refill-modal').classList.remove('hidden');
-}
-
-function closeRefillModal() {
-  document.getElementById('refill-modal').classList.add('hidden');
-}
-
-async function confirmRefill() {
-  const retainers = allClients.filter(c => c.plan === 'retainer' && c.included > 0);
-  if (!retainers.length) { showToast('No retainer clients to refill.'); closeRefillModal(); return; }
-  let count = 0;
-  for (const c of retainers) {
-    try {
-      const res = await fetch(`${API}?action=set_client_hours`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          client_id: c.id,
-          month: currentMonth,
-          total_hours: c.included,
-          plan_type: 'retainer',
-          plan_label: c.plan_label || c.included + ' hrs/month'
-        })
-      }).then(r => r.json());
-      if (res.success) count++;
-    } catch(e) {}
-  }
-  closeRefillModal();
-  showToast(`&#8635; ${count} retainer client${count!==1?'s':''} refilled for ${monthLabel(currentMonth)}!`);
-  await loadData();
-}
-
-// ── EXPORT CSV ────────────────────────────────────────────────
+// ── EXPORT CSV ──
 function exportCSV() {
-  let csv = 'Client,Plan,Total Hours,Used Hours,Remaining,Month\n';
-  allClients.forEach(c => {
-    csv += `"${c.name}","${c.plan}",${c.total_hours},${c.used_hours},${c.remaining},"${monthLabel(currentMonth)}"\n`;
-  });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-  a.download = `client_hours_${currentMonth}.csv`;
-  a.click();
+  let csv = 'Client,Plan,Support/mo,GM/mo,Support available,Rolled over,Bought,Support used,Support remaining,GM included,GM used,Month\n';
+  allClients.forEach(c => { const S = c.support, G = c.gm;
+    csv += `"${c.name.replace(/"/g, '""')}","${PLAN_NAMES[c.plan] || c.plan}",${c.monthly_support || 0},${c.monthly_gm || 0},${S.available || 0},${S.rollover || 0},${S.purchased || 0},${S.used || 0},${S.remaining || 0},${G.included || 0},${G.used || 0},"${monthLabel(currentMonth)}"\n`; });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `client_hours_${currentMonth}.csv`; a.click();
   showToast('CSV exported.');
 }
 

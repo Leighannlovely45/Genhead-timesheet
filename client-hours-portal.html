@@ -77,6 +77,17 @@ select.month{border:1px solid var(--line);border-radius:10px;padding:8px 34px 8p
 select.month:focus{outline:none;border-color:var(--teal)}
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .tiles.four{grid-template-columns:repeat(4,1fr)}
+.tiles.five{grid-template-columns:repeat(5,1fr)}
+.tiles.five .tile-v{font-size:19px}
+.gmcard{padding:18px 22px;margin-bottom:18px}
+.gm-h{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.gm-h h2{font-size:15px;color:var(--ink)}
+.gm-n{font-size:22px;font-weight:600;color:var(--ink)}
+.gm-n small{font-size:13px;color:var(--mid);font-weight:500}
+.bar{height:8px;background:#EEF2F6;border-radius:99px;overflow:hidden}
+.bar>div{height:100%;border-radius:99px;transition:width .6s}
+.c-gm{background:#EDE9FE;color:#4C1D95}
+.c-sup{background:var(--teal-soft);color:#065F52}
 .tile{background:var(--canvas);border-radius:12px;padding:12px 14px}
 .tile-l{font-size:12px;color:var(--mid);font-weight:500}
 .tile-v{font-size:22px;font-weight:600;color:var(--ink);margin-top:2px;letter-spacing:-.4px}
@@ -162,7 +173,7 @@ textarea.in{min-height:120px;resize:vertical}
   .summary{grid-template-columns:1fr}
   .gauge{border-right:none;border-bottom:1px solid var(--line)}
   .tiles{grid-template-columns:repeat(3,1fr);gap:8px}
-  .tiles.four{grid-template-columns:repeat(2,1fr)}
+  .tiles.four,.tiles.five{grid-template-columns:repeat(2,1fr)}
   .tile-v{font-size:18px}
   .tbl .mcol{display:none}
   .tbl th,.tbl td{padding-left:14px;padding-right:14px}
@@ -233,7 +244,7 @@ async function init() {
     $('#client-name').textContent = state.client;
     const pill = $('#plan-pill'); pill.hidden = false;
     if (h.plan === 'diy') { pill.textContent = 'DIY plan'; pill.className = 'pill pill-diy'; }
-    else { pill.textContent = (h.client && h.client.plan_label) || 'Support plan'; }
+    else { pill.textContent = h.plan_label || (h.client && h.client.plan_label) || 'Support plan'; }
     render();
     if (params.get('new') === '1') openForm();
   } catch (e) { fatal('We couldn\'t reach Genhead right now. Please try again in a moment.'); }
@@ -258,68 +269,100 @@ function render() {
 }
 function setTab(t) { state.tab = t; render(); }
 
-function hoursHTML() {
-  const h = state.hours;
-  if (h.plan === 'diy') {
-    return `<div class="card"><div class="empty">
-      <div class="ico">${ICONS.clock}</div>
-      <h3>You're on the DIY plan</h3>
-      <p>You manage your GenSuite account yourself. Need hands-on help from the Genhead team? Request a block of support hours for a project, or add hours to your plan every month.</p>
-      <button class="btn btn-primary" onclick="openForm('hours')">${ICONS.plus} Request support hours</button>
-    </div></div>`;
-  }
-  const total = parseFloat(h.bank.total_hours) || 0, used = parseFloat(h.bank.used_hours) || 0, left = Math.max(0, total - used);
-  const ro = parseFloat(h.bank.rollover) || 0, inc = h.bank.included != null ? (parseFloat(h.bank.included) || 0) : total;
+function ringHTML(left, total, label, sub) {
   const pct = total > 0 ? Math.max(0, Math.min(1, left / total)) : 0;
   const R = 70, C = 2 * Math.PI * R;
   const color = !total ? '#CBD5E1' : pct > .4 ? '#03AD8F' : pct > .15 ? '#D97706' : '#DC2626';
-  const monthLabel = (h.periods || []).find(p => p.value === h.month)?.label || '';
-  const opts = (h.periods || []).map(p => `<option value="${esc(p.value)}" ${p.value === h.month ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
-  let st = '';
-  if (total > 0 && used > total) st = `<div class="state st-out">${ICONS.warn}<div><b>Over by ${fmtH(used - total)} hrs</b> this month.</div><button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button></div>`;
-  else if (total > 0 && pct <= .2) st = `<div class="state st-low">${ICONS.warn}<div><b>Running low:</b> ${fmtH(left)} hrs left this month.</div><button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button></div>`;
-  else if (total > 0) st = `<div class="state st-ok">${ICONS.check}<div><b>On track.</b> ${Math.round(pct * 100)}% of your available hours remaining.${h.rollover_on ? ' Unused hours roll over to next month.' : ''}</div></div>`;
-  else st = `<div class="state st-low">${ICONS.clock}<div>No support hours are set for this month yet. Contact us if that doesn't look right.</div></div>`;
+  return { color, pct, html: `<div class="ring" role="img" aria-label="${fmtH(left)} of ${fmtH(total)} hours remaining">
+      <svg width="164" height="164" viewBox="0 0 164 164">
+        <circle cx="82" cy="82" r="${R}" fill="none" stroke="#EEF2F6" stroke-width="14"/>
+        <circle cx="82" cy="82" r="${R}" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)"/>
+      </svg>
+      <div class="ring-c"><div class="ring-num mono">${fmtH(left)}</div><div class="ring-lbl">${label}${sub ? `<br>${sub}` : ''}</div></div>
+    </div>` };
+}
+function tile(label, val, opts) {
+  opts = opts || {};
+  return `<div class="tile"${opts.title ? ` title="${esc(opts.title)}"` : ''}><div class="tile-l">${label}</div><div class="tile-v mono"${opts.color ? ` style="color:${opts.color}"` : ''}>${opts.plus ? '+' : ''}${fmtH(val)}<small>hrs</small></div></div>`;
+}
+function activityHTML(h, monthLabel) {
   const acts = h.activity || [];
+  const hasGM = acts.some(a => a.type === 'gm');
   const rows = acts.map(a => `<tr>
       <td class="date">${esc(fmtDate(a.date))}</td>
-      <td>${esc(a.deliverable || 'Support work')}</td>
+      <td>${esc(a.deliverable || 'Support work')}${hasGM ? `<div><span class="chip ${a.type === 'gm' ? 'c-gm' : 'c-sup'}" style="font-size:10.5px">${a.type === 'gm' ? 'Growth Manager' : 'Support'}</span></div>` : ''}</td>
       <td class="mcol"><span class="who"><span class="av" aria-hidden="true">${esc(initials(a.team_member))}</span>${esc(a.team_member || 'Genhead team')}</span></td>
       <td class="r mono">${fmtH(a.hours)} h</td></tr>`).join('');
-  return `
-    <div class="card summary">
-      <div class="gauge">
-        <div class="ring" role="img" aria-label="${fmtH(left)} of ${fmtH(total)} hours remaining">
-          <svg width="164" height="164" viewBox="0 0 164 164">
-            <circle cx="82" cy="82" r="${R}" fill="none" stroke="#EEF2F6" stroke-width="14"/>
-            <circle cx="82" cy="82" r="${R}" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)"/>
-          </svg>
-          <div class="ring-c"><div class="ring-num mono">${fmtH(left)}</div><div class="ring-lbl">hours left${ro > 0 ? `<br>of ${fmtH(total)} available` : ''}</div></div>
-        </div>
-      </div>
-      <div class="sum-r">
-        <div class="sum-top">
-          <h2>Hours this month <button class="linkbtn" onclick="openForm('hours')">Need more hours?</button></h2>
-          <label class="sr" for="month">Month</label>
-          <select class="month" id="month" onchange="loadMonth(this.value)">${opts}</select>
-        </div>
-        <div class="tiles${ro > 0 ? ' four' : ''}">
-          <div class="tile"><div class="tile-l">${ro > 0 ? 'This month' : 'Included'}</div><div class="tile-v mono">${fmtH(inc)}<small>hrs</small></div></div>
-          ${ro > 0 ? `<div class="tile" title="Unused hours carried over from earlier months"><div class="tile-l">Rolled over</div><div class="tile-v mono">+${fmtH(ro)}<small>hrs</small></div></div>` : ''}
-          <div class="tile"><div class="tile-l">Used</div><div class="tile-v mono">${fmtH(used)}<small>hrs</small></div></div>
-          <div class="tile"><div class="tile-l">Remaining</div><div class="tile-v mono" style="color:${total ? color : 'var(--ink)'}">${fmtH(left)}<small>hrs</small></div></div>
-        </div>
-        ${st}
-      </div>
-    </div>
-    <div class="card">
+  const total = acts.reduce((t, a) => t + (parseFloat(a.hours) || 0), 0);
+  return `<div class="card">
       <div class="card-h"><h2>Work completed</h2><span class="muted">${acts.length} ${acts.length === 1 ? 'entry' : 'entries'}</span></div>
       ${acts.length ? `<div style="overflow-x:auto"><table class="tbl">
         <thead><tr><th style="width:90px">Date</th><th>Work performed</th><th class="mcol" style="width:190px">Team member</th><th class="r" style="width:80px">Hours</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="2">Total</td><td class="mcol"></td><td class="r mono">${fmtH(used)} h</td></tr></tfoot>
+        <tfoot><tr><td colspan="2">Total</td><td class="mcol"></td><td class="r mono">${fmtH(total)} h</td></tr></tfoot>
       </table></div>` : `<div class="empty"><div class="ico">${ICONS.clock}</div><h3>No work logged in ${esc(monthLabel || 'this month')}</h3><p>When the team works on your account, each entry shows up here with the hours used.</p></div>`}
     </div>`;
+}
+function monthSelect(h) {
+  const opts = (h.periods || []).map(p => `<option value="${esc(p.value)}" ${p.value === h.month ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
+  return `<label class="sr" for="month">Month</label><select class="month" id="month" onchange="loadMonth(this.value)">${opts}</select>`;
+}
+function hoursHTML() {
+  const h = state.hours;
+  const S = h.support || { included: 0, rollover: 0, purchased: 0, available: 0, used: 0, remaining: 0, expiring: 0, over: 0 };
+  const G = h.gm || { included: 0, used: 0, remaining: 0, over: 0 };
+  const monthLabel = (h.periods || []).find(p => p.value === h.month)?.label || '';
+  // DIY: banked hours only (bought hours never expire)
+  if (h.plan === 'diy') {
+    if (!(S.available > 0 || S.used > 0)) {
+      return `<div class="card"><div class="empty">
+        <div class="ico">${ICONS.clock}</div>
+        <h3>You're on the DIY plan</h3>
+        <p>You manage your GenSuite account yourself. Need hands-on help from the Genhead team? Request support hours ($80/hr, or a 5-hour pack for $400). Hours you buy stay in your bank until you use them.</p>
+        <button class="btn btn-primary" onclick="openForm('hours')">${ICONS.plus} Request support hours</button>
+      </div></div>${(h.activity || []).length ? activityHTML(h, monthLabel) : ''}`;
+    }
+    const r = ringHTML(S.remaining, S.available, 'hours in your bank');
+    return `<div class="card summary">
+        <div class="gauge">${r.html}</div>
+        <div class="sum-r">
+          <div class="sum-top"><h2>Banked support hours <button class="linkbtn" onclick="openForm('hours')">Buy more hours</button></h2>${monthSelect(h)}</div>
+          <div class="tiles">${tile('In your bank', S.available)}${tile('Used in ' + (monthLabel.split(' ')[0] || 'month'), S.used)}${tile('Left', S.remaining, { color: r.color })}</div>
+          <div class="state ${S.over > 0 ? 'st-out' : S.remaining <= 1 ? 'st-low' : 'st-ok'}">${S.over > 0 || S.remaining <= 1 ? ICONS.warn : ICONS.check}<div>${S.over > 0 ? `<b>${fmtH(S.over)} hrs over</b> your banked hours this month.` : S.remaining <= 1 ? '<b>Almost out</b> of banked hours.' : '<b>DIY plan.</b> Hours you buy never expire.'}</div>${S.over > 0 || S.remaining <= 1 ? `<button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button>` : ''}</div>
+        </div>
+      </div>${activityHTML(h, monthLabel)}`;
+  }
+  // Lift / Scale / custom: support hours (+ rollover, + bought) and Growth Manager hours
+  const r = ringHTML(S.remaining, S.available, 'support hours left', S.rollover > 0 || S.purchased > 0 ? `of ${fmtH(S.available)} available` : '');
+  const tiles = [tile('This month', S.included)];
+  if (S.rollover > 0) tiles.push(tile('Rolled over', S.rollover, { plus: true, title: `Unused hours from the last ${h.rollover_months || 3} months` }));
+  if (S.purchased > 0) tiles.push(tile('Extra hours', S.purchased, { plus: true, title: 'Hours you bought; these never expire' }));
+  tiles.push(tile('Used', S.used), tile('Remaining', S.remaining, { color: S.available ? r.color : '' }));
+  let st = '';
+  if (S.over > 0) st = `<div class="state st-out">${ICONS.warn}<div><b>Over by ${fmtH(S.over)} hrs</b> this month.</div><button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button></div>`;
+  else if (S.available > 0 && r.pct <= .2) st = `<div class="state st-low">${ICONS.warn}<div><b>Running low:</b> ${fmtH(S.remaining)} hrs left.</div><button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button></div>`;
+  else if (S.available > 0) st = `<div class="state st-ok">${ICONS.check}<div><b>On track.</b> ${S.expiring > 0 ? `${fmtH(S.expiring)} rolled-over hrs expire at the end of ${esc(monthLabel.split(' ')[0])}.` : (h.rollover_on ? `Unused support hours roll over for ${(h.rollover_months || 3) * 30} days.` : '')}</div></div>`;
+  else st = `<div class="state st-low">${ICONS.clock}<div>No support hours are set for this month yet. Contact us if that doesn't look right.</div></div>`;
+  const gmCard = (G.included > 0 || G.used > 0) ? (() => {
+    const pct = G.included > 0 ? Math.min(100, G.used / G.included * 100) : 100;
+    return `<div class="card gmcard">
+      <div class="gm-h"><div><h2>Growth Manager hours</h2><p class="muted">System management and strategy oversight. Resets each month.</p></div>
+        <div class="gm-n mono">${fmtH(G.used)}<small> / ${fmtH(G.included)} hrs used</small></div></div>
+      <div class="bar"><div style="width:${pct}%;background:${G.over > 0 ? '#DC2626' : '#351D72'}"></div></div>
+      ${G.over > 0 ? `<p class="muted" style="margin-top:8px">${fmtH(G.over)} hrs over this month.</p>` : ''}
+    </div>`;
+  })() : '';
+  return `
+    <div class="card summary">
+      <div class="gauge">${r.html}</div>
+      <div class="sum-r">
+        <div class="sum-top"><h2>Support hours <button class="linkbtn" onclick="openForm('hours')">Need more hours?</button></h2>${monthSelect(h)}</div>
+        <div class="tiles${tiles.length > 3 ? ' four' : ''}${tiles.length > 4 ? ' five' : ''}">${tiles.join('')}</div>
+        ${st}
+      </div>
+    </div>
+    ${gmCard}
+    ${activityHTML(h, monthLabel)}`;
 }
 
 async function loadMonth(m) {

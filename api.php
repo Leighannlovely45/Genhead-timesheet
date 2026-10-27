@@ -166,7 +166,7 @@ $ROLE_RULES = [
     'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
     'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'], 'ext_rename_client'=>['admin','hr'],
     'load_client_banks'=>['admin','hr'], 'set_client_hours'=>['admin','hr'],
-    'send_setup_link'=>['admin','hr'], 'merge_users'=>['admin'],
+    'send_setup_link'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'],
 ];
 // Removed: one-time setup helpers that let anyone create admins or change PINs
 if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
@@ -211,6 +211,31 @@ if (in_array($action, ['add_employee','add_manager','update_employee','remove_em
             }
         }
     }
+}
+
+// ── Purchased support hours (DIY packs, à-la-carte, extra blocks) ───────
+if ($action === 'add_client_hours') {
+    $db = getDB(); $b = array_merge($_GET, json_decode(file_get_contents('php://input'), true) ?: []);
+    $cid = (int)($b['client_id'] ?? 0); $h = round((float)($b['hours'] ?? 0), 2);
+    $on = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($b['date'] ?? '')) ? $b['date'] : date('Y-m-d');
+    if (!$cid || $h <= 0 || $h > 1000) { echo json_encode(['success'=>false,'error'=>'Enter the number of hours.']); exit; }
+    $c = $db->prepare("SELECT id FROM clients WHERE id = ?"); $c->execute([$cid]);
+    if (!$c->fetch()) { echo json_encode(['success'=>false,'error'=>'Client not found.']); exit; }
+    $db->prepare("INSERT INTO client_hour_purchases (client_id, hours, kind, note, purchased_on, ticket_id, created_by) VALUES (?,?, 'support', ?, ?, ?, ?)")
+       ->execute([$cid, $h, mb_substr(trim((string)($b['note'] ?? '')), 0, 255) ?: null, $on, (int)($b['ticket_id'] ?? 0) ?: null, (int)$AUTH['id']]);
+    echo json_encode(['success'=>true,'id'=>(int)$db->lastInsertId()]);
+    exit;
+}
+if ($action === 'client_purchases') {
+    $db = getDB(); $st = $db->prepare("SELECT p.*, u.name AS added_by FROM client_hour_purchases p LEFT JOIN users u ON u.id = p.created_by WHERE p.client_id = ? ORDER BY p.purchased_on DESC, p.id DESC");
+    $st->execute([(int)($_GET['client_id'] ?? 0)]);
+    echo json_encode(['success'=>true,'purchases'=>$st->fetchAll()]);
+    exit;
+}
+if ($action === 'delete_client_purchase') {
+    getDB()->prepare("DELETE FROM client_hour_purchases WHERE id = ?")->execute([(int)($_GET['id'] ?? 0)]);
+    echo json_encode(['success'=>true]);
+    exit;
 }
 
 // ── SUPPORT TICKETS ───────────────────────────────────────────────────────
@@ -763,7 +788,7 @@ if ($action === 'ext_track' && $method === 'POST') {
         }
         $client = clientByLocation($db, $loc);
         if (!$billingType) $billingType = ($client && (string)$client['billable'] === '0') ? 'nonbillable' : 'billable';
-        if (!in_array($billingType, ['billable','nonbillable','marketing'])) $billingType = 'billable';
+        if (!in_array($billingType, ['billable','nonbillable','marketing','growth'])) $billingType = 'billable';
 
         // This person's timesheet for the period
         $ts = $db->prepare("SELECT id, status FROM timesheets WHERE user_id = ? AND period = ? LIMIT 1");
@@ -792,14 +817,14 @@ if ($action === 'ext_track' && $method === 'POST') {
             // Tracked time plus any change the person made to this line on their timesheet
             $shown = max(0, round($hours + (float)($found['ext_adjust'] ?? 0), 4));
             $db->prepare("UPDATE timesheet_entries SET hours = ?, ext_tracked = ?, client_id = ?, project_id = ?, billing_type = ?, billable = ? WHERE id = ?")
-               ->execute([$shown, $hours, $clientId, $projectId, $billingType, $billingType === 'billable' ? 1 : 0, $existing]);
+               ->execute([$shown, $hours, $clientId, $projectId, $billingType, in_array($billingType, ['billable','growth'], true) ? 1 : 0, $existing]);
         } else {
             $row = $db->prepare("SELECT COALESCE(MAX(row_index),-1)+1 FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ?");
             $row->execute([$sheetId, $per['day']]);
             if ($sessionLabel !== '') $deliverable = $deliverable !== '' ? "$deliverable (from $sessionLabel)" : "Tracked session from $sessionLabel";
             $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id, ext_location, ext_session, ext_tracked, ext_adjust)
                           VALUES (?,?,?,?,?,?,?,?,?,?, 'extension', ?, ?, ?, ?, ?, 0)")
-               ->execute([$sheetId, $clientId, $shownLabel, $deliverable, $hours, $rate, $billingType === 'billable' ? 1 : 0, $billingType, $per['day'], (int)$row->fetchColumn(), $projectId, $taskId, $loc, $session, $hours]);
+               ->execute([$sheetId, $clientId, $shownLabel, $deliverable, $hours, $rate, in_array($billingType, ['billable','growth'], true) ? 1 : 0, $billingType, $per['day'], (int)$row->fetchColumn(), $projectId, $taskId, $loc, $session, $hours]);
         }
         $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
                       total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?) WHERE id = ?")
@@ -1123,7 +1148,7 @@ if ($method === 'GET') {
 
     if ($action === 'load') {
         $db = getDB();
-        $employees = $db->query("SELECT id, ghl_contact_id, name, email, role, pin, pin_set, password_set, rate, status, delegate_to, added_from_ghl, manager_id FROM users WHERE status = 'active' ORDER BY name")->fetchAll();
+        $employees = $db->query("SELECT id, ghl_contact_id, name, email, role, pin, pin_set, password_set, rate, status, delegate_to, added_from_ghl, manager_id, COALESCE(is_gm,0) AS is_gm FROM users WHERE status = 'active' ORDER BY name")->fetchAll();
         $settings = [];
         foreach ($db->query("SELECT `key`, `value` FROM settings")->fetchAll() as $row) {
             $settings[$row['key']] = $row['value'];
@@ -1277,7 +1302,7 @@ if ($method === 'GET') {
         $employees = $empStmt->fetchAll();
         $clientStmt = $db->prepare("SELECT c.name, c.type,
             SUM(te.hours) as total_hours,
-            SUM(CASE WHEN COALESCE(te.billing_type,'billable') = 'billable'    THEN te.hours ELSE 0 END) as billable_hours,
+            SUM(CASE WHEN COALESCE(te.billing_type,'billable') IN ('billable','growth') THEN te.hours ELSE 0 END) as billable_hours,
             SUM(CASE WHEN COALESCE(te.billing_type,'billable') = 'nonbillable' THEN te.hours ELSE 0 END) as nonbillable_hours,
             SUM(CASE WHEN COALESCE(te.billing_type,'billable') = 'marketing'   THEN te.hours ELSE 0 END) as marketing_hours,
             GROUP_CONCAT(DISTINCT u.name ORDER BY u.name SEPARATOR ', ') as employees
@@ -1332,7 +1357,8 @@ if ($method === 'GET') {
             $cardParams = [$period];
         }
         // Billing type: honour legacy rows that only have the billable flag
-        $BT     = "COALESCE(te.billing_type, CASE WHEN te.billable = 0 THEN 'nonbillable' ELSE 'billable' END)";
+        // Growth Manager hours report as Billable (for now)
+        $BT     = "(CASE WHEN te.billing_type = 'growth' THEN 'billable' ELSE COALESCE(te.billing_type, CASE WHEN te.billable = 0 THEN 'nonbillable' ELSE 'billable' END) END)";
         // Pay: the rate saved on the line, else the person's rate (extension lines save 0)
         $RATE   = "COALESCE(NULLIF(te.pay_rate,0), u.rate, 0)";
         // Client: matched client, else the name the person typed
@@ -1578,25 +1604,20 @@ if ($method === 'GET') {
             if ($client = $stmt->fetch()) break;
         }
         if (!$client) { echo json_encode(['success'=>false,'error'=>'Client not found']); exit; }
-        if ($client['plan_type'] === 'diy') {
-            echo json_encode(['success'=>true,'plan'=>'diy','plan_label'=>'DIY Plan',
-                'client'=>['name'=>$client['name'],'plan'=>'diy','plan_label'=>'DIY Plan']]); exit;
-        }
         $month = normMonth($_GET['month'] ?? ($_GET['period'] ?? ''));
-        $bank  = monthBank($db, $client, $month);
-        $activity = []; $usedHours = 0;
+        $activity = [];
         foreach (clientMonthEntries($db, [(int)$client['id']], $month) as $en) {
-            $usedHours += (float)$en['hours'];
-            $activity[] = ['date'=>$en['date'],'deliverable'=>$en['deliverable'] ?: 'Support work',
+            $activity[] = ['date'=>$en['date'],'deliverable'=>$en['deliverable'] ?: 'Support work', 'type'=>(int)$en['is_gm'] ? 'gm' : 'support',
                            'team_member'=>$en['team_member'],'hours'=>(float)$en['hours']];
         }
         usort($activity, function($x, $y){ return strcmp($x['date'], $y['date']); });
-        $av = monthAvailability($db, $client, $month);
-        $totalHours = $av['available'];
-        echo json_encode(['success'=>true,
-            'client'=>['name'=>$client['name'],'plan'=>$bank['plan_type'] ?: 'retainer','plan_label'=>$bank['plan_label'] ?: 'Retainer'],
-            'bank'=>['total_hours'=>$totalHours,'included'=>$av['included'],'rollover'=>$av['rollover'],'used_hours'=>round($usedHours,2),'remaining'=>round(max(0,$totalHours-$usedHours),2)],
-            'rollover_on'=>rolloverOn(),
+        $L = hoursLedger($db, [$client], $month)[(int)$client['id']];
+        $S = $L['support'];
+        echo json_encode(['success'=>true,'plan'=>$L['plan_type'],'plan_label'=>$L['plan_label'],
+            'client'=>['name'=>$client['name'],'plan'=>$L['plan_type'],'plan_label'=>$L['plan_label']],
+            'support'=>$S,'gm'=>$L['gm'],
+            'bank'=>['total_hours'=>$S['available'],'included'=>$S['included'],'rollover'=>$S['rollover'],'purchased'=>$S['purchased'],'used_hours'=>$S['used'],'remaining'=>$S['remaining']],
+            'rollover_on'=>rolloverOn(),'rollover_months'=>rolloverMonths(),
             'activity'=>$activity,'period'=>$month,'month'=>$month,'periods'=>monthList()]);
         exit;
     }
@@ -1610,15 +1631,17 @@ if ($method === 'GET') {
         foreach (clientMonthEntries($db, array_map(function($c){ return (int)$c['id']; }, $clients), $month) as $en)
             $used[$en['client_id']] = ($used[$en['client_id']] ?? 0) + (float)$en['hours'];
         $result = [];
-        $carry = rolloverCarry($db, $clients, $month);
+        $L = hoursLedger($db, $clients, $month);
         foreach ($clients as $c) {
+            $l = $L[(int)$c['id']]; $S = $l['support'];
             $b = monthBank($db, $c, $month);
-            $inc = (float)$b['total_hours']; $ro = (float)($carry[$c['id']] ?? 0); $total = $inc + $ro; $u = (float)($used[$c['id']] ?? 0);
             $result[] = ['id'=>(int)$c['id'],'name'=>$c['name'],'location_id'=>$c['location_id'] ?: $c['ghl_contact_id'],
-                'plan'=>$b['plan_type'] ?: 'none','plan_label'=>$b['plan_label'] ?: '',
-                'included'=>$inc,'rollover'=>round($ro,2),'total_hours'=>round($total,2),'used_hours'=>round($u,2),'remaining'=>round(max(0,$total-$u),2)];
+                'plan'=>$l['plan_type'],'plan_label'=>$l['plan_label'],
+                'monthly_support'=>(float)$b['total_hours'],'monthly_gm'=>(float)$b['gm_hours'],
+                'support'=>$S,'gm'=>$l['gm'],
+                'included'=>$S['included'],'rollover'=>$S['rollover'],'total_hours'=>$S['available'],'used_hours'=>$S['used'],'remaining'=>$S['remaining']];
         }
-        echo json_encode(['success'=>true,'banks'=>$result,'month'=>$month,'months'=>monthList(),'rollover_on'=>rolloverOn(),'rollover_start'=>rolloverStart()]);
+        echo json_encode(['success'=>true,'banks'=>$result,'month'=>$month,'months'=>monthList(),'rollover_on'=>rolloverOn(),'rollover_start'=>rolloverStart(),'rollover_months'=>rolloverMonths(),'plans'=>planDefs()]);
         exit;
     }
 
@@ -1747,7 +1770,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
             $clientName = $cn->fetchColumn() ?: null;
         }
         $status      = in_array($body['status'] ?? '', ['active','on_hold','completed']) ? $body['status'] : 'active';
-        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : 'billable';
+        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing','growth']) ? $body['billing_type'] : 'billable';
         $dueDate     = !empty($body['due_date'])  ? $body['due_date'] : null;
         $description = trim($body['description']  ?? '') ?: null;
         $createdBy   = (int)($body['created_by']  ?? 0);
@@ -1772,7 +1795,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         $priority    = in_array($body['priority'] ?? '', ['low','medium','high']) ? $body['priority'] : 'medium';
         $stage       = in_array($body['stage'] ?? '', ['backlog','todo','inprogress','inreview','done']) ? $body['stage'] : 'backlog';
         $dueDate     = !empty($body['due_date'])   ? $body['due_date'] : null;
-        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : null;
+        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing','growth']) ? $body['billing_type'] : null;
         $estHours    = isset($body['estimated_hours']) && $body['estimated_hours'] !== '' ? (float)$body['estimated_hours'] : null;
         $createdBy   = (int)($body['created_by']  ?? 0);
         if (!$projectId || !$title || !$createdBy) { echo json_encode(['success'=>false,'error'=>'project_id, title, created_by required']); exit; }
@@ -1780,7 +1803,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         if ($chk !== true) { echo json_encode(['success'=>false,'error'=>$chk]); exit; }
         if (!$billingType) {   // a new task starts with its project's billing type
             $pb = $db->prepare("SELECT billing_type FROM projects WHERE id = ?"); $pb->execute([$projectId]);
-            $billingType = in_array($pbt = $pb->fetchColumn(), ['billable','nonbillable','marketing'], true) ? $pbt : null;
+            $billingType = in_array($pbt = $pb->fetchColumn(), ['billable','nonbillable','marketing','growth'], true) ? $pbt : null;
         }
         try { $db->exec("ALTER TABLE tasks ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
         $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,due_date,billing_type,estimated_hours,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
@@ -1806,7 +1829,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         if (isset($body['assigned_to']))   { $fields[]='assigned_to = ?';   $params[]=((int)$body['assigned_to'])?:(null); }
         if (isset($body['assigned_name'])) { $fields[]='assigned_name = ?'; $params[]=trim($body['assigned_name'])?:null; }
         if (isset($body['priority']) && in_array($body['priority'],['low','medium','high'])) { $fields[]='priority = ?'; $params[]=$body['priority']; }
-        if (isset($body['billing_type']) && in_array($body['billing_type'],['billable','nonbillable','marketing'],true)) { $fields[]='billing_type = ?'; $params[]=$body['billing_type']; }
+        if (isset($body['billing_type']) && in_array($body['billing_type'],['billable','nonbillable','marketing','growth'],true)) { $fields[]='billing_type = ?'; $params[]=$body['billing_type']; }
         if (isset($body['title']) && trim($body['title']) !== '') { $fields[]='title = ?'; $params[]=trim($body['title']); }
         if (isset($body['description'])) { $fields[]='description = ?'; $params[]=trim($body['description']) ?: null; }
         if (!empty($body['assigned_to']) && (int)$body['assigned_to']) {
@@ -1967,7 +1990,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         }
 
         $billingType = $task['billing_type'] ?: ($task['project_billing_type'] ?: 'billable');
-        if (!in_array($billingType, ['billable','nonbillable','marketing'])) $billingType = 'billable';
+        if (!in_array($billingType, ['billable','nonbillable','marketing','growth'])) $billingType = 'billable';
         $deliverable = $task['title'] . ($note !== '' ? ' — ' . $note : '');
         $rowSt = $db->prepare("SELECT COALESCE(MAX(row_index),-1)+1 FROM timesheet_entries WHERE timesheet_id = ? AND day_index = ?");
         $rowSt->execute([$sheetId, $per['day']]);
@@ -1976,7 +1999,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         $db->prepare("INSERT INTO timesheet_entries (timesheet_id, client_id, client_label, deliverable, hours, pay_rate, billable, billing_type, day_index, row_index, source, project_id, task_id)
                       VALUES (?,?,?,?,?,?,?,?,?,?, 'task', ?, ?)")
            ->execute([$sheetId, $task['client_id'] ?: null, $task['client_name'] ?: null, $deliverable, $hours, (float)$user['rate'],
-                      $billingType === 'billable' ? 1 : 0, $billingType, $per['day'], $rowIdx, $task['project_id'] ?: null, $taskId]);
+                      in_array($billingType, ['billable','growth'], true) ? 1 : 0, $billingType, $per['day'], $rowIdx, $task['project_id'] ?: null, $taskId]);
 
         $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
                       total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?), updated_at = NOW() WHERE id = ?")
@@ -2102,6 +2125,7 @@ if (in_array($action, ['add_employee','add_manager','update_employee','assign_ma
         $fields = []; $params = [];
         if (isset($body['name']))        { $fields[] = 'name = ?';        $params[] = $body['name']; }
         if (isset($body['email']) && trim($body['email']) !== '') { $fields[] = 'email = ?'; $params[] = trim($body['email']); }
+        if (isset($body['is_gm']))       { $fields[] = 'is_gm = ?';       $params[] = !empty($body['is_gm']) && $body['is_gm'] !== '0' && $body['is_gm'] !== 'false' ? 1 : 0; }
         if (isset($body['rate']))        { $fields[] = 'rate = ?';        $params[] = $body['rate']; }
         if (isset($body['active']))      { $fields[] = 'status = ?';      $params[] = $body['active'] ? 'active' : 'inactive'; }
         if (isset($body['role']))        { $fields[] = 'role = ?';        $params[] = $body['role']; }
@@ -2152,7 +2176,7 @@ if ($method === 'POST') {
             $clientName = $cn->fetchColumn() ?: null;
         }
         $status      = in_array($body['status'] ?? '', ['active','on_hold','completed']) ? $body['status'] : 'active';
-        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : 'billable';
+        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing','growth']) ? $body['billing_type'] : 'billable';
         $dueDate     = !empty($body['due_date'])  ? $body['due_date'] : null;
         $description = trim($body['description']  ?? '') ?: null;
         $createdBy   = (int)($body['created_by']  ?? 0);
@@ -2210,14 +2234,14 @@ if ($method === 'POST') {
         $priority    = in_array($body['priority'] ?? '', ['low','medium','high']) ? $body['priority'] : 'medium';
         $stage       = in_array($body['stage'] ?? '', ['backlog','todo','inprogress','inreview','done']) ? $body['stage'] : 'backlog';
         $dueDate     = !empty($body['due_date'])   ? $body['due_date'] : null;
-        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing']) ? $body['billing_type'] : null;
+        $billingType = in_array($body['billing_type'] ?? '', ['billable','nonbillable','marketing','growth']) ? $body['billing_type'] : null;
         $createdBy   = (int)($body['created_by']   ?? 0);
         if (!$projectId || !$title || !$createdBy) { echo json_encode(['success'=>false,'error'=>'project_id, title, created_by required']); exit; }
         $chk = taskRulesCheck($db, $AUTH, $projectId, $assignedTo);
         if ($chk !== true) { echo json_encode(['success'=>false,'error'=>$chk]); exit; }
         if (!$billingType) {   // a new task starts with its project's billing type
             $pb = $db->prepare("SELECT billing_type FROM projects WHERE id = ?"); $pb->execute([$projectId]);
-            $billingType = in_array($pbt = $pb->fetchColumn(), ['billable','nonbillable','marketing'], true) ? $pbt : null;
+            $billingType = in_array($pbt = $pb->fetchColumn(), ['billable','nonbillable','marketing','growth'], true) ? $pbt : null;
         }
         $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,due_date,billing_type,created_by)
                       VALUES (?,?,?,?,?,?,?,?,?,?)")
@@ -2287,22 +2311,24 @@ if ($method === 'POST') {
         $clientId   = (int)($body['client_id']   ?? 0);
         $month      = normMonth($body['month'] ?? ($body['period'] ?? ''));
         $totalHours = (float)($body['total_hours'] ?? 0);
-        $planType   = in_array($body['plan_type'] ?? '', ['retainer','diy','none'], true) ? $body['plan_type'] : 'retainer';
-        $planLabel  = trim($body['plan_label'] ?? '') ?: ($planType === 'retainer' ? $totalHours.' hrs/month' : ($planType === 'diy' ? 'DIY Plan' : 'No Plan'));
+        $planType   = in_array($body['plan_type'] ?? '', ['lift','scale','retainer','diy','none'], true) ? $body['plan_type'] : 'retainer';
+        $gmHours    = isset($body['gm_hours']) && $body['gm_hours'] !== '' ? (float)$body['gm_hours'] : null;
+        $planLabel  = planLabel($planType, trim($body['plan_label'] ?? ''));
+        if (in_array($planType, ['diy','none'], true)) { $totalHours = 0; $gmHours = 0; }
         $notes      = trim($body['notes'] ?? '');
         if (!$clientId) { echo json_encode(['success'=>false,'error'=>'client_id required']); exit; }
         $st = $db->prepare("SELECT id FROM client_hours_bank WHERE client_id = ? AND period = ? ORDER BY id DESC LIMIT 1");
         $st->execute([$clientId, $month]);
         if ($bid = $st->fetchColumn()) {
-            $db->prepare("UPDATE client_hours_bank SET total_hours=?, plan_type=?, plan_label=?, notes=? WHERE id=?")
-               ->execute([$totalHours,$planType,$planLabel,$notes,$bid]);
+            $db->prepare("UPDATE client_hours_bank SET total_hours=?, gm_hours=?, plan_type=?, plan_label=?, notes=? WHERE id=?")
+               ->execute([$totalHours,$gmHours,$planType,$planLabel,$notes,$bid]);
         } else {
-            $db->prepare("INSERT INTO client_hours_bank (client_id,period,period_index,total_hours,plan_type,plan_label,notes) VALUES (?,?,?,?,?,?,?)")
-               ->execute([$clientId,$month,0,$totalHours,$planType,$planLabel,$notes]);
+            $db->prepare("INSERT INTO client_hours_bank (client_id,period,period_index,total_hours,gm_hours,plan_type,plan_label,notes) VALUES (?,?,?,?,?,?,?,?)")
+               ->execute([$clientId,$month,0,$totalHours,$gmHours,$planType,$planLabel,$notes]);
         }
         // The client's default for future months
-        $db->prepare("UPDATE clients SET monthly_hours=?,plan_type=?,plan_label=? WHERE id=?")
-           ->execute([$totalHours,$planType,$planLabel,$clientId]);
+        $db->prepare("UPDATE clients SET monthly_hours=?,gm_monthly_hours=COALESCE(?,gm_monthly_hours),plan_type=?,plan_label=? WHERE id=?")
+           ->execute([$totalHours,$gmHours,$planType,$planLabel,$clientId]);
         echo json_encode(['success'=>true,'message'=>'Hours bank updated','month'=>$month]);
         exit;
     }
@@ -2590,6 +2616,7 @@ if ($method === 'POST') {
         $fields = []; $params = [];
         if (isset($body['name']))        { $fields[] = 'name = ?';        $params[] = $body['name']; }
         if (isset($body['email']) && trim($body['email']) !== '') { $fields[] = 'email = ?'; $params[] = trim($body['email']); }
+        if (isset($body['is_gm']))       { $fields[] = 'is_gm = ?';       $params[] = !empty($body['is_gm']) && $body['is_gm'] !== '0' && $body['is_gm'] !== 'false' ? 1 : 0; }
         if (isset($body['rate']))        { $fields[] = 'rate = ?';        $params[] = $body['rate']; }
         if (isset($body['active']))      { $fields[] = 'status = ?';      $params[] = $body['active'] ? 'active' : 'inactive'; }
         if (isset($body['role']))        { $fields[] = 'role = ?';        $params[] = $body['role']; }
@@ -2776,9 +2803,9 @@ if ($method === 'POST') {
             }
             // Support new billing_type field (billable/nonbillable/marketing)
             $billingType = isset($en['bt']) ? $en['bt'] : (isset($en['billing_type']) ? $en['billing_type'] : 'billable');
-            $allowedTypes = ['billable', 'nonbillable', 'marketing'];
+            $allowedTypes = ['billable', 'nonbillable', 'marketing', 'growth'];
             if (!in_array($billingType, $allowedTypes)) $billingType = 'billable';
-            $billable = ($billingType === 'billable') ? 1 : 0;
+            $billable = in_array($billingType, ['billable','growth'], true) ? 1 : 0;
             $dayIdx   = (int)($en['day'] ?? 0);
             $rowIdx   = (int)($en['rowIndex'] ?? $i);
             $label  = trim($en['co'] ?? '');
@@ -2974,8 +3001,8 @@ if ($method === 'POST') {
             $es = $db->prepare("INSERT INTO timesheet_entries (timesheet_id,client_id,deliverable,hours,pay_rate,billable,billing_type,day_index,row_index) VALUES (?,?,?,?,?,?,?,?,?)");
             foreach ($entries as $i => $en) {
                 $bt = isset($en['bt']) ? $en['bt'] : (isset($en['billing_type']) ? $en['billing_type'] : 'billable');
-                if (!in_array($bt, ['billable','nonbillable','marketing'])) $bt = 'billable';
-                $es->execute([$tsId,$en['client_id']??null,$en['del']??'',(float)($en['hrs']??0),$en['pay_rate']??0,($bt==='billable'?1:0),$bt,(int)($en['day']??0),$i]);
+                if (!in_array($bt, ['billable','nonbillable','marketing','growth'])) $bt = 'billable';
+                $es->execute([$tsId,$en['client_id']??null,$en['del']??'',(float)($en['hrs']??0),$en['pay_rate']??0,(in_array($bt,['billable','growth'],true)?1:0),$bt,(int)($en['day']??0),$i]);
             }
         }
         $db->prepare("INSERT INTO timesheet_comments (timesheet_id,user_id,type,comment) VALUES (?,?,'override',?)")->execute([$tsId,$hrIdInt,$comment?:'HR override applied']);
@@ -3108,7 +3135,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','ticket_client_emails'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails'];
         if (isset($body['team_meeting_url'])) {
             $mu = trim((string)$body['team_meeting_url']);
             if ($mu !== '' && !preg_match('#^https://[^\s<>"]+$#i', $mu)) { echo json_encode(['success'=>false,'error'=>'The meeting link must start with https://']); exit; }
@@ -3358,48 +3385,100 @@ function monthList() {
     return array_reverse($out);
 }
 // Hours bank for a month: a saved month row, else the client's monthly default
-function monthBank($db, $client, $month) {
-    $st = $db->prepare("SELECT total_hours, plan_type, plan_label FROM client_hours_bank WHERE client_id = ? AND period = ? ORDER BY id DESC LIMIT 1");
-    $st->execute([(int)$client['id'], $month]);
-    if ($b = $st->fetch()) return $b;
-    return ['total_hours'=>$client['monthly_hours'] ?? 0, 'plan_type'=>$client['plan_type'] ?? 'none', 'plan_label'=>$client['plan_label'] ?? ''];
+// ── Plans and hour types (from Genhead pricing) ──────────────────────────
+// Launch = DIY (no hours included; buys hours, which never expire)
+// Lift   = 5 support hrs/mo (roll over 90 days) + ~3 Growth Manager hrs/mo
+// Scale  = 15 support/build hrs/mo (roll over 90 days) + ~5 Growth Manager hrs/mo
+// Growth Manager hours = time logged by people marked Growth Manager; they don't roll over.
+function planDefs() {
+    return ['diy' => ['label' => 'DIY plan', 'support' => 0, 'gm' => 0], 'lift' => ['label' => 'Lift', 'support' => 5, 'gm' => 3],
+            'scale' => ['label' => 'Scale', 'support' => 15, 'gm' => 5], 'retainer' => ['label' => 'Custom retainer', 'support' => null, 'gm' => null],
+            'none' => ['label' => 'No plan', 'support' => 0, 'gm' => 0]];
 }
-// ── Rollover: unused support hours carry into the next month ─────────────
-// Counting starts with rollover_start (the first month whose unused hours carry forward).
-// Unused hours keep adding up month to month; going over in a month doesn't reduce the next one.
-function rolloverOn()    { return getSetting('rollover_enabled', '1') !== '0'; }
-function rolloverStart() { $m = getSetting('rollover_start', ''); return preg_match('/^\d{4}-\d{2}$/', $m) ? $m : '2026-10'; }
-function monthUsedMap($db, $ids, $month) {
+function planLabel($type, $stored = '') {
+    $d = planDefs();
+    if ($type === 'retainer' && $stored !== '' && !preg_match('/hrs?\s*\/\s*(month|period)/i', $stored)) return $stored;
+    return $d[$type]['label'] ?? ($stored ?: 'Support plan');
+}
+function monthBank($db, $client, $month) {
+    $st = $db->prepare("SELECT * FROM client_hours_bank WHERE client_id = ? AND period = ? ORDER BY id DESC LIMIT 1");
+    $st->execute([(int)$client['id'], $month]);
+    $b = $st->fetch();
+    $type = ($b['plan_type'] ?? '') ?: ($client['plan_type'] ?? 'none') ?: 'none';
+    $sup = $b ? $b['total_hours'] : ($client['monthly_hours'] ?? 0);
+    $gm  = $b && $b['gm_hours'] !== null ? $b['gm_hours'] : ($client['gm_monthly_hours'] ?? 0);
+    if ($type === 'diy' || $type === 'none') { $sup = 0; $gm = 0; }
+    return ['total_hours' => (float)$sup, 'gm_hours' => (float)$gm, 'plan_type' => $type, 'plan_label' => planLabel($type, $b['plan_label'] ?? ($client['plan_label'] ?? ''))];
+}
+// ── Hours ledger ────────────────────────────────────────────────────────────
+function rolloverOn()     { return getSetting('rollover_enabled', '1') !== '0'; }
+function rolloverStart()  { $m = getSetting('rollover_start', ''); return preg_match('/^\d{4}-\d{2}$/', $m) ? $m : '2026-10'; }
+function rolloverMonths() { $n = (int)getSetting('rollover_months', '3'); return $n > 0 ? min($n, 24) : 3; }
+function nextMonth($m)    { return date('Y-m', strtotime($m . '-01 +1 month')); }
+function monthUsedSplit($db, $ids, $month) {
     $u = [];
-    foreach (clientMonthEntries($db, $ids, $month) as $en) $u[$en['client_id']] = ($u[$en['client_id']] ?? 0) + (float)$en['hours'];
+    foreach (clientMonthEntries($db, $ids, $month) as $en) {
+        $k = (int)$en['is_gm'] ? 'gm' : 'support';
+        $u[$en['client_id']][$k] = ($u[$en['client_id']][$k] ?? 0) + (float)$en['hours'];
+    }
     return $u;
 }
-// Hours carried into $month for each client (retainer clients only)
-function rolloverCarry($db, $clients, $month) {
-    $carry = [];
-    if (!rolloverOn()) return $carry;
-    $list = array_values(array_filter($clients, function($c) { return ($c['plan_type'] ?? '') !== 'diy'; }));
-    if (!$list) return $carry;
-    $ids = array_map(function($c) { return (int)$c['id']; }, $list);
-    $m = rolloverStart();
-    $guard = 0;
-    while ($m < $month && $guard++ < 120) {
-        $used = monthUsedMap($db, $ids, $m);
-        foreach ($list as $c) {
-            $b = monthBank($db, $c, $m);
-            if (($b['plan_type'] ?? '') === 'diy' || ($b['plan_type'] ?? '') === 'none') { $carry[$c['id']] = 0; continue; }
-            $avail = (float)$b['total_hours'] + (float)($carry[$c['id']] ?? 0);
-            $carry[$c['id']] = max(0, round($avail - (float)($used[$c['id']] ?? 0), 2));
+// For each client, the state of their hours in $month:
+// support: included this month, rolled over (unexpired leftovers), purchased hours balance, used, remaining, expiring at month end
+// gm: included, used, remaining (no rollover)
+// Support hours are used oldest-first: leftovers about to expire, then this month's, then purchased hours.
+function hoursLedger($db, $clients, $month) {
+    $out = [];
+    if (!$clients) return $out;
+    $ids = array_map(function($c) { return (int)$c['id']; }, $clients);
+    $in = implode(',', array_fill(0, count($ids), '?'));
+    $pq = $db->prepare("SELECT client_id, hours, purchased_on FROM client_hour_purchases WHERE kind = 'support' AND client_id IN ($in)");
+    $pq->execute($ids);
+    $buys = [];
+    $start = rolloverStart();
+    foreach ($pq->fetchAll() as $p) { $pm = substr($p['purchased_on'], 0, 7); $buys[$p['client_id']][$pm] = ($buys[$p['client_id']][$pm] ?? 0) + (float)$p['hours']; if ($pm < $start) $start = $pm; }
+    if ($start > $month) $start = $month;
+    $roll = rolloverOn(); $rs = rolloverStart(); $keep = rolloverMonths();
+    $lots = []; $pack = [];
+    for ($m = $start, $g = 0; $m <= $month && $g < 240; $m = nextMonth($m), $g++) {
+        $used = monthUsedSplit($db, $ids, $m);
+        foreach ($clients as $c) {
+            $id = (int)$c['id']; $b = monthBank($db, $c, $m);
+            if (!isset($lots[$id])) $lots[$id] = [];
+            $carried = array_sum(array_column($lots[$id] ?? [], 'h'));
+            $packStart = (float)($pack[$id] ?? 0);
+            $bought = (float)($buys[$id][$m] ?? 0);
+            $pack[$id] = $packStart + $bought;
+            $exp = ($roll && $m >= $rs) ? date('Y-m', strtotime($m . '-01 +' . $keep . ' month')) : $m;
+            if ((float)$b['total_hours'] > 0) $lots[$id][] = ['h' => (float)$b['total_hours'], 'exp' => $exp];
+            usort($lots[$id], function($x, $y) { return strcmp($x['exp'], $y['exp']); });
+            $need = (float)($used[$id]['support'] ?? 0);
+            foreach ($lots[$id] as &$l) { $take = min($l['h'], $need); $l['h'] -= $take; $need -= $take; }
+            unset($l);
+            $fromPack = min($pack[$id], $need); $pack[$id] -= $fromPack; $need -= $fromPack;
+            if ($m === $month) {
+                $leftLots = array_sum(array_column($lots[$id], 'h'));
+                $expiring = array_sum(array_map(function($l) use ($m) { return $l['exp'] === $m ? $l['h'] : 0; }, $lots[$id]));
+                $sUsed = (float)($used[$id]['support'] ?? 0); $gUsed = (float)($used[$id]['gm'] ?? 0);
+                $out[$id] = [
+                    'plan_type' => $b['plan_type'], 'plan_label' => $b['plan_label'],
+                    'support' => ['included' => round((float)$b['total_hours'], 2), 'rollover' => round($carried, 2), 'purchased' => round($packStart + $bought, 2),
+                                  'bought_this_month' => round($bought, 2), 'available' => round((float)$b['total_hours'] + $carried + $packStart + $bought, 2),
+                                  'used' => round($sUsed, 2), 'remaining' => round($leftLots + $pack[$id], 2), 'over' => round(max(0, $need), 2),
+                                  'expiring' => round($expiring, 2), 'pack_left' => round($pack[$id], 2)],
+                    'gm' => ['included' => round((float)$b['gm_hours'], 2), 'used' => round($gUsed, 2), 'remaining' => round(max(0, (float)$b['gm_hours'] - $gUsed), 2),
+                             'over' => round(max(0, $gUsed - (float)$b['gm_hours']), 2)],
+                ];
+            }
+            $lots[$id] = array_values(array_filter($lots[$id], function($l) use ($m) { return $l['h'] > 0.0001 && $l['exp'] > $m; }));
         }
-        $m = date('Y-m', strtotime($m . '-01 +1 month'));
     }
-    return $carry;
+    return $out;
 }
+// Back-compat helpers used by older code paths
 function monthAvailability($db, $client, $month) {
-    $b = monthBank($db, $client, $month);
-    $inc = (float)$b['total_hours'];
-    $ro = (float)(rolloverCarry($db, [$client], $month)[$client['id']] ?? 0);
-    return ['included' => $inc, 'rollover' => round($ro, 2), 'available' => round($inc + $ro, 2)];
+    $l = hoursLedger($db, [$client], $month)[(int)$client['id']]['support'];
+    return ['included' => $l['included'], 'rollover' => round($l['rollover'] + $l['purchased'], 2), 'available' => $l['available']];
 }
 
 // Start date of a timesheet: period_start if stored, else from its "Mon dd - Mon dd" label
@@ -3422,7 +3501,7 @@ function clientMonthEntries($db, $clientIds, $month) {
     $labels = array_keys($labels) ?: ['__none__'];
     $in = implode(',', array_fill(0, count($clientIds), '?'));
     $lin = implode(',', array_fill(0, count($labels), '?'));
-    $st = $db->prepare("SELECT te.client_id, te.hours, te.deliverable, te.day_index, t.period, t.period_start, u.name AS team_member
+    $st = $db->prepare("SELECT te.client_id, te.hours, te.deliverable, te.day_index, t.period, t.period_start, u.name AS team_member, t.user_id, (te.billing_type = 'growth') AS is_gm
         FROM timesheet_entries te
         JOIN timesheets t ON te.timesheet_id = t.id
         JOIN users u ON t.user_id = u.id
