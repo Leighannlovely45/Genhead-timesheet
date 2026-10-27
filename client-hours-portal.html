@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
 :root{
   --navy:#0B1739; --navy-2:#13234F; --teal:#03AD8F; --teal-d:#028a72; --teal-soft:#E6F7F3;
   --ink:#0F172A; --body:#334155; --mid:#64748B; --light:#94A3B8;
@@ -67,7 +68,11 @@ button,input,select,textarea{font:inherit;color:inherit}
 .ring-lbl{font-size:12px;color:var(--mid);margin-top:2px}
 .sum-r{padding:22px 24px;display:flex;flex-direction:column;gap:16px;justify-content:center}
 .sum-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.sum-top h2{font-size:16px;color:var(--ink)}
+.sum-top h2{font-size:16px;color:var(--ink);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.linkbtn{background:none;border:none;color:var(--teal-d);font-weight:600;font-size:13px;cursor:pointer;padding:0}
+.linkbtn:hover{text-decoration:underline}
+.hrs-box{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px;background:#FAFBFD}
+.hrs-other{width:90px;display:inline-block;margin-left:6px;padding:6px 8px}
 select.month{border:1px solid var(--line);border-radius:10px;padding:8px 34px 8px 12px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748B' stroke-width='1.6' fill='none'/%3E%3C/svg%3E") no-repeat right 12px center;appearance:none;font-weight:600;font-size:14px;cursor:pointer;color:var(--ink)}
 select.month:focus{outline:none;border-color:var(--teal)}
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
@@ -259,8 +264,8 @@ function hoursHTML() {
     return `<div class="card"><div class="empty">
       <div class="ico">${ICONS.clock}</div>
       <h3>You're on the DIY plan</h3>
-      <p>You manage your GenSuite account yourself. If you'd like hands-on help from the Genhead team, ask about adding support hours.</p>
-      <button class="btn btn-primary" onclick="openForm('billing','Adding support hours to our plan')">Ask about support hours</button>
+      <p>You manage your GenSuite account yourself. Need hands-on help from the Genhead team? Request a block of support hours for a project, or add hours to your plan every month.</p>
+      <button class="btn btn-primary" onclick="openForm('hours')">${ICONS.plus} Request support hours</button>
     </div></div>`;
   }
   const total = parseFloat(h.bank.total_hours) || 0, used = parseFloat(h.bank.used_hours) || 0, left = Math.max(0, total - used);
@@ -271,8 +276,8 @@ function hoursHTML() {
   const monthLabel = (h.periods || []).find(p => p.value === h.month)?.label || '';
   const opts = (h.periods || []).map(p => `<option value="${esc(p.value)}" ${p.value === h.month ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
   let st = '';
-  if (total > 0 && used > total) st = `<div class="state st-out">${ICONS.warn}<div><b>Over by ${fmtH(used - total)} hrs</b> this month.</div><button class="btn btn-ghost" onclick="openForm('billing','Additional support hours')">Request more hours</button></div>`;
-  else if (total > 0 && pct <= .2) st = `<div class="state st-low">${ICONS.warn}<div><b>Running low:</b> ${fmtH(left)} hrs left this month.</div><button class="btn btn-ghost" onclick="openForm('billing','Additional support hours')">Request more hours</button></div>`;
+  if (total > 0 && used > total) st = `<div class="state st-out">${ICONS.warn}<div><b>Over by ${fmtH(used - total)} hrs</b> this month.</div><button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button></div>`;
+  else if (total > 0 && pct <= .2) st = `<div class="state st-low">${ICONS.warn}<div><b>Running low:</b> ${fmtH(left)} hrs left this month.</div><button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button></div>`;
   else if (total > 0) st = `<div class="state st-ok">${ICONS.check}<div><b>On track.</b> ${Math.round(pct * 100)}% of your available hours remaining.${h.rollover_on ? ' Unused hours roll over to next month.' : ''}</div></div>`;
   else st = `<div class="state st-low">${ICONS.clock}<div>No support hours are set for this month yet. Contact us if that doesn't look right.</div></div>`;
   const acts = h.activity || [];
@@ -294,7 +299,7 @@ function hoursHTML() {
       </div>
       <div class="sum-r">
         <div class="sum-top">
-          <h2>Hours this month</h2>
+          <h2>Hours this month <button class="linkbtn" onclick="openForm('hours')">Need more hours?</button></h2>
           <label class="sr" for="month">Month</label>
           <select class="month" id="month" onchange="loadMonth(this.value)">${opts}</select>
         </div>
@@ -347,7 +352,7 @@ function requestsHTML() {
 
 // ── New request form ──
 function openForm(cat, subject) {
-  const cats = state.categories || { issue: "Something isn't working", change: 'Change request', new_build: 'New build or feature', question: 'Question / how-to', billing: 'Billing' };
+  const cats = state.categories || { issue: "Something isn't working", change: 'Change request', new_build: 'New build or feature', question: 'Question / how-to', hours: 'Support hours', billing: 'Billing' };
   const pick = cat && cats[cat] ? cat : 'issue';
   const ov = document.createElement('div'); ov.className = 'ov'; ov.id = 'ov';
   ov.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
@@ -360,6 +365,19 @@ function openForm(cat, subject) {
       </div>
       <div class="f"><span class="lbl">What do you need help with?</span>
         <div class="choices">${Object.entries(cats).map(([k, v]) => `<label class="choice"><input type="radio" name="cat" value="${esc(k)}" ${k === pick ? 'checked' : ''}>${esc(v)}</label>`).join('')}</div>
+      </div>
+      <div class="hrs-box" id="hrs-box" ${pick === 'hours' ? '' : 'hidden'}>
+        <div class="f"><span class="lbl">How many hours?</span>
+          <div class="seg" id="hrs-qty"><label><input type="radio" name="hq" value="5">5</label><label><input type="radio" name="hq" value="10" checked>10</label><label><input type="radio" name="hq" value="20">20</label><label><input type="radio" name="hq" value="other">Other</label></div>
+          <input class="in hrs-other" id="hrs-other" type="number" min="1" step="1" placeholder="hrs" hidden aria-label="Number of hours">
+        </div>
+        <div class="f" style="margin-bottom:0"><span class="lbl">How would you like them?</span>
+          <div class="choices">
+            <label class="choice"><input type="radio" name="ht" value="once" checked>One-time block (for a project)</label>
+            <label class="choice"><input type="radio" name="ht" value="monthly">Add to my plan every month</label>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:10px">We'll confirm pricing and timing by email before anything changes.</p>
       </div>
       <div class="f"><span class="lbl">How urgent is it?</span>
         <div class="seg"><label><input type="radio" name="pri" value="low">Low</label><label><input type="radio" name="pri" value="normal" checked>Normal</label><label class="urg"><input type="radio" name="pri" value="urgent">Urgent</label></div>
@@ -374,10 +392,30 @@ function openForm(cat, subject) {
       </div>
     </form></div>`;
   ov.addEventListener('click', e => { if (e.target === ov) closeForm(); });
+  ov.addEventListener('change', e => {
+    if (e.target.name === 'cat') { $('#hrs-box').hidden = e.target.value !== 'hours'; if (e.target.value === 'hours') fillHours(); }
+    if (e.target.name === 'hq' || e.target.name === 'ht') { $('#hrs-other').hidden = (document.querySelector('input[name=hq]:checked') || {}).value !== 'other'; fillHours(); }
+  });
+  ov.addEventListener('input', e => { if (e.target.id === 'hrs-other') fillHours(); if (e.target.id === 'tf-subject') e.target.dataset.auto = '0'; });
   document.body.appendChild(ov);
   document.addEventListener('keydown', escClose);
   $('#tf').addEventListener('submit', sendForm);
-  setTimeout(() => ($('#tf-name').value ? (subject ? $('#tf-details') : $('#tf-subject')) : $('#tf-name')).focus(), 50);
+  if (pick === 'hours') fillHours();
+  const syncDetails = () => { const h = (document.querySelector('input[name=cat]:checked') || {}).value === 'hours'; $('#tf-details').placeholder = h ? 'Anything we should know, like what the hours are for (optional)' : "What's happening, what you expected, and anything we should know."; };
+  syncDetails(); ov.addEventListener('change', e => { if (e.target.name === 'cat') syncDetails(); });
+  setTimeout(() => ($('#tf-name').value ? (subject || pick === 'hours' ? $('#tf-details') : $('#tf-subject')) : $('#tf-name')).focus(), 50);
+}
+// Support-hours request: build the subject from the picks (until the person edits it)
+function hoursPick() {
+  const q = (document.querySelector('input[name=hq]:checked') || {}).value;
+  const n = q === 'other' ? parseFloat($('#hrs-other').value) || 0 : parseFloat(q) || 0;
+  const monthly = (document.querySelector('input[name=ht]:checked') || {}).value === 'monthly';
+  return { n, monthly, text: n ? `${n} support hours ${monthly ? 'added to our plan every month' : 'as a one-time block'}` : '' };
+}
+function fillHours() {
+  const s = $('#tf-subject'); if (!s) return;
+  const p = hoursPick();
+  if (!s.value || s.dataset.auto === '1') { s.value = p.text ? `Request: ${p.text}` : 'Request: support hours'; s.dataset.auto = '1'; }
 }
 function escClose(e) { if (e.key === 'Escape') closeForm(); }
 function closeForm() { const o = $('#ov'); if (o) o.remove(); document.removeEventListener('keydown', escClose); }
@@ -388,6 +426,11 @@ async function sendForm(e) {
   const body = { location_id: LOC, contact_name: v('tf-name'), contact_email: v('tf-email'), subject: v('tf-subject'), details: v('tf-details'), link: v('tf-link'),
                  category: (document.querySelector('input[name=cat]:checked') || {}).value, priority: (document.querySelector('input[name=pri]:checked') || {}).value, website: v('tf-web') };
   const err = m => { $('#tf-err').innerHTML = `<div class="err" role="alert">${esc(m)}</div>`; };
+  if (body.category === 'hours') {
+    const p = hoursPick();
+    if (!p.n) return err('Choose how many hours you need.');
+    body.details = `Requested: ${p.text}.` + (state.hours && state.hours.plan === 'diy' ? ' (Currently on the DIY plan.)' : '') + (body.details ? `\n\n${body.details}` : '');
+  }
   if (!body.contact_name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.contact_email)) return err('Please enter your name and a valid email so we can reply.');
   if (body.subject.length < 3 || body.details.length < 5) return err('Please add a short subject and a few words about what you need.');
   const go = $('#tf-go'); go.disabled = true; go.textContent = 'Sending…';

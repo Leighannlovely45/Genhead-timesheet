@@ -216,7 +216,7 @@ if (in_array($action, ['add_employee','add_manager','update_employee','remove_em
 // ── SUPPORT TICKETS ───────────────────────────────────────────────────────
 // Clients file requests from the Support portal; the team works them in Projects → Ticketing.
 $TICKET_STATUSES   = ['new' => 'New', 'in_progress' => 'In progress', 'waiting' => 'Waiting on you', 'resolved' => 'Resolved'];
-$TICKET_CATEGORIES = ['issue' => 'Something isn\'t working', 'change' => 'Change request', 'new_build' => 'New build or feature', 'question' => 'Question / how-to', 'billing' => 'Billing'];
+$TICKET_CATEGORIES = ['issue' => 'Something isn\'t working', 'change' => 'Change request', 'new_build' => 'New build or feature', 'question' => 'Question / how-to', 'hours' => 'Support hours', 'billing' => 'Billing'];
 $TICKET_PRIORITY   = ['low' => 'Low', 'normal' => 'Normal', 'urgent' => 'Urgent'];
 function ticketNo($id) { return 'GH-' . str_pad((string)(int)$id, 4, '0', STR_PAD_LEFT); }
 function ticketHook($event, $t, $extra = []) {
