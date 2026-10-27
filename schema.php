@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-27.3');
+define('SCHEMA_VERSION', '2026-10-27.4');
 
 function ensureSchema($db) {
     static $done = false;
@@ -113,6 +113,17 @@ function ensureSchema($db) {
         updated_at DATETIME NULL,
         resolved_at DATETIME NULL,
         INDEX (client_id), INDEX (location_id), INDEX (status)
+    )");
+    $exec("CREATE TABLE IF NOT EXISTS ticket_files (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_id INT NOT NULL,
+        token CHAR(32) NOT NULL,
+        name VARCHAR(150) NULL,
+        mime VARCHAR(40) NOT NULL,
+        size INT NOT NULL,
+        width INT NULL, height INT NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (ticket_id), UNIQUE KEY (token)
     )");
     $exec("CREATE TABLE IF NOT EXISTS ticket_notes (
         id INT AUTO_INCREMENT PRIMARY KEY,

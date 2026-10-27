@@ -150,7 +150,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // ─────────────────────────────────────────
 // Open without signing in: sign-in/reset flows, the login name list, the Chrome
 // extension, the client hours portal & hours-bank admin, and secret-protected GHL hooks.
-$PUBLIC_ACTIONS = ['submit_ticket','client_tickets','verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
+$PUBLIC_ACTIONS = ['submit_ticket','client_tickets','client_ticket_file','verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
                    'upsert_time','client_hours','get_client_by_location',
                    'load_clients','ghl_add','fire_webhook'];
 $ROLE_RULES = [
@@ -255,7 +255,7 @@ function ticketHook($event, $t, $extra = []) {
         'category' => $TICKET_CATEGORIES[$t['category']] ?? $t['category'], 'priority' => $TICKET_PRIORITY[$t['priority']] ?? $t['priority'],
         'subject' => $t['subject'], 'details' => $t['details'] ?? '', 'link' => $t['link'] ?? '',
         'status' => $TICKET_STATUSES[$t['status']] ?? $t['status'], 'assigned_to' => $t['assigned_name'] ?? '',
-        'team_url' => appBaseUrl() . '#ticket-' . (int)$t['id'], 'timestamp' => date('c'),
+        'team_url' => appBaseUrl() . 'index.html#ticket-' . (int)$t['id'], 'screenshots' => (int)($t['screenshots'] ?? 0), 'timestamp' => date('c'),
     ], $extra);
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
@@ -344,10 +344,51 @@ function ticketTeamEmail($t) {
     foreach (array_filter(array_map('trim', explode(',', $to))) as $one)
         $ok = teamMail($one, ($t['priority'] === 'urgent' ? 'URGENT ' : '') . 'New support request [' . ticketNo($t['id']) . '] ' . ($t['client_name'] ?? '') . ': ' . $t['subject'],
             ['Client' => $t['client_name'] ?? '', 'From' => trim(($t['contact_name'] ?? '') . ' <' . ($t['contact_email'] ?? '') . '>'), 'Type' => $TICKET_CATEGORIES[$t['category']] ?? $t['category'],
-             'Priority' => $pri, 'Subject' => $t['subject'], 'Details' => $t['details'] ?? '', 'Link' => $t['link'] ?? ''], $t) || $ok;
+             'Priority' => $pri, 'Subject' => $t['subject'], 'Details' => $t['details'] ?? '', 'Link' => $t['link'] ?? '',
+             'Screenshots' => !empty($t['screenshots']) ? $t['screenshots'] . ' attached (view in Ticketing)' : ''], $t) || $ok;
     return $ok;
 }
 
+// ── Screenshots on tickets ─────────────────────────────────────────────────
+// Stored in ticket_uploads/ (blocked from direct web access) and served through the API:
+// signed-in team members, or the client's own portal (matching sub-account).
+function ticketUploadDir() {
+    $d = __DIR__ . '/ticket_uploads';
+    if (!is_dir($d)) @mkdir($d, 0755, true);
+    if (!file_exists("$d/.htaccess")) @file_put_contents("$d/.htaccess", "Require all denied\nDeny from all\n");
+    if (!file_exists("$d/index.html")) @file_put_contents("$d/index.html", '');
+    return $d;
+}
+// $images: data URLs (image/png|jpeg|webp|gif). Returns how many were saved.
+function saveTicketImages($db, $ticketId, $images, $names = []) {
+    $saved = 0; $dir = ticketUploadDir();
+    $ext = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+    foreach (array_slice((array)$images, 0, 3) as $i => $data) {
+        if (!is_string($data) || !preg_match('#^data:(image/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=\r\n]+)$#', $data, $m)) continue;
+        $bin = base64_decode($m[2], true);
+        if ($bin === false || strlen($bin) < 100 || strlen($bin) > 4 * 1024 * 1024) continue;
+        $info = @getimagesizefromstring($bin);
+        if (!$info || !isset($ext[$info['mime']]) || $info[0] < 1 || $info[1] < 1 || $info[0] > 8000 || $info[1] > 8000) continue;
+        $token = bin2hex(random_bytes(16));
+        if (@file_put_contents("$dir/$token." . $ext[$info['mime']], $bin) === false) continue;
+        $name = mb_substr(preg_replace('/[^\w .()-]+/u', '', (string)($names[$i] ?? '')) ?: ('screenshot-' . ($i + 1)), 0, 150);
+        $db->prepare("INSERT INTO ticket_files (ticket_id, token, name, mime, size, width, height) VALUES (?,?,?,?,?,?,?)")
+           ->execute([(int)$ticketId, $token, $name, $info['mime'], strlen($bin), (int)$info[0], (int)$info[1]]);
+        $saved++;
+    }
+    return $saved;
+}
+function sendTicketFile($f) {
+    $ext = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+    $path = ticketUploadDir() . '/' . $f['token'] . '.' . ($ext[$f['mime']] ?? 'bin');
+    if (!is_file($path)) { http_response_code(404); echo 'Not found'; exit; }
+    header_remove('Content-Type');
+    header('Content-Type: ' . $f['mime']); header('X-Content-Type-Options: nosniff');
+    header('Content-Disposition: inline; filename="' . preg_replace('/[^\w .()-]/', '', $f['name'] ?: 'screenshot') . '.' . ($ext[$f['mime']] ?? 'bin') . '"');
+    header('Cache-Control: private, max-age=86400'); header("Content-Security-Policy: default-src 'none'");
+    header('Content-Length: ' . filesize($path));
+    readfile($path); exit;
+}
 function ticketRow($db, $id) {
     $st = $db->prepare("SELECT t.*, c.name AS client_name, u.name AS assigned_name FROM tickets t LEFT JOIN clients c ON c.id = t.client_id LEFT JOIN users u ON u.id = t.assigned_to WHERE t.id = ?");
     $st->execute([(int)$id]); return $st->fetch();
@@ -392,8 +433,9 @@ if ($action === 'submit_ticket' && $method === 'POST') {
     $db->prepare("INSERT INTO tickets (client_id, location_id, contact_name, contact_email, category, priority, subject, details, link, status, ip, updated_at) VALUES (?,?,?,?,?,?,?,?,?,'new',?,NOW())")
        ->execute([(int)$client['id'], $loc, mb_substr($name,0,255), mb_substr($email,0,255), $cat, $pri, mb_substr($subject,0,200), mb_substr($details,0,5000), $link !== '' ? mb_substr($link,0,500) : null, $ip]);
     $tid = (int)$db->lastInsertId();
-    $t = ticketRow($db, $tid);
-    ticketNote($db, $tid, null, $name, 'Request received from ' . $name, 0, 1);
+    $shots = !empty($b['images']) ? saveTicketImages($db, $tid, $b['images'], (array)($b['image_names'] ?? [])) : 0;
+    $t = ticketRow($db, $tid); $t['screenshots'] = $shots;
+    ticketNote($db, $tid, null, $name, 'Request received from ' . $name . ($shots ? " with $shots screenshot" . ($shots > 1 ? 's' : '') : ''), 0, 1);
     $staff = $db->query("SELECT id FROM users WHERE status = 'active' AND role IN ('admin','hr','manager')")->fetchAll(PDO::FETCH_COLUMN);
     ticketNotify($db, 'ticket', $t, $staff, 0, $client['name'], ($pri === 'urgent' ? 'URGENT · ' : '') . $subject);
     ticketHook('ticket_created', $t);
@@ -414,7 +456,8 @@ if ($action === 'client_tickets') {
     foreach ($st->fetchAll() as $t) {
         $nq->execute([(int)$t['id']]);
         $replies = array_map(function($n){ return ['from'=>trim(explode(' ', (string)$n['user_name'])[0]) ?: 'Genhead', 'text'=>$n['note'], 'at'=>$n['created_at']]; }, $nq->fetchAll());
-        $out[] = ['number'=>ticketNo($t['id']), 'subject'=>$t['subject'], 'category'=>$TICKET_CATEGORIES[$t['category']] ?? $t['category'],
+        $fq = $db->prepare("SELECT token, name FROM ticket_files WHERE ticket_id = ? ORDER BY id"); $fq->execute([(int)$t['id']]);
+        $out[] = ['number'=>ticketNo($t['id']), 'subject'=>$t['subject'], 'files'=>$fq->fetchAll(), 'category'=>$TICKET_CATEGORIES[$t['category']] ?? $t['category'],
                   'priority'=>$t['priority'], 'status'=>$t['status'], 'status_label'=>$TICKET_STATUSES[$t['status']] ?? $t['status'],
                   'created_at'=>$t['created_at'], 'updated_at'=>$t['updated_at'], 'replies'=>$replies];
     }
@@ -426,7 +469,7 @@ if ($action === 'load_tickets') {
     $db = getDB();
     $where = in_array($AUTH['role'], ['admin','hr','manager'], true) ? '1=1' : 't.assigned_to = ' . (int)$AUTH['id'];
     $rows = $db->query("SELECT t.id, t.client_id, t.contact_name, t.category, t.priority, t.subject, t.status, t.assigned_to, t.task_id, t.created_at, t.updated_at,
-                               c.name AS client_name, u.name AS assigned_name
+                               c.name AS client_name, u.name AS assigned_name, (SELECT COUNT(*) FROM ticket_files f WHERE f.ticket_id = t.id) AS file_count
                         FROM tickets t LEFT JOIN clients c ON c.id = t.client_id LEFT JOIN users u ON u.id = t.assigned_to
                         WHERE $where ORDER BY FIELD(t.status,'new','in_progress','waiting','resolved'), FIELD(t.priority,'urgent','normal','low'), t.id DESC LIMIT 500")->fetchAll();
     foreach ($rows as &$r) $r['number'] = ticketNo($r['id']);
@@ -438,8 +481,24 @@ if ($action === 'ticket_detail') {
     if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
     unset($t['ip']); $t['number'] = ticketNo($t['id']);
     $n = $db->prepare("SELECT id, user_name, note, is_public, is_activity, created_at FROM ticket_notes WHERE ticket_id = ? ORDER BY id"); $n->execute([(int)$t['id']]);
-    echo json_encode(['success'=>true,'ticket'=>$t,'notes'=>$n->fetchAll(),'rate'=>(float)(getSetting('support_hour_rate', '80') ?: 80),'can_approve'=>in_array($AUTH['role'], ['admin','hr'], true)]);
+    $fq = $db->prepare("SELECT token, name, mime, size, width, height FROM ticket_files WHERE ticket_id = ? ORDER BY id"); $fq->execute([(int)$t['id']]);
+    echo json_encode(['success'=>true,'ticket'=>$t,'notes'=>$n->fetchAll(),'files'=>$fq->fetchAll(),'rate'=>(float)(getSetting('support_hour_rate', '80') ?: 80),'can_approve'=>in_array($AUTH['role'], ['admin','hr'], true)]);
     exit;
+}
+if ($action === 'ticket_file') {
+    $db = getDB();
+    $f = $db->prepare("SELECT f.*, t.assigned_to FROM ticket_files f JOIN tickets t ON t.id = f.ticket_id WHERE f.token = ?"); $f->execute([(string)($_GET['token'] ?? '')]);
+    $row = $f->fetch();
+    if (!$row || !canWorkTicket($AUTH, $row)) { http_response_code(404); echo 'Not found'; exit; }
+    sendTicketFile($row);
+}
+if ($action === 'client_ticket_file') {
+    $db = getDB(); $client = clientByLocation($db, trim((string)($_GET['location_id'] ?? '')));
+    $f = $db->prepare("SELECT f.* FROM ticket_files f JOIN tickets t ON t.id = f.ticket_id WHERE f.token = ? AND t.client_id = ?");
+    $f->execute([(string)($_GET['token'] ?? ''), $client ? (int)$client['id'] : -1]);
+    $row = $f->fetch();
+    if (!$row) { http_response_code(404); echo 'Not found'; exit; }
+    sendTicketFile($row);
 }
 if ($action === 'update_ticket') {
     $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));

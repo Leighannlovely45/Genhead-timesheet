@@ -160,6 +160,16 @@ textarea.in{min-height:120px;resize:vertical}
 .ok h2{font-size:20px;color:var(--ink);margin-bottom:6px}
 .ok .no{font-size:15px;color:var(--ink);font-weight:600}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.drop{border:1.5px dashed #CBD5E1;border-radius:12px;padding:14px;text-align:center;font-size:13.5px;color:var(--mid);cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--teal);background:var(--teal-soft)}
+.drop b{color:var(--teal-d)}
+.shots{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.shot{position:relative;width:96px;height:72px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:#F8FAFC}
+.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.shot button{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(11,23,57,.75);color:#fff;font-size:14px;line-height:22px;cursor:pointer;padding:0}
+.req-shots{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.req-shots a{display:block;width:72px;height:54px;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+.req-shots img{width:100%;height:100%;object-fit:cover}
 
 .alert{display:flex;gap:12px;align-items:flex-start;background:var(--red-soft);color:#7F1D1D;border-radius:12px;padding:14px 16px;font-size:14px}
 .foot{max-width:980px;margin:0 auto;padding:0 20px 28px;font-size:12.5px;color:var(--light);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
@@ -389,6 +399,7 @@ function requestsHTML() {
       </div>
       <div class="req-s">${esc(t.subject)}</div>
       <div class="req-m">${esc(t.category)} · Sent ${esc(fmtDate(t.created_at, { month: 'short', day: 'numeric', year: 'numeric' }))}${t.updated_at && t.updated_at !== t.created_at ? ` · Updated ${esc(fmtDate(t.updated_at))}` : ''}</div>
+      ${(t.files || []).length ? `<div class="req-shots">${t.files.map(f => { const u = `${API}?action=client_ticket_file&location_id=${encodeURIComponent(LOC)}&token=${encodeURIComponent(f.token)}`; return `<a href="${u}" target="_blank" rel="noopener" title="${esc(f.name)}"><img src="${u}" alt="${esc(f.name)}" loading="lazy"></a>`; }).join('')}</div>` : ''}
       ${(t.replies || []).map(r => `<div class="reply"><div class="rf">${esc(r.from)} from Genhead · ${esc(fmtDate(r.at))}</div>${esc(r.text)}</div>`).join('')}
     </div>`).join('')}</div>`;
 }
@@ -428,6 +439,11 @@ function openForm(cat, subject) {
       <div class="f"><label for="tf-subject">Subject</label><input class="in" id="tf-subject" maxlength="150" placeholder="e.g. Booking form isn't sending confirmations" value="${esc(subject || '')}" required></div>
       <div class="f"><label for="tf-details">Details</label><textarea class="in" id="tf-details" maxlength="5000" placeholder="What's happening, what you expected, and anything we should know." required></textarea></div>
       <div class="f"><label for="tf-link">Link <span class="hint">(optional, the page or record this is about)</span></label><input class="in" id="tf-link" placeholder="https://"></div>
+      <div class="f"><span class="lbl">Screenshots <span class="hint" style="font-weight:400;color:var(--mid)">(optional, up to 3)</span></span>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Add screenshots">Drag images here, <b>choose files</b>, or paste with Ctrl+V</div>
+        <input type="file" id="tf-files" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+        <div class="shots" id="shots"></div>
+      </div>
       <div class="hp" aria-hidden="true"><label>Website<input id="tf-web" tabindex="-1" autocomplete="off"></label></div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px">
         <button type="button" class="btn btn-ghost" onclick="closeForm()">Cancel</button>
@@ -443,6 +459,7 @@ function openForm(cat, subject) {
   document.body.appendChild(ov);
   document.addEventListener('keydown', escClose);
   $('#tf').addEventListener('submit', sendForm);
+  setupShots();
   if (pick === 'hours') fillHours();
   const syncDetails = () => { const h = (document.querySelector('input[name=cat]:checked') || {}).value === 'hours'; $('#tf-details').placeholder = h ? 'Anything we should know, like what the hours are for (optional)' : "What's happening, what you expected, and anything we should know."; };
   syncDetails(); ov.addEventListener('change', e => { if (e.target.name === 'cat') syncDetails(); });
@@ -460,6 +477,47 @@ function fillHours() {
   const p = hoursPick();
   if (!s.value || s.dataset.auto === '1') { s.value = p.text ? `Request: ${p.text}` : 'Request: support hours'; s.dataset.auto = '1'; }
 }
+// ── Screenshots: shrink in the browser (max 1600px) and send with the request ──
+let SHOTS = [];
+function setupShots() {
+  SHOTS = [];
+  const drop = $('#drop'), inp = $('#tf-files');
+  drop.onclick = () => inp.click();
+  drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } };
+  inp.onchange = () => { addShots([...inp.files]); inp.value = ''; };
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); addShots([...e.dataTransfer.files]); };
+  $('#ov').addEventListener('paste', e => { const f = [...(e.clipboardData || {}).items || []].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile()); if (f.length) { e.preventDefault(); addShots(f); } });
+}
+function shrink(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      let d = c.toDataURL('image/png');
+      if (d.length > 1.8e6) d = c.toDataURL('image/jpeg', .86);
+      res(d);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(); };
+    img.src = url;
+  });
+}
+async function addShots(files) {
+  for (const f of files) {
+    if (SHOTS.length >= 3) { $('#tf-err').innerHTML = `<div class="err">You can attach up to 3 screenshots.</div>`; break; }
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type)) { $('#tf-err').innerHTML = `<div class="err">${esc(f.name || 'That file')} isn't an image. Please attach PNG, JPG, GIF or WebP.</div>`; continue; }
+    if (f.size > 20 * 1024 * 1024) { $('#tf-err').innerHTML = `<div class="err">${esc(f.name)} is too large.</div>`; continue; }
+    try { SHOTS.push({ name: (f.name || 'screenshot').replace(/\.[^.]+$/, ''), data: await shrink(f) }); } catch (e) { $('#tf-err').innerHTML = `<div class="err">Couldn't read ${esc(f.name || 'that image')}.</div>`; }
+  }
+  renderShots();
+}
+function renderShots() {
+  $('#shots').innerHTML = SHOTS.map((s, i) => `<div class="shot"><img src="${s.data}" alt="${esc(s.name)}"><button type="button" aria-label="Remove ${esc(s.name)}" onclick="SHOTS.splice(${i},1);renderShots()">&times;</button></div>`).join('');
+  $('#drop').style.display = SHOTS.length >= 3 ? 'none' : '';
+}
 function escClose(e) { if (e.key === 'Escape') closeForm(); }
 function closeForm() { const o = $('#ov'); if (o) o.remove(); document.removeEventListener('keydown', escClose); }
 
@@ -467,7 +525,8 @@ async function sendForm(e) {
   e.preventDefault();
   const v = id => ($('#' + id).value || '').trim();
   const body = { location_id: LOC, contact_name: v('tf-name'), contact_email: v('tf-email'), subject: v('tf-subject'), details: v('tf-details'), link: v('tf-link'),
-                 category: (document.querySelector('input[name=cat]:checked') || {}).value, priority: (document.querySelector('input[name=pri]:checked') || {}).value, website: v('tf-web') };
+                 category: (document.querySelector('input[name=cat]:checked') || {}).value, priority: (document.querySelector('input[name=pri]:checked') || {}).value, website: v('tf-web'),
+                 images: SHOTS.map(s => s.data), image_names: SHOTS.map(s => s.name) };
   const err = m => { $('#tf-err').innerHTML = `<div class="err" role="alert">${esc(m)}</div>`; };
   if (body.category === 'hours') {
     const p = hoursPick();

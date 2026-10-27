@@ -3225,7 +3225,7 @@ function renderTickets(filter){
   ${list.length?`<div class="billing-tbl"><table><thead><tr><th>#</th><th>Request</th><th>Client</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Age</th></tr></thead><tbody>
     ${list.map(t=>`<tr style="cursor:pointer" onclick="openTicket(${t.id})">
       <td style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--mid)">${escHtml(t.number)}</td>
-      <td><div style="font-weight:600;color:var(--dark)">${escHtml(t.subject)}</div><div style="font-size:.72rem;color:var(--mid)">${escHtml((_tk.meta&&_tk.meta.categories&&_tk.meta.categories[t.category])||t.category||"")}${t.contact_name?` · ${escHtml(t.contact_name)}`:""}${t.task_id?" · 🔗 task":""}</div></td>
+      <td><div style="font-weight:600;color:var(--dark)">${escHtml(t.subject)}</div><div style="font-size:.72rem;color:var(--mid)">${escHtml((_tk.meta&&_tk.meta.categories&&_tk.meta.categories[t.category])||t.category||"")}${t.contact_name?` · ${escHtml(t.contact_name)}`:""}${parseInt(t.file_count)?` · 📎 ${parseInt(t.file_count)}`:""}${t.task_id?" · 🔗 task":""}</div></td>
       <td style="font-size:.82rem">${escHtml(t.client_name||"—")}</td>
       <td style="font-size:.8rem">${pri(t.priority)}</td>
       <td>${tkChip(t.status)}</td>
@@ -3263,6 +3263,7 @@ async function openTicket(id){
     </div>
     <div style="padding:.9rem 1.25rem;border-bottom:1px solid var(--border)">
       <div style="font-size:.86rem;color:var(--dark);white-space:pre-wrap;line-height:1.5">${escHtml(t.details||"")}</div>
+      ${(r.files||[]).length?`<div id="tk-shots" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem">${r.files.map(f=>`<a href="#" data-token="${escHtml(f.token)}" title="${escHtml(f.name)} (click to open full size)" style="display:block;width:120px;height:84px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--hover)" onclick="event.preventDefault();openTicketFile(this.dataset.token)"><img alt="${escHtml(f.name)}" style="width:100%;height:100%;object-fit:cover"></a>`).join("")}</div>`:""}
       ${t.link?`<div style="margin-top:.5rem;font-size:.8rem">🔗 <a href="${escHtml(/^https?:\/\//i.test(t.link)?t.link:"#")}" target="_blank" rel="noopener" style="color:var(--teal);word-break:break-all">${escHtml(t.link)}</a></div>`:""}
     </div>
     <div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border);background:var(--hover);display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem">
@@ -3298,6 +3299,19 @@ async function openTicket(id){
   </div>`;
   document.body.appendChild(p);
   p.addEventListener("click",e=>{if(e.target===p)p.remove();});
+  // Screenshots load with the sign-in header (plain <img> links can't carry it)
+  document.querySelectorAll("#tk-shots a").forEach(async a=>{const u=await ticketFileUrl(a.dataset.token);if(u)a.querySelector("img").src=u;});
+}
+const _tkFileCache={};
+async function ticketFileUrl(token){
+  if(_tkFileCache[token])return _tkFileCache[token];
+  try{const r=await fetch(`${API_BASE}?action=ticket_file&token=${encodeURIComponent(token)}`);if(!r.ok)return null;return _tkFileCache[token]=URL.createObjectURL(await r.blob());}catch(e){return null;}
+}
+async function openTicketFile(token){
+  const u=await ticketFileUrl(token); if(!u){showToast("Couldn't open that screenshot.");return;}
+  const v=document.createElement("div");v.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:800;display:flex;align-items:center;justify-content:center;padding:2rem;cursor:zoom-out";
+  v.innerHTML=`<img src="${u}" style="max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)">`;
+  v.onclick=()=>v.remove(); document.body.appendChild(v);
 }
 // ── Approve & invoice (support-hours requests) ──
 function approveHTML(t,r){

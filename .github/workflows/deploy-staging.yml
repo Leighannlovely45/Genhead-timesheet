@@ -42,4 +42,5 @@ jobs:
             --exclude='.gitignore' \
             --exclude='db.php' \
             --exclude='chrome-extension/' \
+            --exclude='ticket_uploads/' \
             ./ "${CPANEL_USER}@${CPANEL_HOST}:${CPANEL_DEPLOY_PATH}/"
