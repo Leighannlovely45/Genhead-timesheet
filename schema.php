@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-27.2');
+define('SCHEMA_VERSION', '2026-10-27.3');
 
 function ensureSchema($db) {
     static $done = false;
@@ -198,6 +198,12 @@ function ensureSchema($db) {
     $add('clients', 'gm_monthly_hours', "DECIMAL(8,2) NULL");
     $add('client_hours_bank', 'gm_hours', "DECIMAL(8,2) NULL");
     $add('users', 'is_gm', "TINYINT(1) NOT NULL DEFAULT 0");
+    $add('tickets', 'approved_at', "DATETIME NULL");
+    $add('tickets', 'approved_by', "INT NULL");
+    $add('tickets', 'approved_hours', "DECIMAL(8,2) NULL");
+    $add('tickets', 'approved_kind', "VARCHAR(20) NULL");
+    $add('tickets', 'approved_amount', "DECIMAL(10,2) NULL");
+    $add('tickets', 'invoice_sent', "TINYINT(1) NULL");
     $exec("CREATE TABLE IF NOT EXISTS client_hour_purchases (
         id INT AUTO_INCREMENT PRIMARY KEY,
         client_id INT NOT NULL,

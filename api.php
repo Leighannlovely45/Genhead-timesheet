@@ -166,7 +166,7 @@ $ROLE_RULES = [
     'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
     'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'], 'ext_rename_client'=>['admin','hr'],
     'load_client_banks'=>['admin','hr'], 'set_client_hours'=>['admin','hr'],
-    'send_setup_link'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'],
+    'send_setup_link'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'approve_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'],
 ];
 // Removed: one-time setup helpers that let anyone create admins or change PINs
 if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
@@ -276,6 +276,10 @@ function ticketEmail($t, $kind, $text = '') {
     if ($kind === 'received') {
         $subject = "We received your request [$no]: " . $t['subject'];
         $lead = "Thanks, $first. Your request is in and the Genhead team has been notified. We'll reply here as soon as we pick it up.";
+        $body = '';
+    } elseif ($kind === 'approved') {
+        $subject = "Approved [$no]: " . $t['subject'];
+        $lead = "Good news, $first. " . ($text['summary'] ?? 'Your support hours are approved.') . ($text['invoiced'] ? ' Your invoice will arrive from Genhead shortly.' : '');
         $body = '';
     } elseif ($kind === 'reply') {
         $subject = "Re: [$no] " . $t['subject'];
@@ -398,7 +402,7 @@ if ($action === 'ticket_detail') {
     if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
     unset($t['ip']); $t['number'] = ticketNo($t['id']);
     $n = $db->prepare("SELECT id, user_name, note, is_public, is_activity, created_at FROM ticket_notes WHERE ticket_id = ? ORDER BY id"); $n->execute([(int)$t['id']]);
-    echo json_encode(['success'=>true,'ticket'=>$t,'notes'=>$n->fetchAll()]);
+    echo json_encode(['success'=>true,'ticket'=>$t,'notes'=>$n->fetchAll(),'rate'=>(float)(getSetting('support_hour_rate', '80') ?: 80),'can_approve'=>in_array($AUTH['role'], ['admin','hr'], true)]);
     exit;
 }
 if ($action === 'update_ticket') {
@@ -448,6 +452,60 @@ if ($action === 'add_ticket_note' && $method === 'POST') {
     echo json_encode(['success'=>true]);
     exit;
 }
+// Approve a support-hours request: add the hours and send an invoice through GenSuite
+if ($action === 'approve_hours' && $method === 'POST') {
+    $db = getDB(); $b = json_decode(file_get_contents('php://input'), true) ?: [];
+    $t = ticketRow($db, (int)($b['id'] ?? 0));
+    if (!$t) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
+    if (!empty($t['approved_at'])) { echo json_encode(['success'=>false,'error'=>'This request was already approved.']); exit; }
+    if (!$t['client_id']) { echo json_encode(['success'=>false,'error'=>'This request isn\'t linked to a client.']); exit; }
+    $hours = round((float)($b['hours'] ?? 0), 2); $kind = ($b['kind'] ?? '') === 'monthly' ? 'monthly' : 'once';
+    $rate = round((float)($b['rate'] ?? 0), 2); $amount = round(isset($b['amount']) && $b['amount'] !== '' ? (float)$b['amount'] : $hours * $rate, 2);
+    $invoice = !empty($b['invoice']);
+    if ($hours <= 0 || $hours > 1000) { echo json_encode(['success'=>false,'error'=>'Enter the number of hours.']); exit; }
+    if ($invoice && $amount <= 0) { echo json_encode(['success'=>false,'error'=>'Enter the rate or amount to invoice.']); exit; }
+    $cq = $db->prepare("SELECT * FROM clients WHERE id = ?"); $cq->execute([(int)$t['client_id']]); $client = $cq->fetch();
+    $uid = (int)$AUTH['id']; $who = $AUTH['name']; $no = ticketNo($t['id']);
+    if ($kind === 'once') {
+        $db->prepare("INSERT INTO client_hour_purchases (client_id, hours, kind, note, purchased_on, ticket_id, created_by) VALUES (?,?, 'support', ?, ?, ?, ?)")
+           ->execute([(int)$client['id'], $hours, "Approved from $no", date('Y-m-d'), (int)$t['id'], $uid]);
+        $summary = "$hours support hours have been added to your account.";
+    } else {
+        // Monthly add-on: raise their monthly support hours from this month on (DIY stays DIY)
+        $plan = $client['plan_type'] ?: 'none'; if ($plan === 'none') $plan = 'retainer';
+        $newMonthly = round((float)($client['monthly_hours'] ?? 0) + $hours, 2);
+        $db->prepare("UPDATE clients SET monthly_hours = ?, plan_type = ?, plan_label = ? WHERE id = ?")->execute([$newMonthly, $plan, planLabel($plan, $client['plan_label'] ?? ''), (int)$client['id']]);
+        $m = date('Y-m');
+        $bq = $db->prepare("SELECT id, total_hours FROM client_hours_bank WHERE client_id = ? AND period = ? ORDER BY id DESC LIMIT 1"); $bq->execute([(int)$client['id'], $m]);
+        if ($row = $bq->fetch()) $db->prepare("UPDATE client_hours_bank SET total_hours = total_hours + ?, plan_type = ? WHERE id = ?")->execute([$hours, $plan, (int)$row['id']]);
+        $summary = "$hours support hours a month have been added to your plan, starting this month.";
+    }
+    $sent = false;
+    if ($invoice) {
+        $url = getSetting('ghl_invoice_webhook_url') ?: getSetting('ghl_ticket_webhook_url');
+        if ($url && function_exists('curl_init')) {
+            $label = $kind === 'monthly' ? "$hours support hours per month" : "$hours support hours (one-time block)";
+            $payload = ['event' => 'invoice_requested', 'ticket_number' => $no, 'ticket_id' => (int)$t['id'],
+                'client_name' => $client['name'], 'location_id' => $client['location_id'] ?: ($client['ghl_contact_id'] ?? ''),
+                'contact_name' => $t['contact_name'], 'contact_email' => $t['contact_email'],
+                'item_name' => 'Genhead support hours', 'item_description' => $label, 'quantity' => $hours, 'unit_price' => $rate ?: round($amount / $hours, 2),
+                'amount' => $amount, 'currency' => 'USD', 'recurring' => $kind === 'monthly', 'recurring_interval' => $kind === 'monthly' ? 'monthly' : '',
+                'approved_by' => $who, 'timestamp' => date('c')];
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
+            curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+            $sent = $code >= 200 && $code < 300;
+        }
+    }
+    $db->prepare("UPDATE tickets SET approved_at = NOW(), approved_by = ?, approved_hours = ?, approved_kind = ?, approved_amount = ?, invoice_sent = ?, status = 'resolved', resolved_at = NOW() WHERE id = ?")
+       ->execute([$uid, $hours, $kind, $invoice ? $amount : null, $invoice ? ($sent ? 1 : 0) : null, (int)$t['id']]);
+    ticketNote($db, $t['id'], $uid, $who, 'Approved ' . $hours . ' hrs ' . ($kind === 'monthly' ? 'per month' : 'one-time')
+        . ($invoice ? ' · $' . number_format($amount, 2) . ($sent ? ' · invoice sent to GenSuite' : ' · invoice NOT sent (check the invoice webhook)') : ' · no invoice'), 0, 1);
+    $emailed = ticketEmail(ticketRow($db, (int)$t['id']), 'approved', ['summary' => $summary, 'invoiced' => $invoice && $sent]);
+    echo json_encode(['success'=>true, 'invoice_sent'=>$sent, 'emailed'=>(bool)$emailed, 'amount'=>$amount]);
+    exit;
+}
+
 if ($action === 'ticket_to_task') {
     $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
     if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
@@ -2314,7 +2372,8 @@ if ($method === 'POST') {
         $planType   = in_array($body['plan_type'] ?? '', ['lift','scale','retainer','diy','none'], true) ? $body['plan_type'] : 'retainer';
         $gmHours    = isset($body['gm_hours']) && $body['gm_hours'] !== '' ? (float)$body['gm_hours'] : null;
         $planLabel  = planLabel($planType, trim($body['plan_label'] ?? ''));
-        if (in_array($planType, ['diy','none'], true)) { $totalHours = 0; $gmHours = 0; }
+        if ($planType === 'none') { $totalHours = 0; $gmHours = 0; }
+        if ($planType === 'diy') { $gmHours = 0; }
         $notes      = trim($body['notes'] ?? '');
         if (!$clientId) { echo json_encode(['success'=>false,'error'=>'client_id required']); exit; }
         $st = $db->prepare("SELECT id FROM client_hours_bank WHERE client_id = ? AND period = ? ORDER BY id DESC LIMIT 1");
@@ -3135,7 +3194,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails','ghl_invoice_webhook_url','support_hour_rate'];
         if (isset($body['team_meeting_url'])) {
             $mu = trim((string)$body['team_meeting_url']);
             if ($mu !== '' && !preg_match('#^https://[^\s<>"]+$#i', $mu)) { echo json_encode(['success'=>false,'error'=>'The meeting link must start with https://']); exit; }
@@ -3407,7 +3466,8 @@ function monthBank($db, $client, $month) {
     $type = ($b['plan_type'] ?? '') ?: ($client['plan_type'] ?? 'none') ?: 'none';
     $sup = $b ? $b['total_hours'] : ($client['monthly_hours'] ?? 0);
     $gm  = $b && $b['gm_hours'] !== null ? $b['gm_hours'] : ($client['gm_monthly_hours'] ?? 0);
-    if ($type === 'diy' || $type === 'none') { $sup = 0; $gm = 0; }
+    if ($type === 'none') { $sup = 0; $gm = 0; }
+    if ($type === 'diy') { $gm = 0; }   // DIY: only hours they add (one-time or monthly)
     return ['total_hours' => (float)$sup, 'gm_hours' => (float)$gm, 'plan_type' => $type, 'plan_label' => planLabel($type, $b['plan_label'] ?? ($client['plan_label'] ?? ''))];
 }
 // ── Hours ledger ────────────────────────────────────────────────────────────

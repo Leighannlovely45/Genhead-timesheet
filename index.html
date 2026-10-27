@@ -2068,6 +2068,14 @@ function renderDash(){
           <span class="dot ${appSettings.ghl_ticket_webhook_url?'dot-g':'dot-y'}"></span>
           ${appSettings.ghl_ticket_webhook_url?"Ticket webhook active — new requests and replies trigger GHL emails":"Paste your ticket webhook URL to get emailed about new support requests"}
         </div>
+        <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
+          <label style="font-weight:600">Support Hours Invoice Webhook URL</label>
+          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Fires when an Admin or HR approves a support-hours request in Ticketing. In GenSuite, start a workflow with an Inbound Webhook trigger, find the contact by <code>contact_email</code>, and create and send the invoice from these fields: <code>item_name</code>, <code>item_description</code>, <code>quantity</code>, <code>unit_price</code>, <code>amount</code>, <code>recurring</code> (true for monthly add-ons), <code>client_name</code>, <code>ticket_number</code>. Leave blank to use the ticket webhook (event <code>invoice_requested</code>).</p>
+          <input class="ghl-input" id="wh-invoice-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${escHtml(appSettings.ghl_invoice_webhook_url||'')}" onchange="api({action:'update_settings',ghl_invoice_webhook_url:this.value.trim()}).then(()=>{appSettings.ghl_invoice_webhook_url=this.value.trim();showToast('Invoice webhook saved.');})">
+          <label style="display:block;font-weight:600;margin-top:.8rem">Support hour rate ($/hr)</label>
+          <input class="ghl-input" id="set-hour-rate" type="number" min="0" step="1" style="max-width:140px" value="${escHtml(appSettings.support_hour_rate||'80')}" onchange="api({action:'update_settings',support_hour_rate:this.value}).then(()=>{appSettings.support_hour_rate=this.value;showToast('Rate saved.');})">
+          <p style="font-size:.75rem;color:var(--mid);margin-top:.3rem">Default price per support hour when approving requests ($80 = $400 for a 5-hour pack). You can change it on each approval.</p>
+        </div>
         <label style="display:flex;gap:.5rem;align-items:flex-start;margin-top:.8rem;font-size:.82rem;color:var(--dark);cursor:pointer">
           <input type="checkbox" ${appSettings.ticket_client_emails==="0"?"":"checked"} onchange="api({action:'update_settings',ticket_client_emails:this.checked?'1':'0'}).then(()=>{appSettings.ticket_client_emails=this.checked?'1':'0';showToast(this.checked?'Clients will be emailed directly.':'Direct client emails turned off.');})">
           <span><b>Email clients directly from the timesheet</b><br><span style="color:var(--mid)">Sends the client a confirmation when they submit, every <i>Reply to client</i>, and Waiting on client / Resolved updates (from noreply@genhead.com, replies go to support@genhead.com). If your GHL workflow also emails clients on <code>ticket_reply</code>, turn one of them off so they don't get two emails.</span></span>
@@ -3251,6 +3259,7 @@ async function openTicket(id){
       <div><label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Assigned to</label>
         ${canAssign?`<select style="${sel}" onchange="updateTicket(${t.id},{assigned_to:this.value})"><option value="">— Unassigned —</option>${staff.map(e=>{const id=String(e.id).replace(/^e/,"");return `<option value="${id}"${String(t.assigned_to||"")===id?" selected":""}>${escHtml(e.name)}</option>`;}).join("")}</select>`:`<div style="font-size:.84rem;padding:.35rem 0">${escHtml(t.assigned_name||"—")}</div>`}</div>
     </div>
+    ${approveHTML(t,r)}
     <div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border)">
       ${t.task_id?`<div style="font-size:.84rem">🔗 This request has a task. <a href="#" style="color:var(--teal)" onclick="event.preventDefault();document.getElementById('tk-panel').remove();_pmOpenTask(${t.task_id})">Open the task</a></div>`
       :`<div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Make it a task</div>
@@ -3275,6 +3284,43 @@ async function openTicket(id){
   </div>`;
   document.body.appendChild(p);
   p.addEventListener("click",e=>{if(e.target===p)p.remove();});
+}
+// ── Approve & invoice (support-hours requests) ──
+function approveHTML(t,r){
+  if(t.category!=="hours") return "";
+  if(t.approved_at) return `<div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border);background:rgba(3,173,143,.07);font-size:.84rem">✅ Approved ${parseFloat(t.approved_hours)} hrs ${t.approved_kind==="monthly"?"per month":"one-time"}${t.approved_amount!=null?` · $${parseFloat(t.approved_amount).toFixed(2)} · ${t.invoice_sent==1?"invoice sent to GenSuite":"<b style='color:#ef4444'>invoice not sent</b>"}`:" · no invoice"} · ${escHtml(fmtTs(t.approved_at))}</div>`;
+  if(!r.can_approve) return `<div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border);font-size:.8rem;color:var(--mid)">An Admin or HR approves support-hours requests and sends the invoice.</div>`;
+  const txt=String(t.details||"")+" "+String(t.subject||"");
+  const mm=txt.match(/(\d+(?:\.\d+)?)\s*support hours/i);
+  const hrs=mm?parseFloat(mm[1]):5, monthly=/every month|per month|monthly/i.test(txt);
+  const rate=r.rate||80;
+  const inp="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:.35rem .5rem;font-size:.84rem;color:var(--dark);width:100%;box-sizing:border-box";
+  return `<div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border);background:rgba(53,29,114,.05)">
+    <div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Approve &amp; invoice</div>
+    <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr 1fr;gap:.5rem;align-items:end">
+      <label style="font-size:.7rem;color:var(--mid)">Hours<input id="ap-h" type="number" min="0.5" step="0.5" value="${hrs}" style="${inp}" oninput="apCalc()"></label>
+      <label style="font-size:.7rem;color:var(--mid)">Type<select id="ap-k" style="${inp}"><option value="once"${monthly?"":" selected"}>One-time block</option><option value="monthly"${monthly?" selected":""}>Every month</option></select></label>
+      <label style="font-size:.7rem;color:var(--mid)">Rate ($/hr)<input id="ap-r" type="number" min="0" step="1" value="${rate}" style="${inp}" oninput="apCalc()"></label>
+      <label style="font-size:.7rem;color:var(--mid)">Amount ($)<input id="ap-a" type="number" min="0" step="0.01" value="${(hrs*rate).toFixed(2)}" style="${inp}"></label>
+    </div>
+    <label style="display:flex;gap:.45rem;align-items:center;font-size:.8rem;color:var(--dark);margin:.6rem 0 .5rem;cursor:pointer"><input type="checkbox" id="ap-inv" checked> Send the invoice through GenSuite (monthly add-ons are set up as recurring)</label>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap">
+      <span style="font-size:.72rem;color:var(--mid)">Adds the hours to ${escHtml(t.client_name||"the client")}'s account, emails ${escHtml(t.contact_email||"them")}, and resolves this request.</span>
+      <button class="btn btn-primary" style="font-size:.8rem;padding:.4rem .9rem" onclick="approveHours(${t.id})">Approve</button>
+    </div>
+  </div>`;
+}
+function apCalc(){const h=parseFloat(document.getElementById("ap-h").value)||0,r=parseFloat(document.getElementById("ap-r").value)||0;document.getElementById("ap-a").value=(h*r).toFixed(2);}
+async function approveHours(id){
+  const hours=parseFloat(document.getElementById("ap-h").value)||0, kind=document.getElementById("ap-k").value;
+  const rate=parseFloat(document.getElementById("ap-r").value)||0, amount=parseFloat(document.getElementById("ap-a").value)||0, invoice=document.getElementById("ap-inv").checked;
+  if(!(hours>0)){showToast("Enter the number of hours.");return;}
+  const msg=`Approve ${hours} support hours ${kind==="monthly"?"every month":"as a one-time block"}${invoice?` and send a $${amount.toFixed(2)} ${kind==="monthly"?"monthly ":""}invoice through GenSuite`:" with no invoice"}?`;
+  if(!(await uiConfirm(msg,{title:"Approve support hours",ok:"Approve"})))return;
+  const r=await fetch(`${API_BASE}?action=approve_hours`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,hours,kind,rate,amount,invoice})}).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't approve.");return;}
+  showToast(invoice?(r.invoice_sent?"Approved, and the invoice was sent to GenSuite.":"Approved, but the invoice webhook didn't respond. Check GHL Setup."):"Approved and hours added.");
+  await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);
 }
 function fmtTs(ts){const d=new Date(String(ts||"").replace(" ","T"));return isNaN(d)?"":d.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
 async function updateTicket(id,changes){

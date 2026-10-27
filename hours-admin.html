@@ -204,7 +204,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:var(--dark
         <tr>
           <th>Client</th>
           <th>Plan</th>
-          <th title="Support hours included each month">Support / mo</th>
+          <th title="Support hours included each month (DIY: monthly add-on, if any)">Support / mo</th>
           <th title="Growth Manager hours included each month">GM / mo</th>
           <th>Support hours this month</th>
           <th>Growth Manager this month</th>
@@ -301,12 +301,12 @@ function renderTable(clients) {
   if (!clients.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--mid);padding:1.5rem">No clients found. Sync from GHL in the Timesheet Portal → Clients tab.</td></tr>'; return; }
   tbody.innerHTML = clients.map(c => {
     const pend = pendingChanges[c.id] ? '<span style="display:inline-block;width:7px;height:7px;background:var(--gold);border-radius:50%;margin-left:.35rem;vertical-align:middle" title="Unsaved changes"></span>' : '';
-    const fixed = c.plan === 'diy' || c.plan === 'none';
+    const fixed = c.plan === 'none', noGM = fixed || c.plan === 'diy';
     return `<tr id="row-${c.id}" onclick="showDetail(${c.id})" style="cursor:pointer">
       <td><strong>${esc(c.name)}</strong>${pend}${c.location_id ? `<div style="font-size:.68rem;color:var(--mid);margin-top:.1rem;font-family:monospace">${esc(c.location_id.substring(0, 16))}...</div>` : ''}</td>
       <td onclick="event.stopPropagation()"><select class="plan-select" id="plan-${c.id}" onchange="planPicked(${c.id})">${Object.keys(PLAN_NAMES).map(k => `<option value="${k}" ${c.plan === k ? 'selected' : ''}>${PLAN_NAMES[k]}</option>`).join('')}</select></td>
       <td onclick="event.stopPropagation()"><input type="number" class="hrs-input" id="hrs-${c.id}" value="${fixed ? '' : (c.monthly_support || '')}" min="0" step="0.5" placeholder="${fixed ? '—' : '0'}" onchange="markChange(${c.id})" ${fixed ? 'disabled style="opacity:.4"' : ''}></td>
-      <td onclick="event.stopPropagation()"><input type="number" class="hrs-input" id="gm-${c.id}" value="${fixed ? '' : (c.monthly_gm || '')}" min="0" step="0.5" placeholder="${fixed ? '—' : '0'}" onchange="markChange(${c.id})" ${fixed ? 'disabled style="opacity:.4"' : ''}></td>
+      <td onclick="event.stopPropagation()"><input type="number" class="hrs-input" id="gm-${c.id}" value="${noGM ? '' : (c.monthly_gm || '')}" min="0" step="0.5" placeholder="${noGM ? '—' : '0'}" onchange="markChange(${c.id})" ${noGM ? 'disabled style="opacity:.4"' : ''}></td>
       <td>${supportCell(c)}</td>
       <td>${gmCell(c)}</td>
       <td onclick="event.stopPropagation()"><div style="display:flex;gap:.35rem;flex-wrap:wrap">
@@ -330,9 +330,10 @@ function filterTable() {
 function planPicked(id) {
   const plan = document.getElementById('plan-' + id).value, d = PLANS[plan] || {};
   const h = document.getElementById('hrs-' + id), g = document.getElementById('gm-' + id);
-  const fixed = plan === 'diy' || plan === 'none';
-  [h, g].forEach(el => { el.disabled = fixed; el.style.opacity = fixed ? .4 : 1; });
+  const fixed = plan === 'none', noGM = fixed || plan === 'diy';
+  h.disabled = fixed; h.style.opacity = fixed ? .4 : 1; g.disabled = noGM; g.style.opacity = noGM ? .4 : 1;
   if (fixed) { h.value = ''; g.value = ''; }
+  else if (plan === 'diy') { h.value = ''; g.value = ''; h.placeholder = '0'; }
   else { if (d.support != null) h.value = d.support; if (d.gm != null) g.value = d.gm; }
   markChange(id);
 }
