@@ -285,6 +285,8 @@ async function loadData() {
           plan: bank.plan || c.plan_type || 'none',
           plan_label: bank.plan_label || c.plan_label || '',
           total_hours: parseFloat(bank.total_hours ?? c.monthly_hours ?? 0),
+          included: parseFloat(bank.included ?? bank.total_hours ?? c.monthly_hours ?? 0),
+          rollover: parseFloat(bank.rollover ?? 0),
           used_hours: parseFloat(bank.used_hours ?? 0),
           remaining: parseFloat(bank.remaining ?? bank.total_hours ?? c.monthly_hours ?? 0),
           type: c.type
@@ -332,9 +334,9 @@ function renderTable(clients) {
         </select>
       </td>
       <td onclick="event.stopPropagation()">
-        <input type="number" class="hrs-input" id="hrs-${c.id}" value="${total||''}" min="0" step="1" placeholder="0" onchange="markChange(${c.id})" ${c.plan==='diy'?'disabled style="opacity:.4"':''}>
+        <input type="number" class="hrs-input" id="hrs-${c.id}" value="${c.included||''}" min="0" step="0.5" placeholder="0" title="Hours included each month" onchange="markChange(${c.id})" ${c.plan==='diy'?'disabled style="opacity:.4"':''}>
       </td>
-      <td><strong>${total ? total + ' hrs' : '—'}</strong></td>
+      <td><strong>${total ? total + ' hrs' : '—'}</strong>${c.rollover > 0 ? `<div style="font-size:.68rem;color:var(--teal);margin-top:.1rem">incl. ${c.rollover} rolled over</div>` : ''}</td>
       <td style="color:var(--danger)">${used ? used + ' hrs' : '0 hrs'}</td>
       <td ${remColor}><strong>${total ? remaining + ' hrs' : '—'}</strong></td>
       <td>
@@ -399,7 +401,7 @@ function markChange(clientId) {
 
   // Update client in allClients for summary
   const c = allClients.find(x => x.id === clientId);
-  if (c) { c.plan = plan; c.total_hours = hrs; }
+  if (c) { c.plan = plan; c.included = hrs; c.total_hours = hrs + (c.rollover || 0); }
 
   // Show pending dot
   const row = document.getElementById('row-' + clientId);
@@ -439,7 +441,7 @@ async function saveSingleClient(clientId) {
     if (res.success) {
       delete pendingChanges[clientId];
       const c = allClients.find(x => x.id === clientId);
-      if (c) { c.plan = plan; c.total_hours = hrs; c.plan_label = planLabel; }
+      if (c) { c.plan = plan; c.included = hrs; c.total_hours = hrs + (c.rollover || 0); c.plan_label = planLabel; }
       // Remove pending dot
       const row = document.getElementById('row-' + clientId);
       if (row) row.querySelectorAll('span[title="Unsaved changes"]').forEach(d => d.remove());
@@ -545,7 +547,7 @@ function openRefillModal() {
         <div class="modal-list-item ${c.plan==='diy'?'diy':''}">
           <div>
             <strong>${esc(c.name)}</strong>
-            <div style="font-size:.72rem;color:var(--mid)">${c.plan==='diy'?'DIY — will be skipped':c.total_hours+' hrs'}</div>
+            <div style="font-size:.72rem;color:var(--mid)">${c.plan==='diy'?'DIY — will be skipped':c.included+' hrs'}</div>
           </div>
           <span class="plan-badge ${c.plan==='retainer'?'plan-retainer':'plan-diy'}">${c.plan==='retainer'?'Retainer':'DIY'}</span>
         </div>`).join('');
@@ -557,7 +559,7 @@ function closeRefillModal() {
 }
 
 async function confirmRefill() {
-  const retainers = allClients.filter(c => c.plan === 'retainer' && c.total_hours > 0);
+  const retainers = allClients.filter(c => c.plan === 'retainer' && c.included > 0);
   if (!retainers.length) { showToast('No retainer clients to refill.'); closeRefillModal(); return; }
   let count = 0;
   for (const c of retainers) {
@@ -568,9 +570,9 @@ async function confirmRefill() {
         body: JSON.stringify({
           client_id: c.id,
           month: currentMonth,
-          total_hours: c.total_hours,
+          total_hours: c.included,
           plan_type: 'retainer',
-          plan_label: c.plan_label || c.total_hours + ' hrs/month'
+          plan_label: c.plan_label || c.included + ' hrs/month'
         })
       }).then(r => r.json());
       if (res.success) count++;

@@ -71,6 +71,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 select.month{border:1px solid var(--line);border-radius:10px;padding:8px 34px 8px 12px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748B' stroke-width='1.6' fill='none'/%3E%3C/svg%3E") no-repeat right 12px center;appearance:none;font-weight:600;font-size:14px;cursor:pointer;color:var(--ink)}
 select.month:focus{outline:none;border-color:var(--teal)}
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.tiles.four{grid-template-columns:repeat(4,1fr)}
 .tile{background:var(--canvas);border-radius:12px;padding:12px 14px}
 .tile-l{font-size:12px;color:var(--mid);font-weight:500}
 .tile-v{font-size:22px;font-weight:600;color:var(--ink);margin-top:2px;letter-spacing:-.4px}
@@ -156,6 +157,7 @@ textarea.in{min-height:120px;resize:vertical}
   .summary{grid-template-columns:1fr}
   .gauge{border-right:none;border-bottom:1px solid var(--line)}
   .tiles{grid-template-columns:repeat(3,1fr);gap:8px}
+  .tiles.four{grid-template-columns:repeat(2,1fr)}
   .tile-v{font-size:18px}
   .tbl .mcol{display:none}
   .tbl th,.tbl td{padding-left:14px;padding-right:14px}
@@ -262,6 +264,7 @@ function hoursHTML() {
     </div></div>`;
   }
   const total = parseFloat(h.bank.total_hours) || 0, used = parseFloat(h.bank.used_hours) || 0, left = Math.max(0, total - used);
+  const ro = parseFloat(h.bank.rollover) || 0, inc = h.bank.included != null ? (parseFloat(h.bank.included) || 0) : total;
   const pct = total > 0 ? Math.max(0, Math.min(1, left / total)) : 0;
   const R = 70, C = 2 * Math.PI * R;
   const color = !total ? '#CBD5E1' : pct > .4 ? '#03AD8F' : pct > .15 ? '#D97706' : '#DC2626';
@@ -270,7 +273,7 @@ function hoursHTML() {
   let st = '';
   if (total > 0 && used > total) st = `<div class="state st-out">${ICONS.warn}<div><b>Over by ${fmtH(used - total)} hrs</b> this month.</div><button class="btn btn-ghost" onclick="openForm('billing','Additional support hours')">Request more hours</button></div>`;
   else if (total > 0 && pct <= .2) st = `<div class="state st-low">${ICONS.warn}<div><b>Running low:</b> ${fmtH(left)} hrs left this month.</div><button class="btn btn-ghost" onclick="openForm('billing','Additional support hours')">Request more hours</button></div>`;
-  else if (total > 0) st = `<div class="state st-ok">${ICONS.check}<div><b>On track.</b> ${Math.round(pct * 100)}% of this month's hours remaining.</div></div>`;
+  else if (total > 0) st = `<div class="state st-ok">${ICONS.check}<div><b>On track.</b> ${Math.round(pct * 100)}% of your available hours remaining.${h.rollover_on ? ' Unused hours roll over to next month.' : ''}</div></div>`;
   else st = `<div class="state st-low">${ICONS.clock}<div>No support hours are set for this month yet. Contact us if that doesn't look right.</div></div>`;
   const acts = h.activity || [];
   const rows = acts.map(a => `<tr>
@@ -286,7 +289,7 @@ function hoursHTML() {
             <circle cx="82" cy="82" r="${R}" fill="none" stroke="#EEF2F6" stroke-width="14"/>
             <circle cx="82" cy="82" r="${R}" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)"/>
           </svg>
-          <div class="ring-c"><div class="ring-num mono">${fmtH(left)}</div><div class="ring-lbl">hours left</div></div>
+          <div class="ring-c"><div class="ring-num mono">${fmtH(left)}</div><div class="ring-lbl">hours left${ro > 0 ? `<br>of ${fmtH(total)} available` : ''}</div></div>
         </div>
       </div>
       <div class="sum-r">
@@ -295,8 +298,9 @@ function hoursHTML() {
           <label class="sr" for="month">Month</label>
           <select class="month" id="month" onchange="loadMonth(this.value)">${opts}</select>
         </div>
-        <div class="tiles">
-          <div class="tile"><div class="tile-l">Included</div><div class="tile-v mono">${fmtH(total)}<small>hrs</small></div></div>
+        <div class="tiles${ro > 0 ? ' four' : ''}">
+          <div class="tile"><div class="tile-l">${ro > 0 ? 'This month' : 'Included'}</div><div class="tile-v mono">${fmtH(inc)}<small>hrs</small></div></div>
+          ${ro > 0 ? `<div class="tile" title="Unused hours carried over from earlier months"><div class="tile-l">Rolled over</div><div class="tile-v mono">+${fmtH(ro)}<small>hrs</small></div></div>` : ''}
           <div class="tile"><div class="tile-l">Used</div><div class="tile-v mono">${fmtH(used)}<small>hrs</small></div></div>
           <div class="tile"><div class="tile-l">Remaining</div><div class="tile-v mono" style="color:${total ? color : 'var(--ink)'}">${fmtH(left)}<small>hrs</small></div></div>
         </div>

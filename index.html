@@ -1947,6 +1947,18 @@ function renderDash(){
     <div class="dash-top"><div><h2>Settings</h2><p>Timecard &amp; HR configuration</p></div></div>
     <div style="max-width:660px;display:flex;flex-direction:column;gap:1.25rem">
 
+      <!-- Support hours rollover -->
+      <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
+        <h3 style="margin:0 0 .25rem;font-size:1rem;color:var(--dark)">Client Support Hours Rollover</h3>
+        <p style="font-size:.8rem;color:var(--mid);margin:0 0 1rem">Unused support hours carry into the next month and keep adding up. Going over in a month doesn't take hours from the next one. Clients see "Rolled over" in their portal.</p>
+        <label style="display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:var(--dark);margin-bottom:.8rem;cursor:pointer"><input type="checkbox" id="set-ro-on"> Roll over unused hours</label>
+        <label style="font-size:.8rem;font-weight:600;color:var(--mid);display:block;margin-bottom:.3rem">Start counting with</label>
+        <select id="set-ro-start" style="background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.5rem .7rem;color:var(--dark);font-size:.84rem;margin-bottom:.8rem"></select>
+        <div style="font-size:.74rem;color:var(--mid);margin:-.4rem 0 .9rem">Hours left over from this month onward carry forward. Earlier months don't.</div>
+        <button class="btn btn-primary" onclick="saveSettingsRollover()">Save Rollover</button>
+        <div id="set-ro-status" style="font-size:.8rem;color:var(--mid);margin-top:.6rem"></div>
+      </div>
+
       <!-- Team meeting room -->
       <div style="background:var(--bg);border-radius:10px;border:1px solid var(--border);padding:1.4rem">
         <h3 style="margin:0 0 .25rem;font-size:1rem;color:var(--dark)">Team Meeting Room (Zoom)</h3>
@@ -2044,6 +2056,10 @@ function renderDash(){
           <span class="dot ${appSettings.ghl_ticket_webhook_url?'dot-g':'dot-y'}"></span>
           ${appSettings.ghl_ticket_webhook_url?"Ticket webhook active — new requests and replies trigger GHL emails":"Paste your ticket webhook URL to get emailed about new support requests"}
         </div>
+        <label style="display:flex;gap:.5rem;align-items:flex-start;margin-top:.8rem;font-size:.82rem;color:var(--dark);cursor:pointer">
+          <input type="checkbox" ${appSettings.ticket_client_emails==="0"?"":"checked"} onchange="api({action:'update_settings',ticket_client_emails:this.checked?'1':'0'}).then(()=>{appSettings.ticket_client_emails=this.checked?'1':'0';showToast(this.checked?'Clients will be emailed directly.':'Direct client emails turned off.');})">
+          <span><b>Email clients directly from the timesheet</b><br><span style="color:var(--mid)">Sends the client a confirmation when they submit, every <i>Reply to client</i>, and Waiting on client / Resolved updates (from noreply@genhead.com, replies go to support@genhead.com). If your GHL workflow also emails clients on <code>ticket_reply</code>, turn one of them off so they don't get two emails.</span></span>
+        </label>
       </div>
     </div>
     <!-- GHL API + Webhook Secret (moved from Settings) -->
@@ -3217,7 +3233,7 @@ async function openTicket(id){
     </div>
     <div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border);background:var(--hover);display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem">
       <div><label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Status</label>
-        <select style="${sel}" onchange="updateTicket(${t.id},{status:this.value})">${Object.entries(TK_STATUS).map(([k,v])=>`<option value="${k}"${t.status===k?" selected":""}>${v}</option>`).join("")}</select></div>
+        <select style="${sel}" title="Waiting on client and Resolved also email the client" onchange="updateTicket(${t.id},{status:this.value})">${Object.entries(TK_STATUS).map(([k,v])=>`<option value="${k}"${t.status===k?" selected":""}>${v}</option>`).join("")}</select></div>
       <div><label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Priority</label>
         <select style="${sel}" onchange="updateTicket(${t.id},{priority:this.value})">${["low","normal","urgent"].map(k=>`<option value="${k}"${t.priority===k?" selected":""}>${k[0].toUpperCase()+k.slice(1)}</option>`).join("")}</select></div>
       <div><label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Assigned to</label>
@@ -3234,7 +3250,7 @@ async function openTicket(id){
       <div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Conversation & notes</div>
       <textarea id="tk-note" rows="3" placeholder="Write a reply to the client, or an internal note…" style="width:100%;box-sizing:border-box;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;color:var(--dark);font-size:.85rem;font-family:inherit;resize:vertical"></textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin:.45rem 0 .9rem;flex-wrap:wrap">
-        <span style="font-size:.72rem;color:var(--mid)">Replies are shown in the client's portal and sent through the ticket webhook so GHL can email them.</span>
+        <span style="font-size:.72rem;color:var(--mid)">Replies are emailed to ${escHtml(t.contact_email||"the client")} and shown in their portal. Internal notes stay with the team.</span>
         <div style="display:flex;gap:.4rem"><button class="btn btn-outline" style="font-size:.78rem;padding:.35rem .8rem" onclick="addTicketNote(${t.id},false)">Internal note</button>
         <button class="btn btn-primary" style="font-size:.78rem;padding:.35rem .8rem" onclick="addTicketNote(${t.id},true)">Reply to client</button></div>
       </div>
@@ -3257,10 +3273,10 @@ async function updateTicket(id,changes){
 async function addTicketNote(id,pub){
   const el=document.getElementById("tk-note"); const note=(el.value||"").trim();
   if(!note){el.focus();return;}
-  if(pub&&!(await uiConfirm("Send this reply to the client? It shows in their Support portal and goes out through the ticket webhook.",{title:"Reply to client",ok:"Send reply"})))return;
+  if(pub&&!(await uiConfirm("Send this reply to the client? It's emailed to them and shows in their Support portal.",{title:"Reply to client",ok:"Send reply"})))return;
   const r=await fetch(`${API_BASE}?action=add_ticket_note`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,note,public:pub})}).then(x=>x.json()).catch(()=>({success:false}));
   if(!r.success){showToast(r.error||"Couldn't save.");return;}
-  showToast(pub?"Reply sent to the client.":"Note saved.");
+  showToast(pub?(r.emailed?`Reply sent and emailed to ${r.to}.`:"Reply saved and shown in the client's portal. The email couldn't be sent."):"Note saved.");
   await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);
 }
 async function ticketToTask(id){
@@ -4749,6 +4765,11 @@ function renderSettings(){
   if(approval&&appSettings) approval.value=appSettings.hr_approval_mode||"required";
   if(period&&appSettings) period.value=appSettings.hr_pay_period||"biweekly";
   const mu=document.getElementById("set-meet-url"); if(mu&&appSettings) mu.value=appSettings.team_meeting_url||"";
+  const ro=document.getElementById("set-ro-on"), rs=document.getElementById("set-ro-start");
+  if(ro&&appSettings) ro.checked=appSettings.rollover_enabled!=="0";
+  if(rs){const cur0=(appSettings&&appSettings.rollover_start)||"2026-10";const out=[];const d=new Date(2026,3,1),now=new Date();now.setMonth(now.getMonth()+1);
+    while(d<=now){const v=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;out.push(`<option value="${v}"${v===cur0?" selected":""}>${d.toLocaleDateString("en-US",{month:"long",year:"numeric"})}</option>`);d.setMonth(d.getMonth()+1);}
+    rs.innerHTML=out.join("");}
   // Also populate GHL setup fields (now in GHL tab but same elements)
   const ki=document.getElementById("set-ghl-key");
   const li=document.getElementById("set-ghl-loc");
@@ -4756,6 +4777,14 @@ function renderSettings(){
   if(ki&&appSettings) ki.value=appSettings.ghl_api_key||"";
   if(li&&appSettings) li.value=appSettings.ghl_location_id||"";
   if(sec&&appSettings) sec.value=appSettings.webhook_secret||"";
+}
+
+async function saveSettingsRollover(){
+  const on=document.getElementById("set-ro-on").checked, start=document.getElementById("set-ro-start").value;
+  const r=await api({action:"update_settings",rollover_enabled:on?"1":"0",rollover_start:start}).catch(()=>({success:false}));
+  const st=document.getElementById("set-ro-status");
+  if(r.success){appSettings.rollover_enabled=on?"1":"0";appSettings.rollover_start=start;st.style.color="#10b981";st.textContent=on?"✓ Rollover saved.":"✓ Rollover turned off.";showToast("Rollover saved.");}
+  else{st.style.color="#ef4444";st.textContent=r.error||"Could not save.";}
 }
 
 async function saveSettingsMeet(){

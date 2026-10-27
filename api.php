@@ -238,6 +238,52 @@ function ticketHook($event, $t, $extra = []) {
     curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
     return $code >= 200 && $code < 300;
 }
+// Email the client straight from the timesheet (replies, status updates, confirmation).
+// Reply-To is support@genhead.com, so answers land in the team inbox.
+function ticketEmail($t, $kind, $text = '') {
+    if (getSetting('ticket_client_emails', '1') === '0') return false;
+    $to = trim((string)($t['contact_email'] ?? ''));
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return false;
+    $no = ticketNo($t['id']); $first = trim(explode(' ', (string)($t['contact_name'] ?? ''))[0]) ?: 'there';
+    $portal = ($t['location_id'] ?? '') !== '' ? appBaseUrl() . 'client-hours-portal.html?location=' . rawurlencode($t['location_id']) . '&tab=requests' : '';
+    $h = function($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); };
+    global $TICKET_STATUSES;
+    if ($kind === 'received') {
+        $subject = "We received your request [$no]: " . $t['subject'];
+        $lead = "Thanks, $first. Your request is in and the Genhead team has been notified. We'll reply here as soon as we pick it up.";
+        $body = '';
+    } elseif ($kind === 'reply') {
+        $subject = "Re: [$no] " . $t['subject'];
+        $lead = "Hi $first, " . ($text['from'] ?? 'the Genhead team') . " replied to your request:";
+        $body = $text['reply'] ?? '';
+    } else {
+        $label = $TICKET_STATUSES[$t['status']] ?? $t['status'];
+        if ($t['status'] === 'waiting') $label = 'Waiting on you';
+        $subject = "[$no] " . ($t['status'] === 'resolved' ? 'Resolved' : 'Status update') . ': ' . $t['subject'];
+        $lead = $t['status'] === 'resolved' ? "Hi $first, we've marked your request as resolved. If anything still isn't right, just reply to this email."
+              : ($t['status'] === 'waiting' ? "Hi $first, we need a little more from you to keep going on this request. Please reply to this email with the details."
+              : "Hi $first, your request is now: $label.");
+        $body = '';
+    }
+    $html = '<!doctype html><html><body style="margin:0;background:#F4F6FA;font-family:Segoe UI,Arial,sans-serif;color:#334155">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F6FA;padding:24px 12px"><tr><td align="center">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border:1px solid #E5E9F0;border-radius:12px;overflow:hidden">'
+      . '<tr><td style="background:#0B1739;padding:16px 22px;font-size:18px;font-weight:700;color:#fff">gen<span style="color:#03AD8F">head</span> <span style="font-size:12px;font-weight:400;color:#cbd5e1;margin-left:6px">Client Support</span></td></tr>'
+      . '<tr><td style="padding:22px">'
+      . '<div style="font-size:12px;color:#64748B;margin-bottom:6px">' . $h($no) . ' &middot; ' . $h($t['subject']) . '</div>'
+      . '<p style="font-size:15px;line-height:1.55;margin:0 0 14px">' . $h($lead) . '</p>'
+      . ($body !== '' ? '<div style="border-left:3px solid #03AD8F;background:#F8FAFC;padding:12px 14px;border-radius:6px;font-size:15px;line-height:1.55;white-space:pre-wrap">' . $h($body) . '</div>' : '')
+      . ($portal ? '<p style="margin:20px 0 0"><a href="' . $h($portal) . '" style="display:inline-block;background:#03AD8F;color:#fff;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:8px;font-size:14px">View your requests</a></p>' : '')
+      . '<p style="font-size:12.5px;color:#94A3B8;margin:20px 0 0">You can reply to this email to add more details.</p>'
+      . '</td></tr></table></td></tr></table></body></html>';
+    $plain = $lead . ($body !== '' ? "\n\n" . $body : '') . ($portal ? "\n\nView your requests: $portal" : '') . "\n\nGenhead Client Support";
+    $boundary = 'gh' . bin2hex(random_bytes(8));
+    $headers = "From: Genhead Support <noreply@genhead.com>\r\nReply-To: support@genhead.com\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"$boundary\"";
+    $msg = "--$boundary\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n$plain\r\n--$boundary\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n$html\r\n--$boundary--";
+    $subj = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    if (getenv('TS_TEST_MAIL_LOG')) { @file_put_contents(getenv('TS_TEST_MAIL_LOG'), json_encode(['to'=>$to,'subject'=>$subject,'plain'=>$plain]) . "\n", FILE_APPEND); return true; }
+    return @mail($to, $subj, $msg, $headers);
+}
 function ticketRow($db, $id) {
     $st = $db->prepare("SELECT t.*, c.name AS client_name, u.name AS assigned_name FROM tickets t LEFT JOIN clients c ON c.id = t.client_id LEFT JOIN users u ON u.id = t.assigned_to WHERE t.id = ?");
     $st->execute([(int)$id]); return $st->fetch();
@@ -287,6 +333,7 @@ if ($action === 'submit_ticket' && $method === 'POST') {
     $staff = $db->query("SELECT id FROM users WHERE status = 'active' AND role IN ('admin','hr','manager')")->fetchAll(PDO::FETCH_COLUMN);
     ticketNotify($db, 'ticket', $t, $staff, 0, $client['name'], ($pri === 'urgent' ? 'URGENT · ' : '') . $subject);
     ticketHook('ticket_created', $t);
+    ticketEmail($t, 'received');
     echo json_encode(['success'=>true,'ticket_number'=>ticketNo($tid)]);
     exit;
 }
@@ -351,7 +398,11 @@ if ($action === 'update_ticket') {
         }
     }
     $t2 = ticketRow($db, (int)$t['id']);
-    if (in_array('status', $changes, true)) ticketHook('ticket_status_changed', $t2);
+    if (in_array('status', $changes, true)) {
+        ticketHook('ticket_status_changed', $t2);
+        $emailed = in_array($t2['status'], ['waiting','resolved'], true) && empty($_GET['quiet']) ? ticketEmail($t2, 'status') : false;
+        if ($emailed) ticketNote($db, $t2['id'], $uid, $who, 'Emailed ' . $t2['contact_email'] . ' about the status change', 0, 1);
+    }
     echo json_encode(['success'=>true]);
     exit;
 }
@@ -365,6 +416,9 @@ if ($action === 'add_ticket_note' && $method === 'POST') {
     if ($public) {
         if ($t['status'] === 'new') { $db->prepare("UPDATE tickets SET status = 'in_progress' WHERE id = ?")->execute([(int)$t['id']]); }
         ticketHook('ticket_reply', ticketRow($db, (int)$t['id']), ['reply' => $note, 'reply_from' => $AUTH['name']]);
+        $emailed = ticketEmail(ticketRow($db, (int)$t['id']), 'reply', ['reply' => $note, 'from' => $AUTH['name']]);
+        echo json_encode(['success'=>true,'emailed'=>(bool)$emailed,'to'=>$t['contact_email']]);
+        exit;
     }
     echo json_encode(['success'=>true]);
     exit;
@@ -1537,10 +1591,12 @@ if ($method === 'GET') {
                            'team_member'=>$en['team_member'],'hours'=>(float)$en['hours']];
         }
         usort($activity, function($x, $y){ return strcmp($x['date'], $y['date']); });
-        $totalHours = (float)$bank['total_hours'];
+        $av = monthAvailability($db, $client, $month);
+        $totalHours = $av['available'];
         echo json_encode(['success'=>true,
             'client'=>['name'=>$client['name'],'plan'=>$bank['plan_type'] ?: 'retainer','plan_label'=>$bank['plan_label'] ?: 'Retainer'],
-            'bank'=>['total_hours'=>$totalHours,'used_hours'=>round($usedHours,2),'remaining'=>round(max(0,$totalHours-$usedHours),2)],
+            'bank'=>['total_hours'=>$totalHours,'included'=>$av['included'],'rollover'=>$av['rollover'],'used_hours'=>round($usedHours,2),'remaining'=>round(max(0,$totalHours-$usedHours),2)],
+            'rollover_on'=>rolloverOn(),
             'activity'=>$activity,'period'=>$month,'month'=>$month,'periods'=>monthList()]);
         exit;
     }
@@ -1554,14 +1610,15 @@ if ($method === 'GET') {
         foreach (clientMonthEntries($db, array_map(function($c){ return (int)$c['id']; }, $clients), $month) as $en)
             $used[$en['client_id']] = ($used[$en['client_id']] ?? 0) + (float)$en['hours'];
         $result = [];
+        $carry = rolloverCarry($db, $clients, $month);
         foreach ($clients as $c) {
             $b = monthBank($db, $c, $month);
-            $total = (float)$b['total_hours']; $u = (float)($used[$c['id']] ?? 0);
+            $inc = (float)$b['total_hours']; $ro = (float)($carry[$c['id']] ?? 0); $total = $inc + $ro; $u = (float)($used[$c['id']] ?? 0);
             $result[] = ['id'=>(int)$c['id'],'name'=>$c['name'],'location_id'=>$c['location_id'] ?: $c['ghl_contact_id'],
                 'plan'=>$b['plan_type'] ?: 'none','plan_label'=>$b['plan_label'] ?: '',
-                'total_hours'=>$total,'used_hours'=>round($u,2),'remaining'=>round(max(0,$total-$u),2)];
+                'included'=>$inc,'rollover'=>round($ro,2),'total_hours'=>round($total,2),'used_hours'=>round($u,2),'remaining'=>round(max(0,$total-$u),2)];
         }
-        echo json_encode(['success'=>true,'banks'=>$result,'month'=>$month,'months'=>monthList()]);
+        echo json_encode(['success'=>true,'banks'=>$result,'month'=>$month,'months'=>monthList(),'rollover_on'=>rolloverOn(),'rollover_start'=>rolloverStart()]);
         exit;
     }
 
@@ -3051,7 +3108,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','ticket_client_emails'];
         if (isset($body['team_meeting_url'])) {
             $mu = trim((string)$body['team_meeting_url']);
             if ($mu !== '' && !preg_match('#^https://[^\s<>"]+$#i', $mu)) { echo json_encode(['success'=>false,'error'=>'The meeting link must start with https://']); exit; }
@@ -3307,6 +3364,44 @@ function monthBank($db, $client, $month) {
     if ($b = $st->fetch()) return $b;
     return ['total_hours'=>$client['monthly_hours'] ?? 0, 'plan_type'=>$client['plan_type'] ?? 'none', 'plan_label'=>$client['plan_label'] ?? ''];
 }
+// ── Rollover: unused support hours carry into the next month ─────────────
+// Counting starts with rollover_start (the first month whose unused hours carry forward).
+// Unused hours keep adding up month to month; going over in a month doesn't reduce the next one.
+function rolloverOn()    { return getSetting('rollover_enabled', '1') !== '0'; }
+function rolloverStart() { $m = getSetting('rollover_start', ''); return preg_match('/^\d{4}-\d{2}$/', $m) ? $m : '2026-10'; }
+function monthUsedMap($db, $ids, $month) {
+    $u = [];
+    foreach (clientMonthEntries($db, $ids, $month) as $en) $u[$en['client_id']] = ($u[$en['client_id']] ?? 0) + (float)$en['hours'];
+    return $u;
+}
+// Hours carried into $month for each client (retainer clients only)
+function rolloverCarry($db, $clients, $month) {
+    $carry = [];
+    if (!rolloverOn()) return $carry;
+    $list = array_values(array_filter($clients, function($c) { return ($c['plan_type'] ?? '') !== 'diy'; }));
+    if (!$list) return $carry;
+    $ids = array_map(function($c) { return (int)$c['id']; }, $list);
+    $m = rolloverStart();
+    $guard = 0;
+    while ($m < $month && $guard++ < 120) {
+        $used = monthUsedMap($db, $ids, $m);
+        foreach ($list as $c) {
+            $b = monthBank($db, $c, $m);
+            if (($b['plan_type'] ?? '') === 'diy' || ($b['plan_type'] ?? '') === 'none') { $carry[$c['id']] = 0; continue; }
+            $avail = (float)$b['total_hours'] + (float)($carry[$c['id']] ?? 0);
+            $carry[$c['id']] = max(0, round($avail - (float)($used[$c['id']] ?? 0), 2));
+        }
+        $m = date('Y-m', strtotime($m . '-01 +1 month'));
+    }
+    return $carry;
+}
+function monthAvailability($db, $client, $month) {
+    $b = monthBank($db, $client, $month);
+    $inc = (float)$b['total_hours'];
+    $ro = (float)(rolloverCarry($db, [$client], $month)[$client['id']] ?? 0);
+    return ['included' => $inc, 'rollover' => round($ro, 2), 'available' => round($inc + $ro, 2)];
+}
+
 // Start date of a timesheet: period_start if stored, else from its "Mon dd - Mon dd" label
 function sheetStart($periodStart, $periodLabel) {
     if ($periodStart && $periodStart !== '0000-00-00') return substr($periodStart, 0, 10);
