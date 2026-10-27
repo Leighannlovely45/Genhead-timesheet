@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-26.3');
+define('SCHEMA_VERSION', '2026-10-27.1');
 
 function ensureSchema($db) {
     static $done = false;
@@ -93,6 +93,37 @@ function ensureSchema($db) {
         after_state TEXT NULL,
         ip_address VARCHAR(64) NULL,
         created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+    )");
+    $exec("CREATE TABLE IF NOT EXISTS tickets (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        client_id INT NULL,
+        location_id VARCHAR(100) NULL,
+        contact_name VARCHAR(255) NULL,
+        contact_email VARCHAR(255) NULL,
+        category VARCHAR(40) NULL,
+        priority VARCHAR(20) NOT NULL DEFAULT 'normal',
+        subject VARCHAR(200) NOT NULL,
+        details TEXT NULL,
+        link VARCHAR(500) NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'new',
+        assigned_to INT NULL,
+        task_id INT NULL,
+        ip VARCHAR(64) NULL,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NULL,
+        resolved_at DATETIME NULL,
+        INDEX (client_id), INDEX (location_id), INDEX (status)
+    )");
+    $exec("CREATE TABLE IF NOT EXISTS ticket_notes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_id INT NOT NULL,
+        user_id INT NULL,
+        user_name VARCHAR(255) NULL,
+        note TEXT NOT NULL,
+        is_public TINYINT(1) NOT NULL DEFAULT 0,
+        is_activity TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (ticket_id)
     )");
     $exec("CREATE TABLE IF NOT EXISTS notifications (
         id INT AUTO_INCREMENT PRIMARY KEY,

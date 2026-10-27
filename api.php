@@ -25,6 +25,10 @@ if (!function_exists('payPeriodStarts')) {
     }
 }
 
+// Servers without the multibyte extension
+if (!function_exists('mb_strlen')) { function mb_strlen($s) { return strlen($s); } }
+if (!function_exists('mb_substr')) { function mb_substr($s, $a, $l = null) { return $l === null ? substr($s, $a) : substr($s, $a, $l); } }
+
 // ─────────────────────────────────────────
 // SETTINGS HELPERS (guarded: some db.php files already define these)
 // ─────────────────────────────────────────
@@ -146,7 +150,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // ─────────────────────────────────────────
 // Open without signing in: sign-in/reset flows, the login name list, the Chrome
 // extension, the client hours portal & hours-bank admin, and secret-protected GHL hooks.
-$PUBLIC_ACTIONS = ['verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
+$PUBLIC_ACTIONS = ['submit_ticket','client_tickets','verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
                    'upsert_time','client_hours','get_client_by_location',
                    'load_clients','ghl_add','fire_webhook'];
 $ROLE_RULES = [
@@ -209,6 +213,184 @@ if (in_array($action, ['add_employee','add_manager','update_employee','remove_em
     }
 }
 
+// ── SUPPORT TICKETS ───────────────────────────────────────────────────────
+// Clients file requests from the Support portal; the team works them in Projects → Ticketing.
+$TICKET_STATUSES   = ['new' => 'New', 'in_progress' => 'In progress', 'waiting' => 'Waiting on you', 'resolved' => 'Resolved'];
+$TICKET_CATEGORIES = ['issue' => 'Something isn\'t working', 'change' => 'Change request', 'new_build' => 'New build or feature', 'question' => 'Question / how-to', 'billing' => 'Billing'];
+$TICKET_PRIORITY   = ['low' => 'Low', 'normal' => 'Normal', 'urgent' => 'Urgent'];
+function ticketNo($id) { return 'GH-' . str_pad((string)(int)$id, 4, '0', STR_PAD_LEFT); }
+function ticketHook($event, $t, $extra = []) {
+    $url = getSetting('ghl_ticket_webhook_url');
+    if (!$url || !function_exists('curl_init')) return false;
+    global $TICKET_STATUSES, $TICKET_CATEGORIES, $TICKET_PRIORITY;
+    $payload = array_merge([
+        'event' => $event, 'ticket_number' => ticketNo($t['id']), 'ticket_id' => (int)$t['id'],
+        'client_name' => $t['client_name'] ?? '', 'location_id' => $t['location_id'] ?? '',
+        'contact_name' => $t['contact_name'] ?? '', 'contact_email' => $t['contact_email'] ?? '',
+        'category' => $TICKET_CATEGORIES[$t['category']] ?? $t['category'], 'priority' => $TICKET_PRIORITY[$t['priority']] ?? $t['priority'],
+        'subject' => $t['subject'], 'details' => $t['details'] ?? '', 'link' => $t['link'] ?? '',
+        'status' => $TICKET_STATUSES[$t['status']] ?? $t['status'], 'assigned_to' => $t['assigned_name'] ?? '',
+        'team_url' => appBaseUrl() . '#ticket-' . (int)$t['id'], 'timestamp' => date('c'),
+    ], $extra);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8]);
+    curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    return $code >= 200 && $code < 300;
+}
+function ticketRow($db, $id) {
+    $st = $db->prepare("SELECT t.*, c.name AS client_name, u.name AS assigned_name FROM tickets t LEFT JOIN clients c ON c.id = t.client_id LEFT JOIN users u ON u.id = t.assigned_to WHERE t.id = ?");
+    $st->execute([(int)$id]); return $st->fetch();
+}
+function ticketNote($db, $tid, $uid, $name, $note, $public = 0, $activity = 0) {
+    $db->prepare("INSERT INTO ticket_notes (ticket_id, user_id, user_name, note, is_public, is_activity) VALUES (?,?,?,?,?,?)")
+       ->execute([(int)$tid, $uid ?: null, $name, $note, $public ? 1 : 0, $activity ? 1 : 0]);
+    $db->prepare("UPDATE tickets SET updated_at = NOW() WHERE id = ?")->execute([(int)$tid]);
+}
+function canWorkTicket($auth, $t) {
+    if (!$auth || !$t) return false;
+    return in_array($auth['role'], ['admin','hr','manager'], true) || (int)$t['assigned_to'] === (int)$auth['id'];
+}
+function ticketNotify($db, $kind, $t, $userIds, $actorId, $actorName, $msg) {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $userIds), function($i) use ($actorId) { return $i > 0 && $i !== (int)$actorId; })));
+    if (!$ids) return;
+    $in = implode(',', array_fill(0, count($ids), '?'));
+    $a = $db->prepare("SELECT id FROM users WHERE status = 'active' AND id IN ($in)"); $a->execute($ids);
+    $ins = $db->prepare("INSERT INTO notifications (user_id, actor_id, actor_name, kind, task_id, project_id, message) VALUES (?,?,?,?,?,NULL,?)");
+    foreach ($a->fetchAll(PDO::FETCH_COLUMN) as $u) $ins->execute([(int)$u, $actorId ?: null, $actorName, $kind, (int)$t['id'], substr($msg, 0, 300)]);
+}
+
+// Client files a request (public: the portal link carries their sub-account id)
+if ($action === 'submit_ticket' && $method === 'POST') {
+    $db = getDB();
+    $b = json_decode(file_get_contents('php://input'), true) ?: [];
+    if (!empty($b['website'])) { echo json_encode(['success'=>true,'ticket_number'=>'GH-0000']); exit; }   // bot trap
+    $loc = trim((string)($b['location_id'] ?? ''));
+    $client = $loc ? clientByLocation($db, $loc) : null;
+    if (!$client) { echo json_encode(['success'=>false,'error'=>'We couldn\'t find your account. Please open this page from your GenSuite menu.']); exit; }
+    $name = trim((string)($b['contact_name'] ?? '')); $email = trim((string)($b['contact_email'] ?? ''));
+    $subject = trim((string)($b['subject'] ?? '')); $details = trim((string)($b['details'] ?? '')); $link = trim((string)($b['link'] ?? ''));
+    $cat = array_key_exists($b['category'] ?? '', $TICKET_CATEGORIES) ? $b['category'] : 'question';
+    $pri = array_key_exists($b['priority'] ?? '', $TICKET_PRIORITY) ? $b['priority'] : 'normal';
+    if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) { echo json_encode(['success'=>false,'error'=>'Please enter your name and a valid email so we can reply.']); exit; }
+    if (mb_strlen($subject) < 3 || mb_strlen($details) < 5) { echo json_encode(['success'=>false,'error'=>'Please add a short subject and a few words about what you need.']); exit; }
+    if ($link !== '' && !preg_match('#^https?://#i', $link)) $link = 'https://' . $link;
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $r1 = $db->prepare("SELECT COUNT(*) FROM tickets WHERE location_id = ? AND created_at > (NOW() - INTERVAL 10 MINUTE)"); $r1->execute([$loc]);
+    $r2 = $db->prepare("SELECT COUNT(*) FROM tickets WHERE ip = ? AND created_at > (NOW() - INTERVAL 1 DAY)"); $r2->execute([$ip]);
+    if ((int)$r1->fetchColumn() >= 5 || (int)$r2->fetchColumn() >= 30) { echo json_encode(['success'=>false,'error'=>'You\'ve sent several requests in a short time. Please wait a few minutes, or email support@genhead.com.']); exit; }
+    $db->prepare("INSERT INTO tickets (client_id, location_id, contact_name, contact_email, category, priority, subject, details, link, status, ip, updated_at) VALUES (?,?,?,?,?,?,?,?,?,'new',?,NOW())")
+       ->execute([(int)$client['id'], $loc, mb_substr($name,0,255), mb_substr($email,0,255), $cat, $pri, mb_substr($subject,0,200), mb_substr($details,0,5000), $link !== '' ? mb_substr($link,0,500) : null, $ip]);
+    $tid = (int)$db->lastInsertId();
+    $t = ticketRow($db, $tid);
+    ticketNote($db, $tid, null, $name, 'Request received from ' . $name, 0, 1);
+    $staff = $db->query("SELECT id FROM users WHERE status = 'active' AND role IN ('admin','hr','manager')")->fetchAll(PDO::FETCH_COLUMN);
+    ticketNotify($db, 'ticket', $t, $staff, 0, $client['name'], ($pri === 'urgent' ? 'URGENT · ' : '') . $subject);
+    ticketHook('ticket_created', $t);
+    echo json_encode(['success'=>true,'ticket_number'=>ticketNo($tid)]);
+    exit;
+}
+// Client's own requests (no internal notes)
+if ($action === 'client_tickets') {
+    $db = getDB();
+    $client = clientByLocation($db, trim((string)($_GET['location_id'] ?? '')));
+    if (!$client) { echo json_encode(['success'=>false,'error'=>'Client not found']); exit; }
+    $st = $db->prepare("SELECT id, category, priority, subject, status, created_at, updated_at FROM tickets WHERE client_id = ? ORDER BY id DESC LIMIT 50");
+    $st->execute([(int)$client['id']]);
+    $out = [];
+    $nq = $db->prepare("SELECT user_name, note, created_at FROM ticket_notes WHERE ticket_id = ? AND is_public = 1 ORDER BY id");
+    foreach ($st->fetchAll() as $t) {
+        $nq->execute([(int)$t['id']]);
+        $replies = array_map(function($n){ return ['from'=>trim(explode(' ', (string)$n['user_name'])[0]) ?: 'Genhead', 'text'=>$n['note'], 'at'=>$n['created_at']]; }, $nq->fetchAll());
+        $out[] = ['number'=>ticketNo($t['id']), 'subject'=>$t['subject'], 'category'=>$TICKET_CATEGORIES[$t['category']] ?? $t['category'],
+                  'priority'=>$t['priority'], 'status'=>$t['status'], 'status_label'=>$TICKET_STATUSES[$t['status']] ?? $t['status'],
+                  'created_at'=>$t['created_at'], 'updated_at'=>$t['updated_at'], 'replies'=>$replies];
+    }
+    echo json_encode(['success'=>true,'client'=>$client['name'],'tickets'=>$out,'categories'=>$TICKET_CATEGORIES]);
+    exit;
+}
+// Team side (signed in)
+if ($action === 'load_tickets') {
+    $db = getDB();
+    $where = in_array($AUTH['role'], ['admin','hr','manager'], true) ? '1=1' : 't.assigned_to = ' . (int)$AUTH['id'];
+    $rows = $db->query("SELECT t.id, t.client_id, t.contact_name, t.category, t.priority, t.subject, t.status, t.assigned_to, t.task_id, t.created_at, t.updated_at,
+                               c.name AS client_name, u.name AS assigned_name
+                        FROM tickets t LEFT JOIN clients c ON c.id = t.client_id LEFT JOIN users u ON u.id = t.assigned_to
+                        WHERE $where ORDER BY FIELD(t.status,'new','in_progress','waiting','resolved'), FIELD(t.priority,'urgent','normal','low'), t.id DESC LIMIT 500")->fetchAll();
+    foreach ($rows as &$r) $r['number'] = ticketNo($r['id']);
+    echo json_encode(['success'=>true,'tickets'=>$rows,'statuses'=>$TICKET_STATUSES,'categories'=>$TICKET_CATEGORIES,'priorities'=>$TICKET_PRIORITY]);
+    exit;
+}
+if ($action === 'ticket_detail') {
+    $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
+    if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
+    unset($t['ip']); $t['number'] = ticketNo($t['id']);
+    $n = $db->prepare("SELECT id, user_name, note, is_public, is_activity, created_at FROM ticket_notes WHERE ticket_id = ? ORDER BY id"); $n->execute([(int)$t['id']]);
+    echo json_encode(['success'=>true,'ticket'=>$t,'notes'=>$n->fetchAll()]);
+    exit;
+}
+if ($action === 'update_ticket') {
+    $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
+    if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
+    $uid = (int)$AUTH['id']; $who = $AUTH['name']; $changes = [];
+    if (isset($_GET['status']) && array_key_exists($_GET['status'], $TICKET_STATUSES) && $_GET['status'] !== $t['status']) {
+        $db->prepare("UPDATE tickets SET status = ?, resolved_at = ? WHERE id = ?")->execute([$_GET['status'], $_GET['status'] === 'resolved' ? date('Y-m-d H:i:s') : null, (int)$t['id']]);
+        ticketNote($db, $t['id'], $uid, $who, 'Status: ' . $TICKET_STATUSES[$_GET['status']], 0, 1); $changes[] = 'status';
+    }
+    if (isset($_GET['priority']) && array_key_exists($_GET['priority'], $TICKET_PRIORITY) && $_GET['priority'] !== $t['priority']) {
+        $db->prepare("UPDATE tickets SET priority = ? WHERE id = ?")->execute([$_GET['priority'], (int)$t['id']]);
+        ticketNote($db, $t['id'], $uid, $who, 'Priority: ' . $TICKET_PRIORITY[$_GET['priority']], 0, 1);
+    }
+    if (isset($_GET['assigned_to']) && in_array($AUTH['role'], ['admin','hr','manager'], true)) {
+        $to = (int)$_GET['assigned_to'] ?: null;
+        if ($to !== ((int)$t['assigned_to'] ?: null)) {
+            $an = null; if ($to) { $q = $db->prepare("SELECT name FROM users WHERE id = ? AND status = 'active'"); $q->execute([$to]); $an = $q->fetchColumn(); if (!$an) $to = null; }
+            $db->prepare("UPDATE tickets SET assigned_to = ? WHERE id = ?")->execute([$to, (int)$t['id']]);
+            ticketNote($db, $t['id'], $uid, $who, $to ? 'Assigned to ' . $an : 'Unassigned', 0, 1);
+            if ($to) ticketNotify($db, 'ticket_assigned', $t, [$to], $uid, $who, $t['subject']);
+        }
+    }
+    $t2 = ticketRow($db, (int)$t['id']);
+    if (in_array('status', $changes, true)) ticketHook('ticket_status_changed', $t2);
+    echo json_encode(['success'=>true]);
+    exit;
+}
+if ($action === 'add_ticket_note' && $method === 'POST') {
+    $db = getDB(); $b = json_decode(file_get_contents('php://input'), true) ?: [];
+    $t = ticketRow($db, (int)($b['id'] ?? 0));
+    if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
+    $note = trim((string)($b['note'] ?? '')); $public = !empty($b['public']);
+    if ($note === '') { echo json_encode(['success'=>false,'error'=>'Write a note first.']); exit; }
+    ticketNote($db, $t['id'], (int)$AUTH['id'], $AUTH['name'], mb_substr($note, 0, 5000), $public, 0);
+    if ($public) {
+        if ($t['status'] === 'new') { $db->prepare("UPDATE tickets SET status = 'in_progress' WHERE id = ?")->execute([(int)$t['id']]); }
+        ticketHook('ticket_reply', ticketRow($db, (int)$t['id']), ['reply' => $note, 'reply_from' => $AUTH['name']]);
+    }
+    echo json_encode(['success'=>true]);
+    exit;
+}
+if ($action === 'ticket_to_task') {
+    $db = getDB(); $t = ticketRow($db, (int)($_GET['id'] ?? 0));
+    if (!$t || !canWorkTicket($AUTH, $t)) { echo json_encode(['success'=>false,'error'=>'Ticket not found']); exit; }
+    if ($t['task_id']) { echo json_encode(['success'=>false,'error'=>'This ticket already has a task.']); exit; }
+    $pid = (int)($_GET['project_id'] ?? 0);
+    $pb = $db->prepare("SELECT id, billing_type FROM projects WHERE id = ? AND status != 'archived'"); $pb->execute([$pid]);
+    if (!($proj = $pb->fetch())) { echo json_encode(['success'=>false,'error'=>'Pick a project.']); exit; }
+    $chk = taskRulesCheck($db, $AUTH, $pid, (int)$t['assigned_to'] ?: null);
+    if ($chk !== true) { echo json_encode(['success'=>false,'error'=>$chk]); exit; }
+    $desc = trim(ticketNo($t['id']) . ' from ' . ($t['contact_name'] ?: 'client') . "\n\n" . ($t['details'] ?? '') . ($t['link'] ? "\n\nLink: " . $t['link'] : ''));
+    $db->prepare("INSERT INTO tasks (project_id,title,description,assigned_to,assigned_name,priority,stage,billing_type,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
+       ->execute([$pid, mb_substr('[' . ticketNo($t['id']) . '] ' . $t['subject'], 0, 255), $desc, $t['assigned_to'] ?: null, $t['assigned_name'] ?: null,
+                  $t['priority'] === 'urgent' ? 'high' : ($t['priority'] === 'low' ? 'low' : 'medium'), 'todo', $proj['billing_type'] ?: null, (int)$AUTH['id']]);
+    $taskId = (int)$db->lastInsertId();
+    if ($t['assigned_to']) addProjectMember($db, $pid, (int)$t['assigned_to']);
+    $db->prepare("INSERT INTO task_comments (task_id,user_id,user_name,comment,is_activity) VALUES (?,?,?,?,1)")->execute([$taskId, (int)$AUTH['id'], $AUTH['name'], 'Created from support ticket ' . ticketNo($t['id'])]);
+    $db->prepare("UPDATE tickets SET task_id = ?, status = IF(status = 'new', 'in_progress', status) WHERE id = ?")->execute([$taskId, (int)$t['id']]);
+    ticketNote($db, $t['id'], (int)$AUTH['id'], $AUTH['name'], 'Turned into a task', 0, 1);
+    echo json_encode(['success'=>true,'task_id'=>$taskId]);
+    exit;
+}
+
 // ── Shared team meeting room (one Zoom room for quick calls) ─────────────
 function meetingState() {
     $st = json_decode((string)getSetting('meeting_room_state'), true);
@@ -267,8 +449,10 @@ if ($action === 'load_notifications') {
     $db = getDB(); $uid = (int)$AUTH['id'];
     try {
         $st = $db->prepare("SELECT n.id, n.kind, n.task_id, n.project_id, n.actor_name, n.message, n.created_at, n.read_at,
-                                   t.title AS task_title, p.name AS project_name
-                            FROM notifications n LEFT JOIN tasks t ON t.id = n.task_id LEFT JOIN projects p ON p.id = n.project_id
+                                   t.title AS task_title, p.name AS project_name, tk.subject AS ticket_subject, tc.name AS ticket_client
+                            FROM notifications n LEFT JOIN tasks t ON t.id = n.task_id AND n.kind NOT LIKE 'ticket%'
+                            LEFT JOIN projects p ON p.id = n.project_id
+                            LEFT JOIN tickets tk ON tk.id = n.task_id AND n.kind LIKE 'ticket%' LEFT JOIN clients tc ON tc.id = tk.client_id
                             WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 30");
         $st->execute([$uid]);
         $c = $db->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL"); $c->execute([$uid]);
@@ -2867,7 +3051,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url'];
         if (isset($body['team_meeting_url'])) {
             $mu = trim((string)$body['team_meeting_url']);
             if ($mu !== '' && !preg_match('#^https://[^\s<>"]+$#i', $mu)) { echo json_encode(['success'=>false,'error'=>'The meeting link must start with https://']); exit; }

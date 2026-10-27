@@ -1,507 +1,406 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="X-Frame-Options" content="ALLOWALL">
 <meta http-equiv="Content-Security-Policy" content="frame-ancestors *">
-<title>Support Hours — Powered by Genhead</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>Client Support Center · Genhead</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --navy:#08153A;
-  --teal:#03AD8F;
-  --purple:#351D72;
-  --gold:#f59e0b;
-  --red:#ef4444;
-  --green:#10b981;
-  --border:#e2e8f0;
-  --alt:#f8fafc;
-  --bg:#ffffff;
-  --dark:#1a1a2e;
-  --mid:#64748b;
-  --light:#94a3b8;
+  --navy:#0B1739; --navy-2:#13234F; --teal:#03AD8F; --teal-d:#028a72; --teal-soft:#E6F7F3;
+  --ink:#0F172A; --body:#334155; --mid:#64748B; --light:#94A3B8;
+  --line:#E5E9F0; --surface:#FFFFFF; --canvas:#F4F6FA;
+  --amber:#B45309; --amber-soft:#FEF3C7; --red:#DC2626; --red-soft:#FEE2E2; --blue:#2563EB; --blue-soft:#DBEAFE;
+  --radius:14px; --shadow:0 1px 2px rgba(15,23,42,.04),0 4px 16px rgba(15,23,42,.05);
 }
-body{
-  font-family:'DM Sans',sans-serif;
-  background:var(--alt);
-  color:var(--dark);
-  min-height:100vh;
-}
+html,body{background:var(--canvas)}
+body{font-family:'DM Sans',system-ui,sans-serif;color:var(--body);min-height:100vh;-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5}
+button,input,select,textarea{font:inherit;color:inherit}
+.mono{font-family:'DM Mono',ui-monospace,monospace}
 
-/* ── HEADER ── */
-.header{
-  background:var(--navy);
-  padding:.85rem 1.5rem;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-}
-.brand{font-size:1.05rem;font-weight:700;color:#fff;letter-spacing:-.5px}
-.brand span{color:var(--teal)}
-.plan-pill{
-  font-size:.68rem;font-weight:700;
-  padding:.22rem .75rem;border-radius:20px;
-  text-transform:uppercase;letter-spacing:.5px;
-}
-.pill-retainer{background:rgba(3,173,143,.2);color:var(--teal);border:1px solid rgba(3,173,143,.4)}
-.pill-diy{background:rgba(245,158,11,.15);color:var(--gold);border:1px solid rgba(245,158,11,.35)}
-.pill-none{background:rgba(255,255,255,.08);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.15)}
+/* Top bar */
+.top{background:var(--navy);color:#fff}
+.top-in{max-width:980px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:14px}
+.logo{font-weight:700;font-size:18px;letter-spacing:-.4px}
+.logo span{color:var(--teal)}
+.top-div{width:1px;height:20px;background:rgba(255,255,255,.18)}
+.top-title{font-size:13px;color:rgba(255,255,255,.7);font-weight:500}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:10px;min-width:0}
+.client-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.pill{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.pill-plan{background:rgba(3,173,143,.18);color:#5EEAD4;border:1px solid rgba(3,173,143,.45)}
+.pill-diy{background:rgba(245,158,11,.16);color:#FCD34D;border:1px solid rgba(245,158,11,.4)}
 
-/* ── LAYOUT ── */
-.page{max-width:860px;margin:0 auto;padding:1.5rem 1.25rem}
+/* Page */
+.wrap{max-width:980px;margin:0 auto;padding:22px 20px 56px}
+.hello{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.hello h1{font-size:24px;line-height:1.2;color:var(--ink);font-weight:700;letter-spacing:-.4px}
+.hello p{font-size:14px;color:var(--mid);margin-top:4px}
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:10px;padding:10px 16px;font-weight:600;font-size:14px;border:1px solid transparent;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s;white-space:nowrap}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:var(--teal-d)}
+.btn-ghost{background:var(--surface);border-color:var(--line);color:var(--ink)}
+.btn-ghost:hover{border-color:#CBD5E1}
+.btn:focus-visible,.tab:focus-visible,.choice:focus-within{outline:3px solid rgba(3,173,143,.35);outline-offset:2px}
+.btn[disabled]{opacity:.6;cursor:default}
 
-/* ── BALANCE HERO ── */
-.balance-hero{
-  background:var(--bg);
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:1.5rem;
-  margin-bottom:1rem;
-  display:flex;
-  align-items:center;
-  gap:2rem;
-}
-.balance-left{flex:1}
-.balance-eyebrow{
-  font-size:.65rem;text-transform:uppercase;
-  letter-spacing:.6px;color:var(--light);
-  margin-bottom:.4rem;
-}
-.balance-number{
-  font-size:3.2rem;font-weight:700;
-  line-height:1;margin-bottom:.4rem;
-  font-family:'DM Mono',monospace;
-}
-.balance-number.green{color:var(--teal)}
-.balance-number.yellow{color:var(--gold)}
-.balance-number.red{color:var(--red)}
-.balance-sub{font-size:.82rem;color:var(--mid)}
-.balance-sub strong{color:var(--dark)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.tab{background:none;border:none;padding:10px 14px;font-size:14px;font-weight:600;color:var(--mid);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:8px}
+.tab:hover{color:var(--ink)}
+.tab.on{color:var(--ink);border-bottom-color:var(--teal)}
+.count{background:var(--teal-soft);color:var(--teal-d);font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px}
 
-.stat-row{
-  display:flex;gap:1rem;
-  flex-shrink:0;
-}
-.stat-box{
-  background:var(--alt);
-  border:1px solid var(--border);
-  border-radius:10px;
-  padding:.75rem 1rem;
-  text-align:center;
-  min-width:90px;
-}
-.stat-val{
-  font-size:1.3rem;font-weight:700;
-  color:var(--dark);
-  font-family:'DM Mono',monospace;
-}
-.stat-lbl{
-  font-size:.62rem;text-transform:uppercase;
-  letter-spacing:.4px;color:var(--light);
-  margin-top:.2rem;
-}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card-h h2{font-size:15px;color:var(--ink);font-weight:700}
+.muted{color:var(--mid);font-size:13px}
 
-/* ── PROGRESS ── */
-.progress-wrap{
-  background:var(--bg);
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:1rem 1.25rem;
-  margin-bottom:1rem;
-}
-.progress-meta{
-  display:flex;justify-content:space-between;
-  font-size:.75rem;color:var(--mid);
-  margin-bottom:.55rem;
-}
-.progress-track{
-  height:10px;background:var(--border);
-  border-radius:5px;overflow:hidden;
-}
-.progress-fill{
-  height:100%;border-radius:5px;
-  transition:width .7s cubic-bezier(.4,0,.2,1);
-}
-.fill-green{background:linear-gradient(90deg,#03AD8F,#00cec9)}
-.fill-yellow{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
-.fill-red{background:linear-gradient(90deg,#ef4444,#f87171)}
+/* Hours summary */
+.summary{display:grid;grid-template-columns:220px 1fr;gap:0;margin-bottom:18px}
+.gauge{display:flex;align-items:center;justify-content:center;padding:24px;border-right:1px solid var(--line)}
+.ring{position:relative;width:164px;height:164px}
+.ring svg{transform:rotate(-90deg)}
+.ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.ring-num{font-size:34px;font-weight:600;color:var(--ink);letter-spacing:-1px}
+.ring-lbl{font-size:12px;color:var(--mid);margin-top:2px}
+.sum-r{padding:22px 24px;display:flex;flex-direction:column;gap:16px;justify-content:center}
+.sum-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sum-top h2{font-size:16px;color:var(--ink)}
+select.month{border:1px solid var(--line);border-radius:10px;padding:8px 34px 8px 12px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748B' stroke-width='1.6' fill='none'/%3E%3C/svg%3E") no-repeat right 12px center;appearance:none;font-weight:600;font-size:14px;cursor:pointer;color:var(--ink)}
+select.month:focus{outline:none;border-color:var(--teal)}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.tile{background:var(--canvas);border-radius:12px;padding:12px 14px}
+.tile-l{font-size:12px;color:var(--mid);font-weight:500}
+.tile-v{font-size:22px;font-weight:600;color:var(--ink);margin-top:2px;letter-spacing:-.4px}
+.tile-v small{font-size:13px;color:var(--mid);font-weight:500;margin-left:3px}
+.state{display:flex;align-items:center;gap:10px;font-size:13px;padding:10px 12px;border-radius:10px}
+.state b{font-weight:600}
+.st-ok{background:var(--teal-soft);color:#065F52}
+.st-low{background:var(--amber-soft);color:#7C2D12}
+.st-out{background:var(--red-soft);color:#7F1D1D}
+.state .btn{padding:6px 12px;font-size:13px;margin-left:auto}
 
-/* ── PERIOD SELECTOR ── */
-.period-row{
-  display:flex;align-items:center;
-  justify-content:space-between;
-  margin-bottom:.75rem;
-}
-.section-title{
-  font-size:.7rem;font-weight:700;
-  text-transform:uppercase;letter-spacing:.5px;
-  color:var(--mid);
-}
-.period-sel{
-  padding:.28rem .6rem;
-  border:1px solid var(--border);
-  border-radius:6px;font-size:.78rem;
-  font-family:'DM Sans',sans-serif;
-  background:var(--bg);color:var(--dark);
-  cursor:pointer;
-}
-.period-sel:focus{outline:none;border-color:var(--teal)}
+/* Activity */
+.tbl{width:100%;border-collapse:collapse;table-layout:auto}
+.tbl th{font-size:12px;font-weight:600;color:var(--mid);text-align:left;padding:10px 20px;background:#FAFBFD;border-bottom:1px solid var(--line)}
+.tbl td{padding:12px 20px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
+.tbl tr:last-child td{border-bottom:none}
+.tbl .r{text-align:right;white-space:nowrap}
+.tbl tfoot td{font-weight:700;color:var(--ink);background:#FAFBFD}
+.who{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.av{width:24px;height:24px;border-radius:50%;background:var(--navy-2);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.date{color:var(--mid);white-space:nowrap}
+.empty{padding:44px 20px;text-align:center}
+.empty h3{font-size:15px;color:var(--ink);margin-bottom:4px}
+.empty p{font-size:13px;color:var(--mid);max-width:380px;margin:0 auto 14px}
+.ico{width:44px;height:44px;border-radius:12px;background:var(--teal-soft);color:var(--teal-d);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px}
 
-/* ── ACTIVITY TABLE ── */
-.activity-card{
-  background:var(--bg);
-  border:1px solid var(--border);
-  border-radius:12px;
-  overflow:hidden;
-  margin-bottom:1rem;
-}
-.activity-head{
-  background:var(--navy);
-  display:grid;
-  grid-template-columns:1fr 2fr 1.5fr auto;
-  gap:.5rem;
-  padding:.55rem 1rem;
-}
-.activity-head span{
-  font-size:.62rem;font-weight:600;
-  text-transform:uppercase;letter-spacing:.4px;
-  color:rgba(255,255,255,.55);
-}
-.activity-head span:last-child{text-align:right}
-.activity-row{
-  display:grid;
-  grid-template-columns:1fr 2fr 1.5fr auto;
-  gap:.5rem;
-  padding:.7rem 1rem;
-  border-bottom:1px solid var(--border);
-  align-items:center;
-  transition:background .12s;
-}
-.activity-row:last-child{border-bottom:none}
-.activity-row:hover{background:var(--alt)}
-.act-date{font-size:.75rem;color:var(--mid)}
-.act-task{font-size:.82rem;color:var(--dark)}
-.act-member{font-size:.75rem;color:var(--mid)}
-.act-hrs{
-  font-size:.82rem;font-weight:700;
-  color:var(--red);text-align:right;
-  font-family:'DM Mono',monospace;
-  white-space:nowrap;
-}
-.no-activity{
-  padding:2.5rem;text-align:center;
-  color:var(--light);font-size:.84rem;
-}
-.no-activity-icon{font-size:2rem;margin-bottom:.5rem}
+/* Requests */
+.req{padding:16px 20px;border-bottom:1px solid var(--line)}
+.req:last-child{border-bottom:none}
+.req-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.req-no{font-size:12px;color:var(--mid)}
+.req-s{font-size:15px;font-weight:600;color:var(--ink);margin-top:4px}
+.req-m{font-size:12.5px;color:var(--mid);margin-top:2px}
+.chip{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 10px}
+.c-new{background:var(--blue-soft);color:#1E40AF}
+.c-in_progress{background:var(--teal-soft);color:#065F52}
+.c-waiting{background:var(--amber-soft);color:#7C2D12}
+.c-resolved{background:#EEF2F6;color:#475569}
+.c-urgent{background:var(--red-soft);color:#991B1B}
+.reply{margin-top:10px;background:#F8FAFC;border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:8px;padding:10px 12px;font-size:13.5px;color:var(--body);white-space:pre-wrap}
+.reply .rf{font-size:12px;color:var(--mid);margin-bottom:3px;font-weight:600}
 
-/* ── DIY CARD ── */
-.diy-card{
-  background:var(--bg);
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:2.5rem;
-  text-align:center;
-  margin-bottom:1rem;
-}
-.diy-icon{font-size:2.5rem;margin-bottom:.85rem}
-.diy-title{font-size:1.15rem;font-weight:700;color:var(--navy);margin-bottom:.5rem}
-.diy-sub{font-size:.84rem;color:var(--mid);line-height:1.7;max-width:460px;margin:0 auto 1.25rem}
-.diy-link{
-  display:inline-block;
-  padding:.55rem 1.25rem;
-  background:var(--teal);color:#fff;
-  border-radius:8px;font-size:.84rem;
-  font-weight:600;text-decoration:none;
-  transition:background .15s;
-}
-.diy-link:hover{background:#029e83}
+/* Form (dialog) */
+.ov{position:fixed;inset:0;background:rgba(11,23,57,.45);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px 64px;overflow-y:auto;z-index:50}
+.dlg{background:var(--surface);border-radius:16px;width:100%;max-width:600px;box-shadow:0 24px 64px rgba(11,23,57,.3)}
+.dlg-h{padding:20px 24px 4px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.dlg-h h2{font-size:19px;color:var(--ink);letter-spacing:-.3px}
+.x{background:none;border:none;font-size:22px;color:var(--mid);cursor:pointer;line-height:1;padding:4px}
+.dlg-b{padding:12px 24px 24px}
+.f{margin-bottom:14px}
+.f label,.lbl{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.f .hint{font-weight:400;color:var(--mid)}
+.in{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface);font-size:14.5px;transition:border-color .15s,box-shadow .15s}
+.in:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(3,173,143,.15)}
+textarea.in{min-height:120px;resize:vertical}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.choices{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.choice{position:relative;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:13.5px;color:var(--ink);display:flex;align-items:center;gap:8px;transition:border-color .15s,background .15s}
+.choice input{position:absolute;opacity:0}
+.choice:has(input:checked){border-color:var(--teal);background:var(--teal-soft);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg label{margin:0;padding:8px 16px;font-size:13.5px;font-weight:600;color:var(--mid);cursor:pointer;border-right:1px solid var(--line);position:relative}
+.seg label:last-child{border-right:none}
+.seg input{position:absolute;opacity:0}
+.seg label:has(input:checked){background:var(--ink);color:#fff}
+.seg label.urg:has(input:checked){background:var(--red)}
+.err{background:var(--red-soft);color:#7F1D1D;border-radius:10px;padding:10px 12px;font-size:13.5px;margin-bottom:12px}
+.ok{text-align:center;padding:28px 24px 30px}
+.ok .ico{width:56px;height:56px;border-radius:50%}
+.ok h2{font-size:20px;color:var(--ink);margin-bottom:6px}
+.ok .no{font-size:15px;color:var(--ink);font-weight:600}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 
-/* ── ERROR CARD ── */
-.error-card{
-  background:#fee2e2;border:1px solid #fecaca;
-  border-radius:10px;padding:1rem 1.25rem;
-  color:#991b1b;font-size:.84rem;
-  margin-bottom:1rem;
-}
+.alert{display:flex;gap:12px;align-items:flex-start;background:var(--red-soft);color:#7F1D1D;border-radius:12px;padding:14px 16px;font-size:14px}
+.foot{max-width:980px;margin:0 auto;padding:0 20px 28px;font-size:12.5px;color:var(--light);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.foot a{color:var(--mid);text-decoration:none}
+.foot a:hover{color:var(--teal-d)}
+.skel{background:linear-gradient(90deg,#EEF2F6,#F8FAFC,#EEF2F6);background-size:200% 100%;animation:sk 1.2s infinite;border-radius:10px}
+@keyframes sk{to{background-position:-200% 0}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 
-/* ── LOW BALANCE ALERT ── */
-.alert-bar{
-  background:#fef3c7;border:1px solid #fcd34d;
-  border-radius:10px;padding:.75rem 1.1rem;
-  font-size:.82rem;color:#92400e;
-  display:flex;align-items:center;gap:.65rem;
-  margin-bottom:1rem;
-}
-.alert-icon{font-size:1rem;flex-shrink:0}
-
-/* ── FOOTER ── */
-.footer{
-  text-align:center;padding:1.25rem;
-  font-size:.72rem;color:var(--light);
-  border-top:1px solid var(--border);
-  margin-top:.5rem;
-}
-.footer a{color:var(--teal);text-decoration:none}
-
-/* ── LOADING ── */
-.loading-state{
-  display:flex;flex-direction:column;
-  align-items:center;justify-content:center;
-  min-height:300px;gap:.75rem;
-  color:var(--mid);font-size:.84rem;
-}
-.spinner{
-  width:24px;height:24px;
-  border:2px solid var(--border);
-  border-top-color:var(--teal);
-  border-radius:50%;
-  animation:spin .75s linear infinite;
-}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-@media(max-width:600px){
-  .balance-hero{flex-direction:column;gap:1.25rem}
-  .stat-row{justify-content:stretch}
-  .stat-box{flex:1}
-  .balance-number{font-size:2.4rem}
-  .activity-head,.activity-row{grid-template-columns:1fr 1.5fr auto}
-  .activity-head span:nth-child(3),
-  .activity-row .act-member{display:none}
+@media(max-width:720px){
+  .summary{grid-template-columns:1fr}
+  .gauge{border-right:none;border-bottom:1px solid var(--line)}
+  .tiles{grid-template-columns:repeat(3,1fr);gap:8px}
+  .tile-v{font-size:18px}
+  .tbl .mcol{display:none}
+  .tbl th,.tbl td{padding-left:14px;padding-right:14px}
+  .tbl th{width:auto!important}
+  .row2{grid-template-columns:1fr}
+  .top-title,.top-div{display:none}
+  .client-name{max-width:150px}
+  .hello h1{font-size:21px}
 }
 </style>
 </head>
 <body>
-
-<!-- HEADER -->
-<div class="header">
-  <div class="brand">gen<span>head</span></div>
-  <div id="plan-pill" class="plan-pill pill-none">Loading...</div>
-</div>
-
-<!-- PAGE -->
-<div class="page" id="page">
-  <div class="loading-state">
-    <div class="spinner"></div>
-    Loading your support hours...
+<header class="top">
+  <div class="top-in">
+    <div class="logo">gen<span>head</span></div>
+    <div class="top-div"></div>
+    <div class="top-title">Client Support Center</div>
+    <div class="top-right">
+      <span class="client-name" id="client-name"></span>
+      <span class="pill pill-plan" id="plan-pill" hidden></span>
+    </div>
   </div>
-</div>
+</header>
 
-<!-- FOOTER -->
-<div class="footer">
-  Powered by <a href="https://genhead.com" target="_blank">Genhead</a>
-  &nbsp;·&nbsp;
-  Questions? <a href="mailto:support@genhead.com">support@genhead.com</a>
-</div>
+<main class="wrap" id="app">
+  <div class="skel" style="height:34px;width:280px;margin-bottom:22px"></div>
+  <div class="skel" style="height:210px;margin-bottom:18px"></div>
+  <div class="skel" style="height:260px"></div>
+</main>
+
+<footer class="foot">
+  <span>Powered by <a href="https://genhead.com" target="_blank" rel="noopener">Genhead</a></span>
+  <span>Questions? <a href="mailto:support@genhead.com">support@genhead.com</a></span>
+</footer>
 
 <script>
 const API = 'api.php';
+const $ = s => document.querySelector(s);
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const params = new URLSearchParams(location.search);
+const LOC = params.get('location') || params.get('loc') || params.get('id') || '';
+const state = { tab: params.get('tab') === 'requests' ? 'requests' : 'hours', hours: null, month: null, tickets: null, categories: null, client: '' };
+const store = { get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
 
-// ── Get location ID from URL params ──────────────────────────
-function getLocationId(){
-  const p = new URLSearchParams(window.location.search);
-  return p.get('location') || p.get('loc') || p.get('id') || null;
+const fmtH = n => { const v = Math.round((parseFloat(n) || 0) * 100) / 100; return v % 1 === 0 ? String(v) : v.toFixed(v * 10 % 1 === 0 ? 1 : 2); };
+const fmtDate = (d, opts) => { if (!d) return ''; const dt = new Date(String(d).length === 10 ? d + 'T12:00:00' : String(d).replace(' ', 'T')); return isNaN(dt) ? d : dt.toLocaleDateString('en-US', opts || { month: 'short', day: 'numeric' }); };
+const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+const ICONS = {
+  check: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  clock: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  chat: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>',
+  plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  warn: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>'
+};
+
+async function getJSON(url) { const r = await fetch(url); return r.json(); }
+
+async function init() {
+  if (!LOC) { fatal('Please open this page from the Support menu in your GenSuite account.'); return; }
+  try {
+    const [h, t] = await Promise.all([
+      getJSON(`${API}?action=client_hours&location_id=${encodeURIComponent(LOC)}`),
+      getJSON(`${API}?action=client_tickets&location_id=${encodeURIComponent(LOC)}`).catch(() => null)
+    ]);
+    if (!h.success) { fatal(h.error === 'Client not found' ? 'We couldn\'t find your account. Please open this page from the Support menu in your GenSuite account, or contact support@genhead.com.' : (h.error || 'We couldn\'t load your account.')); return; }
+    state.hours = h; state.month = h.month || null; state.client = (h.client && h.client.name) || '';
+    if (t && t.success) { state.tickets = t.tickets; state.categories = t.categories; }
+    $('#client-name').textContent = state.client;
+    const pill = $('#plan-pill'); pill.hidden = false;
+    if (h.plan === 'diy') { pill.textContent = 'DIY plan'; pill.className = 'pill pill-diy'; }
+    else { pill.textContent = (h.client && h.client.plan_label) || 'Support plan'; }
+    render();
+    if (params.get('new') === '1') openForm();
+  } catch (e) { fatal('We couldn\'t reach Genhead right now. Please try again in a moment.'); }
 }
 
-// ── Format helpers ───────────────────────────────────────────
-function fmtHrs(n){
-  const v = parseFloat(n);
-  if(isNaN(v)) return '—';
-  return v % 1 === 0 ? v.toString() : v.toFixed(1);
-}
-function fmtDate(d){
-  if(!d) return '—';
-  const dt = new Date(d + 'T12:00:00');
-  if(isNaN(dt)) return d;
-  return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-}
-function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function balanceColor(pct){
-  if(pct > 40) return 'green';
-  if(pct > 15) return 'yellow';
-  return 'red';
-}
-function fillClass(pct){
-  if(pct > 40) return 'fill-green';
-  if(pct > 15) return 'fill-yellow';
-  return 'fill-red';
-}
+function fatal(msg) { $('#app').innerHTML = `<div class="alert">${ICONS.warn}<div>${esc(msg)}</div></div>`; }
 
-// ── Current state ────────────────────────────────────────────
-let currentLocationId = null;
+function openCount() { return (state.tickets || []).filter(t => t.status !== 'resolved').length; }
 
-// ── Render DIY plan ──────────────────────────────────────────
-function renderDIY(clientName){
-  document.getElementById('plan-pill').textContent = 'DIY Plan';
-  document.getElementById('plan-pill').className = 'plan-pill pill-diy';
-  document.getElementById('page').innerHTML = `
-    <div class="diy-card">
-      <div class="diy-icon">🛠️</div>
-      <div class="diy-title">You're on the DIY Plan</div>
-      <div class="diy-sub">
-        Your current plan is self-managed — you have full access to build,
-        update, and manage your Genhead account independently.<br><br>
-        Ready for dedicated Genhead support hours? Reach out and we'll get you set up.
+function render() {
+  const first = state.client ? state.client : 'there';
+  $('#app').innerHTML = `
+    <div class="hello">
+      <div><h1>Hi, ${esc(first)}</h1><p>Your support hours and requests with the Genhead team.</p></div>
+      <button class="btn btn-primary" onclick="openForm()">${ICONS.plus} New support request</button>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab ${state.tab === 'hours' ? 'on' : ''}" role="tab" aria-selected="${state.tab === 'hours'}" onclick="setTab('hours')">Support hours</button>
+      <button class="tab ${state.tab === 'requests' ? 'on' : ''}" role="tab" aria-selected="${state.tab === 'requests'}" onclick="setTab('requests')">My requests ${openCount() ? `<span class="count">${openCount()}</span>` : ''}</button>
+    </nav>
+    <section id="pane">${state.tab === 'hours' ? hoursHTML() : requestsHTML()}</section>`;
+}
+function setTab(t) { state.tab = t; render(); }
+
+function hoursHTML() {
+  const h = state.hours;
+  if (h.plan === 'diy') {
+    return `<div class="card"><div class="empty">
+      <div class="ico">${ICONS.clock}</div>
+      <h3>You're on the DIY plan</h3>
+      <p>You manage your GenSuite account yourself. If you'd like hands-on help from the Genhead team, ask about adding support hours.</p>
+      <button class="btn btn-primary" onclick="openForm('billing','Adding support hours to our plan')">Ask about support hours</button>
+    </div></div>`;
+  }
+  const total = parseFloat(h.bank.total_hours) || 0, used = parseFloat(h.bank.used_hours) || 0, left = Math.max(0, total - used);
+  const pct = total > 0 ? Math.max(0, Math.min(1, left / total)) : 0;
+  const R = 70, C = 2 * Math.PI * R;
+  const color = !total ? '#CBD5E1' : pct > .4 ? '#03AD8F' : pct > .15 ? '#D97706' : '#DC2626';
+  const monthLabel = (h.periods || []).find(p => p.value === h.month)?.label || '';
+  const opts = (h.periods || []).map(p => `<option value="${esc(p.value)}" ${p.value === h.month ? 'selected' : ''}>${esc(p.label)}</option>`).join('');
+  let st = '';
+  if (total > 0 && used > total) st = `<div class="state st-out">${ICONS.warn}<div><b>Over by ${fmtH(used - total)} hrs</b> this month.</div><button class="btn btn-ghost" onclick="openForm('billing','Additional support hours')">Request more hours</button></div>`;
+  else if (total > 0 && pct <= .2) st = `<div class="state st-low">${ICONS.warn}<div><b>Running low:</b> ${fmtH(left)} hrs left this month.</div><button class="btn btn-ghost" onclick="openForm('billing','Additional support hours')">Request more hours</button></div>`;
+  else if (total > 0) st = `<div class="state st-ok">${ICONS.check}<div><b>On track.</b> ${Math.round(pct * 100)}% of this month's hours remaining.</div></div>`;
+  else st = `<div class="state st-low">${ICONS.clock}<div>No support hours are set for this month yet. Contact us if that doesn't look right.</div></div>`;
+  const acts = h.activity || [];
+  const rows = acts.map(a => `<tr>
+      <td class="date">${esc(fmtDate(a.date))}</td>
+      <td>${esc(a.deliverable || 'Support work')}</td>
+      <td class="mcol"><span class="who"><span class="av" aria-hidden="true">${esc(initials(a.team_member))}</span>${esc(a.team_member || 'Genhead team')}</span></td>
+      <td class="r mono">${fmtH(a.hours)} h</td></tr>`).join('');
+  return `
+    <div class="card summary">
+      <div class="gauge">
+        <div class="ring" role="img" aria-label="${fmtH(left)} of ${fmtH(total)} hours remaining">
+          <svg width="164" height="164" viewBox="0 0 164 164">
+            <circle cx="82" cy="82" r="${R}" fill="none" stroke="#EEF2F6" stroke-width="14"/>
+            <circle cx="82" cy="82" r="${R}" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)"/>
+          </svg>
+          <div class="ring-c"><div class="ring-num mono">${fmtH(left)}</div><div class="ring-lbl">hours left</div></div>
+        </div>
       </div>
-      <a class="diy-link" href="mailto:support@genhead.com">Contact Genhead →</a>
+      <div class="sum-r">
+        <div class="sum-top">
+          <h2>Hours this month</h2>
+          <label class="sr" for="month">Month</label>
+          <select class="month" id="month" onchange="loadMonth(this.value)">${opts}</select>
+        </div>
+        <div class="tiles">
+          <div class="tile"><div class="tile-l">Included</div><div class="tile-v mono">${fmtH(total)}<small>hrs</small></div></div>
+          <div class="tile"><div class="tile-l">Used</div><div class="tile-v mono">${fmtH(used)}<small>hrs</small></div></div>
+          <div class="tile"><div class="tile-l">Remaining</div><div class="tile-v mono" style="color:${total ? color : 'var(--ink)'}">${fmtH(left)}<small>hrs</small></div></div>
+        </div>
+        ${st}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>Work completed</h2><span class="muted">${acts.length} ${acts.length === 1 ? 'entry' : 'entries'}</span></div>
+      ${acts.length ? `<div style="overflow-x:auto"><table class="tbl">
+        <thead><tr><th style="width:90px">Date</th><th>Work performed</th><th class="mcol" style="width:190px">Team member</th><th class="r" style="width:80px">Hours</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="2">Total</td><td class="mcol"></td><td class="r mono">${fmtH(used)} h</td></tr></tfoot>
+      </table></div>` : `<div class="empty"><div class="ico">${ICONS.clock}</div><h3>No work logged in ${esc(monthLabel || 'this month')}</h3><p>When the team works on your account, each entry shows up here with the hours used.</p></div>`}
     </div>`;
 }
 
-// ── Render error ─────────────────────────────────────────────
-function renderError(msg){
-  document.getElementById('plan-pill').textContent = 'Error';
-  document.getElementById('plan-pill').className = 'plan-pill pill-none';
-  document.getElementById('page').innerHTML = `
-    <div class="error-card">&#9888; ${msg || 'Unable to load your support hours. Please contact Genhead.'}</div>`;
+async function loadMonth(m) {
+  $('#pane').style.opacity = '.55';
+  try {
+    const h = await getJSON(`${API}?action=client_hours&location_id=${encodeURIComponent(LOC)}&month=${encodeURIComponent(m)}`);
+    if (h.success) { state.hours = h; state.month = h.month; }
+  } finally { render(); }
 }
 
-// ── Render full portal ───────────────────────────────────────
-function renderPortal(data, selectedPeriod){
-  const { client, bank, activity, period, periods } = data;
-
-  // Plan pill
-  const pill = document.getElementById('plan-pill');
-  pill.textContent = client.plan_label || 'Retainer';
-  pill.className = 'plan-pill pill-retainer';
-
-  const total     = parseFloat(bank.total_hours ?? 0);
-  const used      = parseFloat(bank.used_hours  ?? 0);
-  const remaining = parseFloat(bank.remaining   ?? 0);
-  const pct       = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
-  const color     = balanceColor(pct);
-  const fill      = fillClass(pct);
-
-  // Low balance alert
-  const lowAlert = (pct <= 20 && total > 0) ? `
-    <div class="alert-bar">
-      <span class="alert-icon">⚠️</span>
-      <span>Your support hours are running low — <strong>${fmtHrs(remaining)} hrs remaining</strong>.
-      Contact Genhead to purchase additional hours.</span>
-    </div>` : '';
-
-  // Period options
-  const periodOpts = (periods || []).map(p =>
-    `<option value="${esc(p.value)}" ${p.value === period ? 'selected' : ''}>${esc(p.label)}</option>`
-  ).join('');
-
-  // Activity rows
-  const actRows = (activity || []).length === 0
-    ? `<div class="no-activity">
-        <div class="no-activity-icon">📋</div>
-        No activity logged yet this month.
-       </div>`
-    : (activity || []).map(row => `
-        <div class="activity-row">
-          <span class="act-date">${fmtDate(row.date)}</span>
-          <span class="act-task">${esc(row.deliverable || 'Support work')}</span>
-          <span class="act-member">${esc(row.team_member || 'Genhead Team')}</span>
-          <span class="act-hrs">−${fmtHrs(row.hours)} hrs</span>
-        </div>`).join('');
-
-  document.getElementById('page').innerHTML = `
-    ${lowAlert}
-
-    <!-- BALANCE HERO -->
-    <div class="balance-hero">
-      <div class="balance-left">
-        <div class="balance-eyebrow">Remaining Support Hours</div>
-        <div class="balance-number ${color}">${fmtHrs(remaining)}<span style="font-size:1.2rem;font-weight:400;color:var(--mid)"> hrs</span></div>
-        <div class="balance-sub">
-          <strong>${fmtHrs(total)} hrs</strong> total this month &nbsp;·&nbsp;
-          <strong style="color:var(--red)">${fmtHrs(used)} hrs</strong> used
-        </div>
+function requestsHTML() {
+  const list = state.tickets;
+  if (!list) return `<div class="card"><div class="empty"><h3>Requests aren't available right now</h3><p>Please email support@genhead.com and we'll help.</p></div></div>`;
+  if (!list.length) return `<div class="card"><div class="empty">
+      <div class="ico">${ICONS.chat}</div><h3>No requests yet</h3>
+      <p>Need a change, have a question, or something isn't working? Send a request and the team will pick it up.</p>
+      <button class="btn btn-primary" onclick="openForm()">${ICONS.plus} New support request</button></div></div>`;
+  return `<div class="card">${list.map(t => `
+    <div class="req">
+      <div class="req-top">
+        <span class="req-no mono">${esc(t.number)}</span>
+        <span class="chip c-${esc(t.status)}">${esc(t.status_label)}</span>
+        ${t.priority === 'urgent' ? '<span class="chip c-urgent">Urgent</span>' : ''}
       </div>
-      <div class="stat-row">
-        <div class="stat-box">
-          <div class="stat-val">${fmtHrs(total)}</div>
-          <div class="stat-lbl">Total</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-val" style="color:var(--red)">${fmtHrs(used)}</div>
-          <div class="stat-lbl">Used</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-val" style="color:var(--teal)">${fmtHrs(remaining)}</div>
-          <div class="stat-lbl">Left</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PROGRESS BAR -->
-    <div class="progress-wrap">
-      <div class="progress-meta">
-        <span>${Math.round(pct)}% remaining this month</span>
-        <span>${fmtHrs(remaining)} of ${fmtHrs(total)} hrs left</span>
-      </div>
-      <div class="progress-track">
-        <div class="progress-fill ${fill}" style="width:${pct}%"></div>
-      </div>
-    </div>
-
-    <!-- ACTIVITY LOG -->
-    <div class="period-row">
-      <div class="section-title">Activity Log</div>
-      <select class="period-sel" onchange="switchPeriod(this.value)">
-        ${periodOpts}
-      </select>
-    </div>
-
-    <div class="activity-card">
-      <div class="activity-head">
-        <span>Date</span>
-        <span>Work Performed</span>
-        <span>Team Member</span>
-        <span style="text-align:right">Hours</span>
-      </div>
-      ${actRows}
-    </div>`;
+      <div class="req-s">${esc(t.subject)}</div>
+      <div class="req-m">${esc(t.category)} · Sent ${esc(fmtDate(t.created_at, { month: 'short', day: 'numeric', year: 'numeric' }))}${t.updated_at && t.updated_at !== t.created_at ? ` · Updated ${esc(fmtDate(t.updated_at))}` : ''}</div>
+      ${(t.replies || []).map(r => `<div class="reply"><div class="rf">${esc(r.from)} from Genhead · ${esc(fmtDate(r.at))}</div>${esc(r.text)}</div>`).join('')}
+    </div>`).join('')}</div>`;
 }
 
-// ── Switch period ────────────────────────────────────────────
-async function switchPeriod(period){
-  if(!currentLocationId) return;
-  document.getElementById('page').innerHTML = `
-    <div class="loading-state"><div class="spinner"></div>Loading...</div>`;
-  try{
-    const r = await fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(currentLocationId)}&month=${encodeURIComponent(period)}`);
-    const data = await r.json();
-    if(data.success) renderPortal(data, period);
-    else renderError(data.error);
-  }catch(e){
-    renderError('Could not connect. Please try again.');
-  }
+// ── New request form ──
+function openForm(cat, subject) {
+  const cats = state.categories || { issue: "Something isn't working", change: 'Change request', new_build: 'New build or feature', question: 'Question / how-to', billing: 'Billing' };
+  const pick = cat && cats[cat] ? cat : 'issue';
+  const ov = document.createElement('div'); ov.className = 'ov'; ov.id = 'ov';
+  ov.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
+    <div class="dlg-h"><div><h2 id="dlg-t">New support request</h2><p class="muted">Tell us what you need. We'll reply by email and you can follow it under My requests.</p></div><button class="x" aria-label="Close" onclick="closeForm()">&times;</button></div>
+    <form class="dlg-b" id="tf" novalidate>
+      <div id="tf-err"></div>
+      <div class="row2">
+        <div class="f"><label for="tf-name">Your name</label><input class="in" id="tf-name" autocomplete="name" value="${esc(store.get('gh_contact_name'))}" required></div>
+        <div class="f"><label for="tf-email">Email for updates</label><input class="in" id="tf-email" type="email" autocomplete="email" value="${esc(store.get('gh_contact_email'))}" required></div>
+      </div>
+      <div class="f"><span class="lbl">What do you need help with?</span>
+        <div class="choices">${Object.entries(cats).map(([k, v]) => `<label class="choice"><input type="radio" name="cat" value="${esc(k)}" ${k === pick ? 'checked' : ''}>${esc(v)}</label>`).join('')}</div>
+      </div>
+      <div class="f"><span class="lbl">How urgent is it?</span>
+        <div class="seg"><label><input type="radio" name="pri" value="low">Low</label><label><input type="radio" name="pri" value="normal" checked>Normal</label><label class="urg"><input type="radio" name="pri" value="urgent">Urgent</label></div>
+      </div>
+      <div class="f"><label for="tf-subject">Subject</label><input class="in" id="tf-subject" maxlength="150" placeholder="e.g. Booking form isn't sending confirmations" value="${esc(subject || '')}" required></div>
+      <div class="f"><label for="tf-details">Details</label><textarea class="in" id="tf-details" maxlength="5000" placeholder="What's happening, what you expected, and anything we should know." required></textarea></div>
+      <div class="f"><label for="tf-link">Link <span class="hint">(optional, the page or record this is about)</span></label><input class="in" id="tf-link" placeholder="https://"></div>
+      <div class="hp" aria-hidden="true"><label>Website<input id="tf-web" tabindex="-1" autocomplete="off"></label></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px">
+        <button type="button" class="btn btn-ghost" onclick="closeForm()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="tf-go">Send request</button>
+      </div>
+    </form></div>`;
+  ov.addEventListener('click', e => { if (e.target === ov) closeForm(); });
+  document.body.appendChild(ov);
+  document.addEventListener('keydown', escClose);
+  $('#tf').addEventListener('submit', sendForm);
+  setTimeout(() => ($('#tf-name').value ? (subject ? $('#tf-details') : $('#tf-subject')) : $('#tf-name')).focus(), 50);
 }
+function escClose(e) { if (e.key === 'Escape') closeForm(); }
+function closeForm() { const o = $('#ov'); if (o) o.remove(); document.removeEventListener('keydown', escClose); }
 
-// ── Main init ────────────────────────────────────────────────
-async function init(){
-  const locationId = getLocationId();
-
-  if(!locationId){
-    renderError('No account found. Please access this page through your Genhead portal.');
-    return;
-  }
-
-  currentLocationId = locationId;
-
-  try{
-    const r = await fetch(`${API}?action=client_hours&location_id=${encodeURIComponent(locationId)}`);
-    const data = await r.json();
-
-    if(!data.success){
-      renderError(data.error || 'Unable to load your account.');
-      return;
-    }
-    if(data.plan === 'diy'){
-      renderDIY(data.client?.name);
-      return;
-    }
-    renderPortal(data, data.period);
-
-  }catch(e){
-    renderError('Unable to connect to Genhead servers. Please try again shortly.');
-  }
+async function sendForm(e) {
+  e.preventDefault();
+  const v = id => ($('#' + id).value || '').trim();
+  const body = { location_id: LOC, contact_name: v('tf-name'), contact_email: v('tf-email'), subject: v('tf-subject'), details: v('tf-details'), link: v('tf-link'),
+                 category: (document.querySelector('input[name=cat]:checked') || {}).value, priority: (document.querySelector('input[name=pri]:checked') || {}).value, website: v('tf-web') };
+  const err = m => { $('#tf-err').innerHTML = `<div class="err" role="alert">${esc(m)}</div>`; };
+  if (!body.contact_name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.contact_email)) return err('Please enter your name and a valid email so we can reply.');
+  if (body.subject.length < 3 || body.details.length < 5) return err('Please add a short subject and a few words about what you need.');
+  const go = $('#tf-go'); go.disabled = true; go.textContent = 'Sending…';
+  try {
+    const r = await fetch(`${API}?action=submit_ticket`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json());
+    if (!r.success) { go.disabled = false; go.textContent = 'Send request'; return err(r.error || 'Something went wrong. Please try again.'); }
+    store.set('gh_contact_name', body.contact_name); store.set('gh_contact_email', body.contact_email);
+    $('.dlg').innerHTML = `<div class="ok"><div class="ico">${ICONS.check}</div><h2>Request received</h2>
+      <p class="no mono">${esc(r.ticket_number)}</p>
+      <p class="muted" style="margin:8px auto 18px;max-width:360px">Thanks, ${esc(body.contact_name.split(' ')[0])}. The Genhead team has been notified. We'll reply to ${esc(body.contact_email)}.</p>
+      <button class="btn btn-primary" onclick="closeForm();refreshTickets()">View my requests</button></div>`;
+  } catch (x) { go.disabled = false; go.textContent = 'Send request'; err('We couldn\'t reach Genhead. Check your connection and try again.'); }
+}
+async function refreshTickets() {
+  const t = await getJSON(`${API}?action=client_tickets&location_id=${encodeURIComponent(LOC)}`).catch(() => null);
+  if (t && t.success) { state.tickets = t.tickets; state.categories = t.categories; }
+  state.tab = 'requests'; render();
 }
 
 init();

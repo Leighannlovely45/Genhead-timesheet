@@ -2034,6 +2034,16 @@ function renderDash(){
           <span class="dot ${GHL_NOTIFY_WEBHOOK?'dot-g':'dot-y'}"></span>
           ${GHL_NOTIFY_WEBHOOK?"Notification webhook active — timecard events will trigger GHL emails automatically":"Paste your notification webhook URL to enable timecard email alerts"}
         </div>
+
+        <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
+          <label style="font-weight:600">Support Ticket Webhook URL</label>
+          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Fires to GHL when a client sends a support request from their portal, and when the team replies or changes its status. GHL branches on <code>event</code>: <code>ticket_created</code> → email the team, <code>ticket_reply</code> / <code>ticket_status_changed</code> → email the client at <code>contact_email</code>. Fields include <code>ticket_number</code>, <code>client_name</code>, <code>contact_name</code>, <code>subject</code>, <code>details</code>, <code>priority</code>, <code>status</code>, <code>reply</code> and <code>team_url</code>.</p>
+          <input class="ghl-input" id="wh-ticket-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${escHtml(appSettings.ghl_ticket_webhook_url||'')}" onchange="saveTicketWH(this.value)">
+        </div>
+        <div id="wh-ticket-status" class="ghl-status ${appSettings.ghl_ticket_webhook_url?'ghl-ok':'ghl-warn'}" style="margin-top:.45rem">
+          <span class="dot ${appSettings.ghl_ticket_webhook_url?'dot-g':'dot-y'}"></span>
+          ${appSettings.ghl_ticket_webhook_url?"Ticket webhook active — new requests and replies trigger GHL emails":"Paste your ticket webhook URL to get emailed about new support requests"}
+        </div>
       </div>
     </div>
     <!-- GHL API + Webhook Secret (moved from Settings) -->
@@ -2941,6 +2951,16 @@ function saveInviteWH(val){
   });
 }
 
+function saveTicketWH(val){
+  val=String(val||"").trim();
+  api({action:"update_settings",ghl_ticket_webhook_url:val}).then(()=>{
+    appSettings.ghl_ticket_webhook_url=val;
+    const st=document.getElementById("wh-ticket-status"); if(!st) return;
+    st.className="ghl-status "+(val?"ghl-ok":"ghl-warn");
+    st.innerHTML=val?'<span class="dot dot-g"></span>Ticket webhook saved — new support requests will trigger your GHL workflow.':'<span class="dot dot-y"></span>Ticket webhook cleared.';
+  });
+}
+
 function saveNotifyWH(val){
   GHL_NOTIFY_WEBHOOK=val;
   api({action:"update_settings",ghl_notify_webhook_url:val}).then(()=>{
@@ -3006,6 +3026,8 @@ function backDash(){
 // Checked every 30 seconds while signed in; new ones pop up in the corner.
 let _nt={items:[],lastId:null,timer:null,busy:false};
 function startNotifications(){
+  const hm=String(location.hash||"").match(/^#ticket-(\d+)$/);
+  if(hm){history.replaceState(null,"",location.pathname+location.search);setTimeout(async()=>{await goTickets();openTicket(parseInt(hm[1]));},600);}
   if(_nt.timer)clearInterval(_nt.timer);
   _nt.lastId=null; pollNotifications();
   _nt.timer=setInterval(()=>{if(!document.hidden)pollNotifications();},30000);
@@ -3014,6 +3036,8 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&cur&&_nt.
 function ntText(n){
   const who=escHtml(n.actor_name||"Someone"), task=escHtml(n.task_title||"a task");
   if(n.kind==="assigned") return `<b>${who}</b> assigned you <b>${task}</b>`;
+  if(n.kind==="ticket") return `🎫 New support request from <b>${escHtml(n.ticket_client||n.actor_name||"a client")}</b>: <b>${escHtml(n.ticket_subject||n.message||"")}</b>`;
+  if(n.kind==="ticket_assigned") return `🎫 <b>${who}</b> assigned you a support request: <b>${escHtml(n.ticket_subject||"")}</b>`;
   if(n.kind==="meeting") return n.task_title?`📹 <b>${who}</b> wants to meet about <b>${task}</b>`:`📹 <b>${who}</b> wants to meet now${n.project_name?` about <b>${escHtml(n.project_name)}</b>`:""}`;
   return `<b>${who}</b> commented on <b>${task}</b>`;
 }
@@ -3092,6 +3116,7 @@ function markNotifRead(n){
 }
 async function openNotif(n){
   markNotifRead(n);
+  if(String(n.kind).indexOf("ticket")===0){ await goTickets(); if(n.task_id) openTicket(parseInt(n.task_id)); return; }
   if(n.kind==="meeting"){
     if(_nt.roomUrl){window.open(_nt.roomUrl,"_blank","noopener");
       fetch(`${API_BASE}?action=meeting_start&join=1${n.task_id?`&task_id=${n.task_id}`:""}`).catch(()=>{});}
@@ -3110,6 +3135,143 @@ async function openNotif(n){
   }
   if(has()) _pmOpenTask(_pm.tasks.find(t=>parseInt(t.id)===tid).id);
   else showToast("That task isn't available to you anymore.");
+}
+
+// ── TICKETING (client support requests) ───────────────────────────────────
+let _tk={list:[],filter:"open",client:"",openCount:0,meta:null};
+const TK_STATUS={new:"New",in_progress:"In progress",waiting:"Waiting on client",resolved:"Resolved"};
+const TK_COLORS={new:"#2563eb",in_progress:"#03AD8F",waiting:"#d97706",resolved:"#64748b"};
+async function loadTickets(){
+  const r=await fetch(`${API_BASE}?action=load_tickets&t=${Date.now()}`).then(x=>x.json()).catch(()=>null);
+  if(r&&r.success){_tk.list=r.tickets||[];_tk.meta=r;_tk.openCount=_tk.list.filter(t=>t.status==="new").length;}
+  return r&&r.success;
+}
+async function goTickets(){
+  const root=document.getElementById("projects-root");
+  if(!root||root.offsetParent===null){
+    if(document.getElementById("tab-projects")) switchTab("projects"); else openEmployeeProjects();
+    await new Promise(r=>setTimeout(r,50));
+    for(let i=0;i<100&&_pm.loading;i++) await new Promise(r=>setTimeout(r,100));
+  }
+  await loadTickets(); renderTickets();
+}
+function tkAge(ts){const d=new Date(String(ts).replace(" ","T"));if(isNaN(d))return "";const m=Math.round((Date.now()-d)/60000);if(m<60)return Math.max(1,m)+"m";if(m<1440)return Math.round(m/60)+"h";return Math.round(m/1440)+"d";}
+function tkChip(st){return `<span style="display:inline-block;font-size:.7rem;font-weight:700;border-radius:999px;padding:.08rem .55rem;background:${TK_COLORS[st]||"#64748b"}1f;color:${TK_COLORS[st]||"#64748b"}">${TK_STATUS[st]||st}</span>`;}
+function renderTickets(filter){
+  _pm.view="tickets";
+  if(filter!==undefined)_tk.filter=filter;
+  const root=pmRoot(); if(!root)return;
+  const f=_tk.filter, all=_tk.list;
+  const byClient=_tk.client?all.filter(t=>t.client_name===_tk.client):all;
+  const counts={open:byClient.filter(t=>t.status!=="resolved").length,new:byClient.filter(t=>t.status==="new").length,in_progress:byClient.filter(t=>t.status==="in_progress").length,waiting:byClient.filter(t=>t.status==="waiting").length,resolved:byClient.filter(t=>t.status==="resolved").length,all:byClient.length};
+  const list=byClient.filter(t=>f==="all"?true:f==="open"?t.status!=="resolved":t.status===f);
+  const chip=(k,l)=>`<button class="btn ${f===k?"btn-primary":"btn-outline"}" style="font-size:.76rem;padding:.3rem .75rem" onclick="renderTickets('${k}')">${l} <span style="opacity:.75">${counts[k]}</span></button>`;
+  const clients=[...new Set(all.map(t=>t.client_name).filter(Boolean))].sort();
+  const pri=p=>p==="urgent"?'<span style="color:#ef4444;font-weight:700">Urgent</span>':p==="low"?'<span style="color:var(--mid)">Low</span>':"Normal";
+  root.innerHTML=`
+  <div class="dash-top">
+    <div><h2>🎫 Ticketing</h2><p>Support requests from clients' portals${cur.role==="employee"?" assigned to you":""}</p></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+      ${clients.length?`<select style="font-size:.8rem;padding:.35rem .7rem;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--dark)" onchange="_tk.client=this.value;renderTickets()"><option value="">All clients</option>${clients.map(c=>`<option${_tk.client===c?" selected":""}>${escHtml(c)}</option>`).join("")}</select>`:""}
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="goTickets()">↻ Refresh</button>
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectsView()">📁 Projects</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.9rem">
+    ${chip("open","Open")}${chip("new","New")}${chip("in_progress","In progress")}${chip("waiting","Waiting on client")}${chip("resolved","Resolved")}${chip("all","All")}
+  </div>
+  ${list.length?`<div class="billing-tbl"><table><thead><tr><th>#</th><th>Request</th><th>Client</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Age</th></tr></thead><tbody>
+    ${list.map(t=>`<tr style="cursor:pointer" onclick="openTicket(${t.id})">
+      <td style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--mid)">${escHtml(t.number)}</td>
+      <td><div style="font-weight:600;color:var(--dark)">${escHtml(t.subject)}</div><div style="font-size:.72rem;color:var(--mid)">${escHtml((_tk.meta&&_tk.meta.categories&&_tk.meta.categories[t.category])||t.category||"")}${t.contact_name?` · ${escHtml(t.contact_name)}`:""}${t.task_id?" · 🔗 task":""}</div></td>
+      <td style="font-size:.82rem">${escHtml(t.client_name||"—")}</td>
+      <td style="font-size:.8rem">${pri(t.priority)}</td>
+      <td>${tkChip(t.status)}</td>
+      <td style="font-size:.8rem">${escHtml(t.assigned_name||"—")}</td>
+      <td style="font-size:.78rem;color:var(--mid)">${tkAge(t.created_at)}</td></tr>`).join("")}
+  </tbody></table></div>`:`<div style="padding:3rem;text-align:center;color:var(--mid)">${f==="open"?"No open support requests 🎉":"Nothing here."}<div style="font-size:.78rem;margin-top:.4rem">Clients send requests from the Support page in their GenSuite account.</div></div>`}`;
+}
+async function openTicket(id){
+  const r=await fetch(`${API_BASE}?action=ticket_detail&id=${id}&t=${Date.now()}`).then(x=>x.json()).catch(()=>null);
+  if(!r||!r.success){showToast((r&&r.error)||"Couldn't open that ticket.");return;}
+  const t=r.ticket, notes=r.notes||[];
+  const canAssign=cur.role==="admin"||cur.role==="hr"||cur.role==="manager";
+  const staff=EMPS.filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name));
+  const projects=_pm.projects.filter(p=>p.status!=="archived").sort((a,b)=>((b.client_name===t.client_name)-(a.client_name===t.client_name))||String(a.name).localeCompare(b.name));
+  let p=document.getElementById("tk-panel"); if(p)p.remove();
+  p=document.createElement("div"); p.id="tk-panel";
+  p.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-start;justify-content:flex-end;padding:1rem 1rem 4.5rem";
+  const sel="background:var(--hover);border:1px solid var(--border);border-radius:7px;padding:.35rem .5rem;font-size:.8rem;color:var(--dark);width:100%";
+  p.innerHTML=`<div class="pm-panel-box" style="background:var(--bg);border-radius:14px;width:min(600px,100%);max-height:100%;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+    <div style="position:sticky;top:0;z-index:2;background:var(--bg);border-radius:14px 14px 0 0;padding:1.1rem 1.25rem .8rem;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:.5rem">
+        <div><div style="font-size:.75rem;color:var(--mid)"><span style="font-family:'DM Mono',monospace">${escHtml(t.number)}</span> · ${escHtml(t.client_name||"Unknown client")} · ${tkChip(t.status)}${t.priority==="urgent"?' <span style="color:#ef4444;font-weight:700;font-size:.72rem">URGENT</span>':""}</div>
+          <div style="font-size:1.05rem;font-weight:600;color:var(--dark);margin-top:.2rem">${escHtml(t.subject)}</div></div>
+        <button onclick="document.getElementById('tk-panel').remove()" style="background:none;border:none;color:var(--mid);font-size:1.3rem;cursor:pointer" title="Close">✕</button>
+      </div>
+      <div style="font-size:.78rem;color:var(--mid);margin-top:.4rem">From <b style="color:var(--dark)">${escHtml(t.contact_name||"")}</b> · <a href="mailto:${escHtml(t.contact_email||"")}" style="color:var(--teal)">${escHtml(t.contact_email||"")}</a> · ${escHtml(fmtTs(t.created_at))}</div>
+    </div>
+    <div style="padding:.9rem 1.25rem;border-bottom:1px solid var(--border)">
+      <div style="font-size:.86rem;color:var(--dark);white-space:pre-wrap;line-height:1.5">${escHtml(t.details||"")}</div>
+      ${t.link?`<div style="margin-top:.5rem;font-size:.8rem">🔗 <a href="${escHtml(/^https?:\/\//i.test(t.link)?t.link:"#")}" target="_blank" rel="noopener" style="color:var(--teal);word-break:break-all">${escHtml(t.link)}</a></div>`:""}
+    </div>
+    <div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border);background:var(--hover);display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem">
+      <div><label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Status</label>
+        <select style="${sel}" onchange="updateTicket(${t.id},{status:this.value})">${Object.entries(TK_STATUS).map(([k,v])=>`<option value="${k}"${t.status===k?" selected":""}>${v}</option>`).join("")}</select></div>
+      <div><label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Priority</label>
+        <select style="${sel}" onchange="updateTicket(${t.id},{priority:this.value})">${["low","normal","urgent"].map(k=>`<option value="${k}"${t.priority===k?" selected":""}>${k[0].toUpperCase()+k.slice(1)}</option>`).join("")}</select></div>
+      <div><label style="font-size:.7rem;color:var(--mid);display:block;margin-bottom:.2rem">Assigned to</label>
+        ${canAssign?`<select style="${sel}" onchange="updateTicket(${t.id},{assigned_to:this.value})"><option value="">— Unassigned —</option>${staff.map(e=>{const id=String(e.id).replace(/^e/,"");return `<option value="${id}"${String(t.assigned_to||"")===id?" selected":""}>${escHtml(e.name)}</option>`;}).join("")}</select>`:`<div style="font-size:.84rem;padding:.35rem 0">${escHtml(t.assigned_name||"—")}</div>`}</div>
+    </div>
+    <div style="padding:.85rem 1.25rem;border-bottom:1px solid var(--border)">
+      ${t.task_id?`<div style="font-size:.84rem">🔗 This request has a task. <a href="#" style="color:var(--teal)" onclick="event.preventDefault();document.getElementById('tk-panel').remove();_pmOpenTask(${t.task_id})">Open the task</a></div>`
+      :`<div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Make it a task</div>
+        <div style="display:flex;gap:.5rem"><select id="tk-proj" style="${sel};flex:1">${projects.length?projects.map(pp=>`<option value="${pp.id}">${escHtml(pp.name)}${pp.client_name?` · ${escHtml(pp.client_name)}`:""}</option>`).join(""):'<option value="">No projects you can add to</option>'}</select>
+        <button class="btn btn-outline" style="font-size:.78rem;padding:.35rem .8rem" onclick="ticketToTask(${t.id})">Create task</button></div>
+        <div style="font-size:.7rem;color:var(--mid);margin-top:.3rem">Adds a To Do task with the request details, assigned to the same person. Time logged on it counts toward the client.</div>`}
+    </div>
+    <div style="padding:.85rem 1.25rem">
+      <div style="font-size:.72rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Conversation & notes</div>
+      <textarea id="tk-note" rows="3" placeholder="Write a reply to the client, or an internal note…" style="width:100%;box-sizing:border-box;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;color:var(--dark);font-size:.85rem;font-family:inherit;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin:.45rem 0 .9rem;flex-wrap:wrap">
+        <span style="font-size:.72rem;color:var(--mid)">Replies are shown in the client's portal and sent through the ticket webhook so GHL can email them.</span>
+        <div style="display:flex;gap:.4rem"><button class="btn btn-outline" style="font-size:.78rem;padding:.35rem .8rem" onclick="addTicketNote(${t.id},false)">Internal note</button>
+        <button class="btn btn-primary" style="font-size:.78rem;padding:.35rem .8rem" onclick="addTicketNote(${t.id},true)">Reply to client</button></div>
+      </div>
+      ${notes.slice().reverse().map(n=>n.is_activity==1
+        ?`<div style="font-size:.74rem;color:var(--mid);padding:.3rem 0;border-bottom:1px solid var(--border)">${escHtml(n.user_name||"")} · ${escHtml(n.note)} · ${escHtml(fmtTs(n.created_at))}</div>`
+        :`<div style="padding:.55rem .7rem;margin:.45rem 0;border-radius:8px;${n.is_public==1?"background:rgba(3,173,143,.08);border-left:3px solid #03AD8F":"background:var(--hover);border-left:3px solid #94a3b8"}">
+            <div style="font-size:.72rem;color:var(--mid);margin-bottom:.2rem"><b style="color:var(--dark)">${escHtml(n.user_name||"")}</b> · ${n.is_public==1?"Reply to client":"Internal note"} · ${escHtml(fmtTs(n.created_at))}</div>
+            <div style="font-size:.84rem;color:var(--dark);white-space:pre-wrap">${escHtml(n.note)}</div></div>`).join("")}
+    </div>
+  </div>`;
+  document.body.appendChild(p);
+  p.addEventListener("click",e=>{if(e.target===p)p.remove();});
+}
+function fmtTs(ts){const d=new Date(String(ts||"").replace(" ","T"));return isNaN(d)?"":d.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
+async function updateTicket(id,changes){
+  const r=await fetch(`${API_BASE}?`+new URLSearchParams({action:"update_ticket",id,...changes})).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't update the ticket.");return;}
+  await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);
+}
+async function addTicketNote(id,pub){
+  const el=document.getElementById("tk-note"); const note=(el.value||"").trim();
+  if(!note){el.focus();return;}
+  if(pub&&!(await uiConfirm("Send this reply to the client? It shows in their Support portal and goes out through the ticket webhook.",{title:"Reply to client",ok:"Send reply"})))return;
+  const r=await fetch(`${API_BASE}?action=add_ticket_note`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,note,public:pub})}).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't save.");return;}
+  showToast(pub?"Reply sent to the client.":"Note saved.");
+  await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);
+}
+async function ticketToTask(id){
+  const pid=(document.getElementById("tk-proj")||{}).value;
+  if(!pid){showToast("Pick a project first.");return;}
+  const r=await fetch(`${API_BASE}?action=ticket_to_task&id=${id}&project_id=${encodeURIComponent(pid)}`).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't create the task.");return;}
+  showToast("Task created from the request.");
+  const tRes=await fetch(`api.php?action=load_tasks&t=${Date.now()}`).then(x=>x.json()).catch(()=>null);
+  if(tRes&&tRes.tasks)_pm.tasks=tRes.tasks;
+  await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);
 }
 
 // ── MEET NOW: shared team Zoom room ───────────────────────────────────────
@@ -3555,6 +3717,7 @@ async function renderProjects(){
       _pm.tasks=_pm.tasks.filter(t=>visible.has(parseInt(t.project_id)));
     }
     _pm.loading  = false;
+    await loadTickets().catch(()=>{});
     _pm.view='projects';
     _pm.activeProject=null;
     _pmProjectsView();
@@ -3644,6 +3807,7 @@ function _pmProjectsView(clientFilter){
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${clientFilterHtml}
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="openMeetModal({})">📹 Meet now</button>
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="goTickets()">🎫 Ticketing${_tk.openCount?` <span style="background:#ef4444;color:#fff;border-radius:9px;font-size:.66rem;padding:.02rem .38rem;margin-left:.15rem">${_tk.openCount}</span>`:""}</button>
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks('open')">✓ My Tasks <span style="opacity:.7">${_pm.tasks.filter(t=>String(t.assigned_to||'')===myDbId()&&t.stage!=='done').length}</span></button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
