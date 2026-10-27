@@ -2069,6 +2069,15 @@ function renderDash(){
           ${appSettings.ghl_ticket_webhook_url?"Ticket webhook active — new requests and replies trigger GHL emails":"Paste your ticket webhook URL to get emailed about new support requests"}
         </div>
         <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
+          <label style="font-weight:600">Ticket Email Webhook URL (send emails through GenSuite)</label>
+          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">The web host's own email isn't trusted by genhead.com's mail, so set this and every ticket email (new tickets to the support inbox, assignments, client confirmations, replies, status updates, approvals) is handed to a GenSuite workflow to send. Each call has <code>to_email</code>, <code>to_name</code>, <code>subject</code>, <code>html</code>, <code>text</code>, <code>reply_to</code> and <code>audience</code> (<code>team</code> or <code>client</code>).</p>
+          <input class="ghl-input" id="wh-email-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${escHtml(appSettings.ghl_email_webhook_url||'')}" onchange="api({action:'update_settings',ghl_email_webhook_url:this.value.trim()}).then(()=>{appSettings.ghl_email_webhook_url=this.value.trim();showToast(this.value.trim()?'Ticket emails will go through GenSuite.':'Ticket emails will use the web host.');})">
+          <div style="display:flex;gap:.5rem;align-items:center;margin-top:.55rem;flex-wrap:wrap">
+            <input class="ghl-input" id="test-email-to" type="email" style="max-width:260px" placeholder="you@genhead.com" value="${escHtml(cur&&cur.email||'')}">
+            <button class="btn btn-outline" style="font-size:.78rem;padding:.35rem .8rem" onclick="fetch(API_BASE+'?'+new URLSearchParams({action:'test_email',to:document.getElementById('test-email-to').value})).then(r=>r.json()).then(r=>showToast(r.success?(r.handed_off?'Test sent via '+r.via+'. Check that inbox (and spam).':'The '+r.via+' did not accept it. Check the URL / workflow.'):(r.error||'Could not send.')))">Send test email</button>
+          </div>
+        </div>
+        <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
           <label style="font-weight:600">Email new tickets to</label>
           <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Every new support request is emailed here straight from the timesheet (no webhook needed), with a button that opens it in Ticketing. Replying to that email goes to the client. Separate several addresses with commas. Whoever a ticket is assigned to is also emailed.</p>
           <input class="ghl-input" id="set-ticket-email" type="text" value="${escHtml(appSettings.ticket_team_email!=null&&appSettings.ticket_team_email!==''?appSettings.ticket_team_email:'support@genhead.com')}" onchange="api({action:'update_settings',ticket_team_email:this.value.trim()}).then(r=>{if(r&&r.success===false){showToast(r.error||'Could not save.');return;}appSettings.ticket_team_email=this.value.trim();showToast('Ticket inbox saved.');})">

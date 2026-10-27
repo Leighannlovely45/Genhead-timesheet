@@ -166,7 +166,7 @@ $ROLE_RULES = [
     'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
     'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'], 'ext_rename_client'=>['admin','hr'],
     'load_client_banks'=>['admin','hr'], 'set_client_hours'=>['admin','hr'],
-    'send_setup_link'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'approve_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'],
+    'send_setup_link'=>['admin','hr'], 'test_email'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'approve_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'],
 ];
 // Removed: one-time setup helpers that let anyone create admins or change PINs
 if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
@@ -310,9 +310,25 @@ function ticketEmail($t, $kind, $text = '') {
     $headers = "From: Genhead Support <noreply@genhead.com>\r\nReply-To: support@genhead.com\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"$boundary\"";
     $msg = "--$boundary\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n$plain\r\n--$boundary\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n$html\r\n--$boundary--";
     $subj = '=?UTF-8?B?' . base64_encode($subject) . '?=';
-    if (getenv('TS_TEST_MAIL_LOG')) { @file_put_contents(getenv('TS_TEST_MAIL_LOG'), json_encode(['to'=>$to,'subject'=>$subject,'plain'=>$plain]) . "\n", FILE_APPEND); return true; }
-    return @mail($to, $subj, $msg, $headers);
+    return deliverMail($to, $t['contact_name'] ?? '', $subject, $html, $plain, 'client_' . $kind, 'support@genhead.com', $t, $subj, $msg, $headers);
 }
+// Send an email: through the GenSuite email webhook when one is set (reliable delivery from
+// Genhead's own GenSuite account), otherwise with the web host's mail().
+function deliverMail($to, $toName, $subject, $html, $plain, $kind, $replyTo, $t, $mSubj, $mMsg, $mHeaders) {
+    $hook = trim((string)getSetting('ghl_email_webhook_url'));
+    $payload = ['event' => 'send_email', 'kind' => $kind, 'audience' => strpos($kind, 'team_') === 0 ? 'team' : 'client',
+                'to_email' => $to, 'to_name' => $toName, 'subject' => $subject, 'html' => $html, 'text' => $plain, 'reply_to' => $replyTo,
+                'ticket_number' => isset($t['id']) ? ticketNo($t['id']) : '', 'client_name' => $t['client_name'] ?? '', 'timestamp' => date('c')];
+    if (getenv('TS_TEST_MAIL_LOG')) { @file_put_contents(getenv('TS_TEST_MAIL_LOG'), json_encode(['to'=>$to,'subject'=>$subject,'plain'=>$plain,'via'=>$hook ? 'gensuite' : 'mail','kind'=>$kind]) . "\n", FILE_APPEND); if (!$hook) return true; }
+    if ($hook && function_exists('curl_init')) {
+        $ch = curl_init($hook);
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8]);
+        curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        return $code >= 200 && $code < 300;
+    }
+    return @mail($to, $mSubj, $mMsg, $mHeaders);
+}
+
 // Email the team: new requests go to the support inbox; assignments go to the person assigned
 function teamMail($to, $subject, $lines, $t) {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return false;
@@ -332,8 +348,8 @@ function teamMail($to, $subject, $lines, $t) {
     $replyTo = filter_var($t['contact_email'] ?? '', FILTER_VALIDATE_EMAIL) ? $t['contact_email'] : 'support@genhead.com';
     $headers = "From: Genhead Ticketing <noreply@genhead.com>\r\nReply-To: $replyTo\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"$boundary\"";
     $msg = "--$boundary\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n$plain\r\n--$boundary\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n$html\r\n--$boundary--";
-    if (getenv('TS_TEST_MAIL_LOG')) { @file_put_contents(getenv('TS_TEST_MAIL_LOG'), json_encode(['to'=>$to,'subject'=>$subject,'plain'=>$plain]) . "\n", FILE_APPEND); return true; }
-    return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $msg, $headers);
+    return deliverMail($to, '', $subject, $html, $plain, 'team_' . (stripos($subject, 'Assigned to you') === 0 ? 'assigned' : 'new_ticket'), $replyTo, $t,
+                       '=?UTF-8?B?' . base64_encode($subject) . '?=', $msg, $headers);
 }
 function ticketTeamEmail($t) {
     $to = trim((string)getSetting('ticket_team_email', 'support@genhead.com'));
@@ -355,7 +371,8 @@ function ticketTeamEmail($t) {
 function ticketUploadDir() {
     $d = __DIR__ . '/ticket_uploads';
     if (!is_dir($d)) @mkdir($d, 0755, true);
-    if (!file_exists("$d/.htaccess")) @file_put_contents("$d/.htaccess", "Require all denied\nDeny from all\n");
+    $ht = "<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n";
+    if (@file_get_contents("$d/.htaccess") !== $ht) @file_put_contents("$d/.htaccess", $ht);
     if (!file_exists("$d/index.html")) @file_put_contents("$d/index.html", '');
     return $d;
 }
@@ -711,6 +728,17 @@ if ($action === 'read_notifications') {
         $db->prepare("UPDATE notifications SET read_at = NOW() WHERE user_id = ? AND read_at IS NULL")->execute([$uid]);
     }
     echo json_encode(['success'=>true]);
+    exit;
+}
+
+// Send a test email (Admin/HR) to check delivery
+if ($action === 'test_email') {
+    $to = trim((string)($_GET['to'] ?? ($AUTH['email'] ?? '')));
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) { echo json_encode(['success'=>false,'error'=>'Enter a valid email.']); exit; }
+    $ok = deliverMail($to, $AUTH['name'], 'Genhead Timesheet test email', '<p>This is a test from the Genhead Timesheet. If you can read this, ticket emails will arrive.</p>',
+        "This is a test from the Genhead Timesheet. If you can read this, ticket emails will arrive.", 'team_test', 'support@genhead.com', [], 'Genhead Timesheet test email',
+        "This is a test from the Genhead Timesheet. If you can read this, ticket emails will arrive.", "From: Genhead Ticketing <noreply@genhead.com>\r\nReply-To: support@genhead.com");
+    echo json_encode(['success'=>true,'handed_off'=>(bool)$ok,'via'=>getSetting('ghl_email_webhook_url') ? 'GenSuite webhook' : 'web host mail']);
     exit;
 }
 
@@ -3297,7 +3325,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails','ghl_invoice_webhook_url','support_hour_rate','ticket_team_email'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails','ghl_invoice_webhook_url','support_hour_rate','ticket_team_email','ghl_email_webhook_url'];
         if (isset($body['team_meeting_url'])) {
             $mu = trim((string)$body['team_meeting_url']);
             if ($mu !== '' && !preg_match('#^https://[^\s<>"]+$#i', $mu)) { echo json_encode(['success'=>false,'error'=>'The meeting link must start with https://']); exit; }
