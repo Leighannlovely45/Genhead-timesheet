@@ -349,9 +349,10 @@ async function saveOne(id) {
   const res = await fetch(`${API}?action=set_client_hours`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: id, month: currentMonth, ...ch }) }).then(r => r.json()).catch(() => ({ success: false }));
   if (res.success) delete pendingChanges[id];
+  else saveOne.lastError = res.error || 'Could not save — try again.';
   return res.success;
 }
-async function saveSingleClient(id) { if (await saveOne(id)) { showToast('Saved!'); await loadData(); } else showToast('Could not save — try again.'); }
+async function saveSingleClient(id) { if (await saveOne(id)) { showToast('Saved!'); await loadData(); } else showToast(saveOne.lastError || 'Could not save — try again.'); }
 async function saveAllChanges() {
   const ids = Object.keys(pendingChanges); if (!ids.length) { showToast('No unsaved changes.'); return; }
   let n = 0; for (const id of ids) if (await saveOne(parseInt(id))) n++;

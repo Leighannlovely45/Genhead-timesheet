@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-27.4');
+define('SCHEMA_VERSION', '2026-10-27.5');
 
 function ensureSchema($db) {
     static $done = false;
@@ -168,6 +168,24 @@ function ensureSchema($db) {
             $exec("ALTER TABLE users MODIFY role VARCHAR(20) NOT NULL DEFAULT 'employee'");
         }
     } catch (Exception $e) { error_log('schema role: ' . $e->getMessage()); }
+
+    // ── Hours columns must take the new plan names (Lift, Scale) and half hours ──
+    // (an older setup may have plan_type as ENUM('retainer','diy','none') or hours as whole numbers)
+    foreach ([['clients','plan_type',"VARCHAR(20) NULL"], ['client_hours_bank','plan_type',"VARCHAR(20) NULL"],
+              ['clients','plan_label',"VARCHAR(100) NULL"], ['client_hours_bank','plan_label',"VARCHAR(100) NULL"],
+              ['clients','monthly_hours',"DECIMAL(8,2) NULL"], ['client_hours_bank','total_hours',"DECIMAL(8,2) NULL"],
+              ['client_hours_bank','period',"VARCHAR(50) NULL"]] as $fix) {
+        try {
+            $st = $db->prepare("SELECT DATA_TYPE, COLUMN_TYPE, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+            $st->execute([$fix[0], $fix[1]]);
+            if (!($col = $st->fetch())) continue;
+            $type = strtolower($col['DATA_TYPE']);
+            $want = strtolower(strtok($fix[2], '('));
+            $tooShort = in_array($type, ['varchar','char'], true) && $want === 'varchar' && (int)$col['CHARACTER_MAXIMUM_LENGTH'] < (int)preg_replace('/\D/', '', $fix[2]);
+            if ($type === 'enum' || $tooShort || ($want === 'decimal' && in_array($type, ['int','tinyint','smallint','mediumint','bigint','float'], true)))
+                $exec("ALTER TABLE `{$fix[0]}` MODIFY `{$fix[1]}` {$fix[2]}");
+        } catch (Exception $e) { error_log('schema hours cols: ' . $e->getMessage()); }
+    }
 
     // ── Columns added to existing tables ─────────────────────────────────────
     $add('users', 'password_hash',  "VARCHAR(255) NULL");

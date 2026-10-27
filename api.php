@@ -2497,6 +2497,7 @@ if ($method === 'POST') {
 
     // ── SET CLIENT HOURS BANK ──────────────────────────────────────────────
     if ($action === 'set_client_hours') {
+      try {
         $clientId   = (int)($body['client_id']   ?? 0);
         $month      = normMonth($body['month'] ?? ($body['period'] ?? ''));
         $totalHours = (float)($body['total_hours'] ?? 0);
@@ -2519,6 +2520,10 @@ if ($method === 'POST') {
         // The client's default for future months
         $db->prepare("UPDATE clients SET monthly_hours=?,gm_monthly_hours=COALESCE(?,gm_monthly_hours),plan_type=?,plan_label=? WHERE id=?")
            ->execute([$totalHours,$gmHours,$planType,$planLabel,$clientId]);
+      } catch (Throwable $e) {
+        error_log('set_client_hours: ' . $e->getMessage());
+        echo json_encode(['success'=>false,'error'=>'Could not save: ' . $e->getMessage()]); exit;
+      }
         echo json_encode(['success'=>true,'message'=>'Hours bank updated','month'=>$month]);
         exit;
     }
