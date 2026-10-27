@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Genhead Timesheet Portal 2026</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -3864,6 +3867,7 @@ function _renderPMBoard(){
       ${clientFilterHtml}
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectsView()">📁 ${canManage?'All Projects':'My Projects'}</button>
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks()">My Tasks</button>
+      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="goTickets()">🎫 Ticketing${_tk.openCount?` <span style="background:#ef4444;color:#fff;border-radius:9px;font-size:.66rem;padding:.02rem .38rem;margin-left:.15rem">${_tk.openCount}</span>`:""}</button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
   </div>
