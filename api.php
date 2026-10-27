@@ -313,6 +313,41 @@ function ticketEmail($t, $kind, $text = '') {
     if (getenv('TS_TEST_MAIL_LOG')) { @file_put_contents(getenv('TS_TEST_MAIL_LOG'), json_encode(['to'=>$to,'subject'=>$subject,'plain'=>$plain]) . "\n", FILE_APPEND); return true; }
     return @mail($to, $subj, $msg, $headers);
 }
+// Email the team: new requests go to the support inbox; assignments go to the person assigned
+function teamMail($to, $subject, $lines, $t) {
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return false;
+    $h = function($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); };
+    $link = appBaseUrl() . 'index.html#ticket-' . (int)$t['id'];
+    $rows = ''; $plain = '';
+    foreach ($lines as $k => $v) { if ($v === null || $v === '') continue; $rows .= '<tr><td style="padding:4px 12px 4px 0;color:#64748B;font-size:13px;vertical-align:top;white-space:nowrap">' . $h($k) . '</td><td style="padding:4px 0;font-size:14px;color:#0F172A;white-space:pre-wrap">' . $h($v) . '</td></tr>'; $plain .= "$k: $v\n"; }
+    $html = '<!doctype html><html><body style="margin:0;background:#F4F6FA;font-family:Segoe UI,Arial,sans-serif">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:20px 12px"><tr><td align="center">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border:1px solid #E5E9F0;border-radius:12px">'
+      . '<tr><td style="background:#0B1739;padding:14px 20px;color:#fff;font-weight:700;font-size:16px;border-radius:12px 12px 0 0">gen<span style="color:#03AD8F">head</span> <span style="font-weight:400;font-size:12px;color:#cbd5e1">Ticketing</span></td></tr>'
+      . '<tr><td style="padding:20px"><table role="presentation" cellpadding="0" cellspacing="0">' . $rows . '</table>'
+      . '<p style="margin:18px 0 0"><a href="' . $h($link) . '" style="display:inline-block;background:#03AD8F;color:#fff;text-decoration:none;font-weight:600;padding:10px 16px;border-radius:8px;font-size:14px">Open in Ticketing</a></p>'
+      . '</td></tr></table></td></tr></table></body></html>';
+    $plain .= "\nOpen in Ticketing: $link\n";
+    $boundary = 'gh' . bin2hex(random_bytes(8));
+    $replyTo = filter_var($t['contact_email'] ?? '', FILTER_VALIDATE_EMAIL) ? $t['contact_email'] : 'support@genhead.com';
+    $headers = "From: Genhead Ticketing <noreply@genhead.com>\r\nReply-To: $replyTo\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"$boundary\"";
+    $msg = "--$boundary\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n$plain\r\n--$boundary\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n$html\r\n--$boundary--";
+    if (getenv('TS_TEST_MAIL_LOG')) { @file_put_contents(getenv('TS_TEST_MAIL_LOG'), json_encode(['to'=>$to,'subject'=>$subject,'plain'=>$plain]) . "\n", FILE_APPEND); return true; }
+    return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $msg, $headers);
+}
+function ticketTeamEmail($t) {
+    $to = trim((string)getSetting('ticket_team_email', 'support@genhead.com'));
+    if ($to === '') return false;
+    global $TICKET_CATEGORIES, $TICKET_PRIORITY;
+    $pri = $TICKET_PRIORITY[$t['priority']] ?? $t['priority'];
+    $ok = false;
+    foreach (array_filter(array_map('trim', explode(',', $to))) as $one)
+        $ok = teamMail($one, ($t['priority'] === 'urgent' ? 'URGENT ' : '') . 'New support request [' . ticketNo($t['id']) . '] ' . ($t['client_name'] ?? '') . ': ' . $t['subject'],
+            ['Client' => $t['client_name'] ?? '', 'From' => trim(($t['contact_name'] ?? '') . ' <' . ($t['contact_email'] ?? '') . '>'), 'Type' => $TICKET_CATEGORIES[$t['category']] ?? $t['category'],
+             'Priority' => $pri, 'Subject' => $t['subject'], 'Details' => $t['details'] ?? '', 'Link' => $t['link'] ?? ''], $t) || $ok;
+    return $ok;
+}
+
 function ticketRow($db, $id) {
     $st = $db->prepare("SELECT t.*, c.name AS client_name, u.name AS assigned_name FROM tickets t LEFT JOIN clients c ON c.id = t.client_id LEFT JOIN users u ON u.id = t.assigned_to WHERE t.id = ?");
     $st->execute([(int)$id]); return $st->fetch();
@@ -362,6 +397,7 @@ if ($action === 'submit_ticket' && $method === 'POST') {
     $staff = $db->query("SELECT id FROM users WHERE status = 'active' AND role IN ('admin','hr','manager')")->fetchAll(PDO::FETCH_COLUMN);
     ticketNotify($db, 'ticket', $t, $staff, 0, $client['name'], ($pri === 'urgent' ? 'URGENT · ' : '') . $subject);
     ticketHook('ticket_created', $t);
+    ticketTeamEmail($t);
     ticketEmail($t, 'received');
     echo json_encode(['success'=>true,'ticket_number'=>ticketNo($tid)]);
     exit;
@@ -423,7 +459,15 @@ if ($action === 'update_ticket') {
             $an = null; if ($to) { $q = $db->prepare("SELECT name FROM users WHERE id = ? AND status = 'active'"); $q->execute([$to]); $an = $q->fetchColumn(); if (!$an) $to = null; }
             $db->prepare("UPDATE tickets SET assigned_to = ? WHERE id = ?")->execute([$to, (int)$t['id']]);
             ticketNote($db, $t['id'], $uid, $who, $to ? 'Assigned to ' . $an : 'Unassigned', 0, 1);
-            if ($to) ticketNotify($db, 'ticket_assigned', $t, [$to], $uid, $who, $t['subject']);
+            if ($to) {
+                ticketNotify($db, 'ticket_assigned', $t, [$to], $uid, $who, $t['subject']);
+                if ($to !== $uid) {
+                    $em = $db->prepare("SELECT email FROM users WHERE id = ?"); $em->execute([$to]);
+                    teamMail((string)$em->fetchColumn(), 'Assigned to you [' . ticketNo($t['id']) . '] ' . ($t['client_name'] ?? '') . ': ' . $t['subject'],
+                        ['Assigned by' => $who, 'Client' => $t['client_name'] ?? '', 'From' => trim(($t['contact_name'] ?? '') . ' <' . ($t['contact_email'] ?? '') . '>'),
+                         'Priority' => $TICKET_PRIORITY[$t['priority']] ?? $t['priority'], 'Subject' => $t['subject'], 'Details' => $t['details'] ?? ''], $t);
+                }
+            }
         }
     }
     $t2 = ticketRow($db, (int)$t['id']);
@@ -3194,7 +3238,7 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails','ghl_invoice_webhook_url','support_hour_rate'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails','ghl_invoice_webhook_url','support_hour_rate','ticket_team_email'];
         if (isset($body['team_meeting_url'])) {
             $mu = trim((string)$body['team_meeting_url']);
             if ($mu !== '' && !preg_match('#^https://[^\s<>"]+$#i', $mu)) { echo json_encode(['success'=>false,'error'=>'The meeting link must start with https://']); exit; }

@@ -2069,6 +2069,11 @@ function renderDash(){
           ${appSettings.ghl_ticket_webhook_url?"Ticket webhook active — new requests and replies trigger GHL emails":"Paste your ticket webhook URL to get emailed about new support requests"}
         </div>
         <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
+          <label style="font-weight:600">Email new tickets to</label>
+          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Every new support request is emailed here straight from the timesheet (no webhook needed), with a button that opens it in Ticketing. Replying to that email goes to the client. Separate several addresses with commas. Whoever a ticket is assigned to is also emailed.</p>
+          <input class="ghl-input" id="set-ticket-email" type="text" value="${escHtml(appSettings.ticket_team_email!=null&&appSettings.ticket_team_email!==''?appSettings.ticket_team_email:'support@genhead.com')}" onchange="api({action:'update_settings',ticket_team_email:this.value.trim()}).then(r=>{if(r&&r.success===false){showToast(r.error||'Could not save.');return;}appSettings.ticket_team_email=this.value.trim();showToast('Ticket inbox saved.');})">
+        </div>
+        <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
           <label style="font-weight:600">Support Hours Invoice Webhook URL</label>
           <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Fires when an Admin or HR approves a support-hours request in Ticketing. In GenSuite, start a workflow with an Inbound Webhook trigger, find the contact by <code>contact_email</code>, and create and send the invoice from these fields: <code>item_name</code>, <code>item_description</code>, <code>quantity</code>, <code>unit_price</code>, <code>amount</code>, <code>recurring</code> (true for monthly add-ons), <code>client_name</code>, <code>ticket_number</code>. Leave blank to use the ticket webhook (event <code>invoice_requested</code>).</p>
           <input class="ghl-input" id="wh-invoice-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${escHtml(appSettings.ghl_invoice_webhook_url||'')}" onchange="api({action:'update_settings',ghl_invoice_webhook_url:this.value.trim()}).then(()=>{appSettings.ghl_invoice_webhook_url=this.value.trim();showToast('Invoice webhook saved.');})">
@@ -3199,8 +3204,9 @@ function renderTickets(filter){
   const root=pmRoot(); if(!root)return;
   const f=_tk.filter, all=_tk.list;
   const byClient=_tk.client?all.filter(t=>t.client_name===_tk.client):all;
-  const counts={open:byClient.filter(t=>t.status!=="resolved").length,new:byClient.filter(t=>t.status==="new").length,in_progress:byClient.filter(t=>t.status==="in_progress").length,waiting:byClient.filter(t=>t.status==="waiting").length,resolved:byClient.filter(t=>t.status==="resolved").length,all:byClient.length};
-  const list=byClient.filter(t=>f==="all"?true:f==="open"?t.status!=="resolved":t.status===f);
+  const me=myDbId();
+  const counts={mine:byClient.filter(t=>t.status!=="resolved"&&String(t.assigned_to||"")===me).length,unassigned:byClient.filter(t=>t.status!=="resolved"&&!t.assigned_to).length,open:byClient.filter(t=>t.status!=="resolved").length,new:byClient.filter(t=>t.status==="new").length,in_progress:byClient.filter(t=>t.status==="in_progress").length,waiting:byClient.filter(t=>t.status==="waiting").length,resolved:byClient.filter(t=>t.status==="resolved").length,all:byClient.length};
+  const list=byClient.filter(t=>f==="all"?true:f==="open"?t.status!=="resolved":f==="mine"?(t.status!=="resolved"&&String(t.assigned_to||"")===me):f==="unassigned"?(t.status!=="resolved"&&!t.assigned_to):t.status===f);
   const chip=(k,l)=>`<button class="btn ${f===k?"btn-primary":"btn-outline"}" style="font-size:.76rem;padding:.3rem .75rem" onclick="renderTickets('${k}')">${l} <span style="opacity:.75">${counts[k]}</span></button>`;
   const clients=[...new Set(all.map(t=>t.client_name).filter(Boolean))].sort();
   const pri=p=>p==="urgent"?'<span style="color:#ef4444;font-weight:700">Urgent</span>':p==="low"?'<span style="color:var(--mid)">Low</span>':"Normal";
@@ -3214,7 +3220,7 @@ function renderTickets(filter){
     </div>
   </div>
   <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.9rem">
-    ${chip("open","Open")}${chip("new","New")}${chip("in_progress","In progress")}${chip("waiting","Waiting on client")}${chip("resolved","Resolved")}${chip("all","All")}
+    ${chip("open","Open")}${chip("mine","Assigned to me")}${chip("unassigned","Unassigned")}${chip("new","New")}${chip("in_progress","In progress")}${chip("waiting","Waiting on client")}${chip("resolved","Resolved")}${chip("all","All")}
   </div>
   ${list.length?`<div class="billing-tbl"><table><thead><tr><th>#</th><th>Request</th><th>Client</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Age</th></tr></thead><tbody>
     ${list.map(t=>`<tr style="cursor:pointer" onclick="openTicket(${t.id})">
@@ -3223,9 +3229,17 @@ function renderTickets(filter){
       <td style="font-size:.82rem">${escHtml(t.client_name||"—")}</td>
       <td style="font-size:.8rem">${pri(t.priority)}</td>
       <td>${tkChip(t.status)}</td>
-      <td style="font-size:.8rem">${escHtml(t.assigned_name||"—")}</td>
+      <td style="font-size:.8rem" onclick="event.stopPropagation()">${canAssignTk()?`<select style="font-size:.78rem;padding:.2rem .4rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--dark);max-width:150px" onchange="quickAssign(${t.id},this.value)"><option value="">— Unassigned —</option>${EMPS.filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>{const id=String(e.id).replace(/^e/,"");return `<option value="${id}"${String(t.assigned_to||"")===id?" selected":""}>${escHtml(e.name)}</option>`;}).join("")}</select>`:escHtml(t.assigned_name||"—")}</td>
       <td style="font-size:.78rem;color:var(--mid)">${tkAge(t.created_at)}</td></tr>`).join("")}
   </tbody></table></div>`:`<div style="padding:3rem;text-align:center;color:var(--mid)">${f==="open"?"No open support requests 🎉":"Nothing here."}<div style="font-size:.78rem;margin-top:.4rem">Clients send requests from the Support page in their GenSuite account.</div></div>`}`;
+}
+function canAssignTk(){return cur.role==="admin"||cur.role==="hr"||cur.role==="manager";}
+async function quickAssign(id,uid){
+  const r=await fetch(`${API_BASE}?`+new URLSearchParams({action:"update_ticket",id,assigned_to:uid||""})).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't assign.");return;}
+  const e=EMPS.find(x=>String(x.id).replace(/^e/,"")===String(uid));
+  showToast(uid?`Assigned to ${e?e.name:"them"}. They've been notified.`:"Unassigned.");
+  await loadTickets(); renderTickets();
 }
 async function openTicket(id){
   const r=await fetch(`${API_BASE}?action=ticket_detail&id=${id}&t=${Date.now()}`).then(x=>x.json()).catch(()=>null);
