@@ -283,6 +283,12 @@ div[id$="-modal"][style*="position:fixed"] > div{max-height:none!important;margi
   --stage-inreview-bg:#2e1065;--stage-inreview-card:#581c87;
   --stage-done-bg:#022c22;    --stage-done-card:#064e3b;
 }
+.pm-nav{display:flex;gap:.25rem;border-bottom:1px solid var(--border);margin-bottom:1rem;flex-wrap:wrap}
+.pm-navtab{background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;padding:.55rem .85rem;font-size:.86rem;font-weight:600;color:var(--mid);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:.4rem}
+.pm-navtab:hover{color:var(--dark)}
+.pm-navtab.on{color:var(--dark);border-bottom-color:var(--teal)}
+.pm-navbadge{background:rgba(3,173,143,.15);color:#028a72;border-radius:999px;font-size:.68rem;padding:.02rem .45rem}
+.pm-navbadge.red{background:#ef4444;color:#fff}
 .pm-board{display:grid;grid-template-columns:repeat(5,minmax(210px,1fr));gap:.75rem;align-items:start;overflow-x:auto;padding-bottom:.75rem}
 @media(max-width:600px){.pm-board{grid-template-columns:repeat(5,minmax(200px,1fr));}}
 /* Column lanes */
@@ -1954,6 +1960,7 @@ function renderDash(){
 
   <!-- PROJECTS PANE -->
   <div id="pane-projects" style="display:none">
+    <div id="pm-nav"></div>
     <div id="projects-root"></div>
   </div>
 
@@ -3742,11 +3749,24 @@ const STAGES=[
   {key:'done',      label:'Done'}
 ];
 
-function pmRoot(){return document.getElementById('projects-root');}
+// Section tabs across the top of Projects: Projects · Task board · My Tasks · Ticketing
+function pmNavRender(){
+  const nav=document.getElementById('pm-nav'); if(!nav)return;
+  const v=_pm.view, me=myDbId();
+  const myOpen=(_pm.tasks||[]).filter(t=>String(t.assigned_to||'')===me&&t.stage!=='done').length;
+  const tab=(key,label,on,fn,badge,red)=>`<button class="pm-navtab${on?' on':''}" onclick="${fn}">${label}${badge?`<span class="pm-navbadge${red?' red':''}">${badge}</span>`:''}</button>`;
+  nav.innerHTML=`<div class="pm-nav">
+    ${tab('projects','📁 Projects',v==='projects'||v==='detail','_pmProjectsView()')}
+    ${tab('board','▦ Task board',v==='board'&&!_pm.activeProject,"_pm.activeProject=null;_pm.view='board';_renderPMBoard()")}
+    ${tab('mytasks','✓ My Tasks',v==='mytasks',"_pmMyTasks('open')",myOpen)}
+    ${tab('tickets','🎫 Ticketing',v==='tickets','goTickets()',_tk.openCount,true)}
+  </div>`;
+}
+function pmRoot(){setTimeout(pmNavRender,0);return document.getElementById('projects-root');}
 // Employees: open Projects from their timesheet (they have no tab bar)
 function openEmployeeProjects(){
   const body=document.getElementById("app-body");
-  body.innerHTML=`<div class="action-bar" style="justify-content:flex-start;margin-bottom:.75rem"><button class="btn btn-outline" onclick="renderApp()">&#8592; Back to My Timesheet</button></div><div id="projects-root"></div>`;
+  body.innerHTML=`<div class="action-bar" style="justify-content:flex-start;margin-bottom:.75rem"><button class="btn btn-outline" onclick="renderApp()">&#8592; Back to My Timesheet</button></div><div id="pm-nav"></div><div id="projects-root"></div>`;
   renderProjects();
 }
 function pmIsTeamEditor(){return cur.role==="admin"||cur.role==="hr"||cur.role==="manager";}
@@ -3841,6 +3861,7 @@ async function renderProjects(){
 }
 
 function _renderPMBoard(){
+  _pm.view='board'; _pm.activeProject=null;
   const root=pmRoot();
   const role=cur.role;
   const canManage=(role==='admin'||role==='manager'||role==='hr');
@@ -3866,8 +3887,6 @@ function _renderPMBoard(){
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${clientFilterHtml}
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectsView()">📁 ${canManage?'All Projects':'My Projects'}</button>
-      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks()">My Tasks</button>
-      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="goTickets()">🎫 Ticketing${_tk.openCount?` <span style="background:#ef4444;color:#fff;border-radius:9px;font-size:.66rem;padding:.02rem .38rem;margin-left:.15rem">${_tk.openCount}</span>`:""}</button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
   </div>
@@ -3922,8 +3941,6 @@ function _pmProjectsView(clientFilter){
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${clientFilterHtml}
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="openMeetModal({})">📹 Meet now</button>
-      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="goTickets()">🎫 Ticketing${_tk.openCount?` <span style="background:#ef4444;color:#fff;border-radius:9px;font-size:.66rem;padding:.02rem .38rem;margin-left:.15rem">${_tk.openCount}</span>`:""}</button>
-      <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmMyTasks('open')">✓ My Tasks <span style="opacity:.7">${_pm.tasks.filter(t=>String(t.assigned_to||'')===myDbId()&&t.stage!=='done').length}</span></button>
       ${canManage?`<button class="btn btn-primary" onclick="_pmAddProjectModal()">+ New Project</button>`:''}
     </div>
   </div>`;
