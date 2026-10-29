@@ -699,6 +699,25 @@ if ($action === 'gensuite_payment') {
     // (its top-level location is Genhead's own sub-account, never the client's)
     $cd = [];
     foreach (['customData','custom_data','customdata'] as $k) if (!empty($raw[$k]) && is_array($raw[$k])) $cd = array_merge($cd, $raw[$k]);
+    // Key names typed in GenSuite: ignore case, spaces and stray characters ("Amount ", "first name" → amount, first_name)
+    $norm = function($arr) { $o = []; foreach ($arr as $k => $v) { $nk = trim(preg_replace('/[^a-z0-9]+/', '_', strtolower(trim((string)$k))), '_'); if ($nk !== '' && (!isset($o[$nk]) || $o[$nk] === '' || $o[$nk] === null)) $o[$nk] = $v; } return $o; };
+    $hasCd = (bool)$cd;
+    $cd = $norm($cd);
+    foreach ($cd as $k => $v) if (is_string($v)) $cd[$k] = trim($v);
+    // Amount left blank: look for it in the payment details GenSuite sends on its own
+    if ($hasCd && (!isset($cd['amount']) || $cd['amount'] === '' || !preg_match('/[0-9]/', (string)$cd['amount']))) {
+        $found = null;
+        $walk = function($a, $depth) use (&$walk, &$found) {
+            if ($found !== null || $depth > 4 || !is_array($a)) return;
+            foreach ($a as $k => $v) {
+                if (in_array(strtolower((string)$k), ['customdata','custom_data','contact','location'], true)) continue;
+                if (is_array($v)) { $walk($v, $depth + 1); continue; }
+                if (in_array(strtolower((string)$k), ['amount_paid','transaction_amount','total_amount','amount','invoice_amount','total'], true) && preg_match('/^\$?\s*[0-9][0-9,]*(\.[0-9]+)?$/', trim((string)$v))) { $found = trim((string)$v); return; }
+            }
+        };
+        $walk($raw, 0);
+        if ($found !== null) $cd['amount'] = $found;
+    }
     if ($cd) {
         $std = ['email' => $raw['email'] ?? '', 'name' => $raw['full_name'] ?? ($raw['name'] ?? trim(($raw['first_name'] ?? '') . ' ' . ($raw['last_name'] ?? '')))];
         unset($raw['location_id'], $raw['location']);
