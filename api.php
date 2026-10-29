@@ -3825,6 +3825,7 @@ function clientMonthEntries($db, $clientIds, $month) {
         JOIN timesheets t ON te.timesheet_id = t.id
         JOIN users u ON t.user_id = u.id
         WHERE te.client_id IN ($in)
+          AND COALESCE(te.billing_type, CASE WHEN te.billable = 0 THEN 'nonbillable' ELSE 'billable' END) <> 'nonbillable'   -- non-billable time never uses a client's hours
           AND t.status IN ('draft','submitted','under_review','approved')
           AND (t.period IN ($lin) OR (t.period_start BETWEEN ? AND ?))");
     $st->execute(array_merge($clientIds, $labels, [date('Y-m-d', strtotime($mStart.' -13 days')), $mEnd]));
