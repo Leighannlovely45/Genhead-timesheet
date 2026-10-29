@@ -750,7 +750,7 @@ if ($action === 'gensuite_payment') {
         $staff = $db->query("SELECT id FROM users WHERE status = 'active' AND role IN ('admin','hr')")->fetchAll(PDO::FETCH_COLUMN);
         ticketNotify($db, 'ticket', $t, $staff, 0, 'GenSuite payment', 'Payment received, client not matched');
         ticketTeamEmail($t);
-        echo json_encode(['success'=>true,'matched'=>false,'ticket'=>ticketNo($t['id'])]);
+        echo json_encode(['success'=>true,'matched'=>false,'ticket'=>ticketNo($t['id']),'received'=>['hours'=>$in['hours'] ?? '', 'amount'=>$in['amount'] ?? '', 'location_id'=>$loc, 'email'=>$email, 'payment_id'=>$ref]]);
         exit;
     }
     // A completed request in the client's portal, so the purchase shows in their history
@@ -767,7 +767,8 @@ if ($action === 'gensuite_payment') {
     foreach (array_filter(array_map('trim', explode(',', (string)getSetting('ticket_team_email', 'support@genhead.com')))) as $one)
         teamMail($one, 'Hours bought online [' . ticketNo($tid) . '] ' . $client['name'] . ": $what", ['Client' => $client['name'], 'Bought' => $what, 'Paid by' => trim("$name $email"), 'Payment' => $ref], $t);
     if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) ticketEmail($t, 'approved', ['summary' => "$hours support hours have been added to your account. Thank you!", 'invoiced' => false]);
-    echo json_encode(['success'=>true,'matched'=>true,'client'=>$client['name'],'ticket'=>ticketNo($tid),'hours'=>$hours]);
+    echo json_encode(['success'=>true,'matched'=>true,'client'=>$client['name'],'ticket'=>ticketNo($tid),'hours'=>$hours,
+                      'received'=>['hours'=>$in['hours'] ?? '', 'quantity'=>$in['quantity'] ?? '', 'amount'=>$in['amount'] ?? '', 'location_id'=>$loc, 'name'=>$name, 'payment_id'=>$ref]]);
     exit;
 }
 
