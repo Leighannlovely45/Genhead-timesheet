@@ -143,6 +143,15 @@ select.month:focus{outline:none;border-color:var(--teal)}
 .dlg-h h2{font-size:19px;color:var(--ink);letter-spacing:-.3px}
 .x{background:none;border:none;font-size:22px;color:var(--mid);cursor:pointer;line-height:1;padding:4px}
 .dlg-b{padding:12px 24px 24px}
+.packs{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:6px}
+.pack{border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px;text-align:left}
+.pack .ph{font-size:26px;font-weight:700;color:var(--ink);letter-spacing:-.5px}
+.pack .ph small{font-size:14px;font-weight:600;color:var(--mid)}
+.pack .pn{font-size:13px;color:var(--mid)}
+.pack .pp{font-size:18px;font-weight:700;color:var(--ink);margin:4px 0 8px}
+.pack .btn{justify-content:center}
+.buy-note{font-size:12.5px;color:var(--mid);margin-top:14px;line-height:1.5}
+.linkish{background:none;border:0;padding:0;color:var(--teal);font-weight:600;cursor:pointer;font:inherit;font-size:12.5px}
 .f{margin-bottom:14px}
 .f label,.lbl{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px}
 .f .hint{font-weight:400;color:var(--mid)}
@@ -334,17 +343,17 @@ function hoursHTML() {
       return `<div class="card"><div class="empty">
         <div class="ico">${ICONS.clock}</div>
         <h3>You're on the DIY plan</h3>
-        <p>You manage your GenSuite account yourself. Need hands-on help from the Genhead team? Request support hours ($80/hr, or a 5-hour pack for $400). Hours you buy stay in your bank until you use them.</p>
-        <button class="btn btn-primary" onclick="openForm('hours')">${ICONS.plus} Request support hours</button>
+        <p>You manage your GenSuite account yourself. Need hands-on help from the Genhead team? Buy support hours ($80/hr, or a 5-hour pack for $400). Hours you buy stay in your bank until you use them.</p>
+        <button class="btn btn-primary" onclick="buyHours()">${ICONS.plus} Buy support hours</button>
       </div></div>${(h.activity || []).length ? activityHTML(h, monthLabel) : ''}`;
     }
     const r = ringHTML(S.remaining, S.available, 'hours in your bank');
     return `<div class="card summary">
         <div class="gauge">${r.html}</div>
         <div class="sum-r">
-          <div class="sum-top"><h2>Banked support hours <button class="linkbtn" onclick="openForm('hours')">Buy more hours</button></h2>${monthSelect(h)}</div>
+          <div class="sum-top"><h2>Banked support hours <button class="linkbtn" onclick="buyHours()">Buy more hours</button></h2>${monthSelect(h)}</div>
           <div class="tiles">${tile('In your bank', S.available)}${tile('Used in ' + (monthLabel.split(' ')[0] || 'month'), S.used)}${tile('Left', S.remaining, { color: r.color })}</div>
-          <div class="state ${S.over > 0 ? 'st-out' : S.remaining <= 1 ? 'st-low' : 'st-ok'}">${S.over > 0 || S.remaining <= 1 ? ICONS.warn : ICONS.check}<div>${S.over > 0 ? `<b>${fmtH(S.over)} hrs over</b> your banked hours this month.` : S.remaining <= 1 ? '<b>Almost out</b> of banked hours.' : '<b>DIY plan.</b> Hours you buy never expire.'}</div>${S.over > 0 || S.remaining <= 1 ? `<button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button>` : ''}</div>
+          <div class="state ${S.over > 0 ? 'st-out' : S.remaining <= 1 ? 'st-low' : 'st-ok'}">${S.over > 0 || S.remaining <= 1 ? ICONS.warn : ICONS.check}<div>${S.over > 0 ? `<b>${fmtH(S.over)} hrs over</b> your banked hours this month.` : S.remaining <= 1 ? '<b>Almost out</b> of banked hours.' : '<b>DIY plan.</b> Hours you buy never expire.'}</div>${S.over > 0 || S.remaining <= 1 ? `<button class="btn btn-ghost" onclick="buyHours()">Buy more hours</button>` : ''}</div>
         </div>
       </div>${activityHTML(h, monthLabel)}`;
   }
@@ -355,8 +364,8 @@ function hoursHTML() {
   if (S.purchased > 0) tiles.push(tile('Extra hours', S.purchased, { plus: true, title: 'Hours you bought; these never expire' }));
   tiles.push(tile('Used', S.used), tile('Remaining', S.remaining, { color: S.available ? r.color : '' }));
   let st = '';
-  if (S.over > 0) st = `<div class="state st-out">${ICONS.warn}<div><b>Over by ${fmtH(S.over)} hrs</b> this month.</div><button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button></div>`;
-  else if (S.available > 0 && r.pct <= .2) st = `<div class="state st-low">${ICONS.warn}<div><b>Running low:</b> ${fmtH(S.remaining)} hrs left.</div><button class="btn btn-ghost" onclick="openForm('hours')">Request more hours</button></div>`;
+  if (S.over > 0) st = `<div class="state st-out">${ICONS.warn}<div><b>Over by ${fmtH(S.over)} hrs</b> this month.</div><button class="btn btn-ghost" onclick="buyHours()">Buy more hours</button></div>`;
+  else if (S.available > 0 && r.pct <= .2) st = `<div class="state st-low">${ICONS.warn}<div><b>Running low:</b> ${fmtH(S.remaining)} hrs left.</div><button class="btn btn-ghost" onclick="buyHours()">Buy more hours</button></div>`;
   else if (S.available > 0) st = `<div class="state st-ok">${ICONS.check}<div><b>On track.</b> ${S.expiring > 0 ? `${fmtH(S.expiring)} rolled-over hrs expire at the end of ${esc(monthLabel.split(' ')[0])}.` : (h.rollover_on ? `Unused support hours roll over for ${(h.rollover_months || 3) * 30} days.` : '')}</div></div>`;
   else st = `<div class="state st-low">${ICONS.clock}<div>No support hours are set for this month yet. Contact us if that doesn't look right.</div></div>`;
   const gmCard = (G.included > 0 || G.used > 0) ? (() => {
@@ -372,7 +381,7 @@ function hoursHTML() {
     <div class="card summary">
       <div class="gauge">${r.html}</div>
       <div class="sum-r">
-        <div class="sum-top"><h2>Support hours <button class="linkbtn" onclick="openForm('hours')">Need more hours?</button></h2>${monthSelect(h)}</div>
+        <div class="sum-top"><h2>Support hours <button class="linkbtn" onclick="buyHours()">Need more hours?</button></h2>${monthSelect(h)}</div>
         <div class="tiles${tiles.length > 3 ? ' four' : ''}${tiles.length > 4 ? ' five' : ''}">${tiles.join('')}</div>
         ${st}
       </div>
@@ -542,6 +551,48 @@ function renderShots() {
   $('#drop').style.display = SHOTS.length >= 3 ? 'none' : '';
 }
 function escClose(e) { if (e.key === 'Escape') closeForm(); }
+// ── Buy hours: open the GenSuite checkout for a pack (falls back to a request when no packs are set up) ──
+function buyHours() {
+  const packs = (state.hours && state.hours.packs) || [];
+  if (!packs.length) { openForm('hours'); return; }
+  const money = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
+  const ov = document.createElement('div'); ov.className = 'ov'; ov.id = 'ov';
+  ov.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
+    <div class="dlg-h"><div><h2 id="dlg-t">Buy support hours</h2><p class="muted">Pay securely and the hours are added to your account right away. Bought hours never expire.</p></div><button class="x" aria-label="Close" onclick="closeForm()">&times;</button></div>
+    <div class="dlg-b">
+      <div class="packs">${packs.map((p, i) => `<div class="pack">
+        <div class="ph">${esc(fmtH(p.hours))}<small> hr${p.hours == 1 ? '' : 's'}</small></div>
+        <div class="pn">${esc(p.label || '')}</div>
+        <div class="pp">${p.price > 0 ? esc(money(p.price)) : ''}</div>
+        <button class="btn btn-primary" onclick="goCheckout(${i})">Buy now</button></div>`).join('')}</div>
+      <p class="buy-note">Checkout opens in a new tab. When you're done, come back here and your hours will show.<br>Want hours added every month, or a different amount? <button class="linkish" onclick="closeForm();openForm('hours')">Send us a request</button>.</p>
+    </div></div>`;
+  ov.addEventListener('click', e => { if (e.target === ov) closeForm(); });
+  document.body.appendChild(ov); document.addEventListener('keydown', escClose);
+}
+function goCheckout(i) {
+  const p = ((state.hours && state.hours.packs) || [])[i]; if (!p || !p.url) return;
+  const u = new URL(p.url);
+  u.searchParams.set('location_id', LOC);
+  const em = store.get('gh_contact_email'), nm = store.get('gh_contact_name');
+  if (em) u.searchParams.set('email', em);
+  if (nm) { u.searchParams.set('name', nm); u.searchParams.set('first_name', nm.split(' ')[0]); if (nm.includes(' ')) u.searchParams.set('last_name', nm.split(' ').slice(1).join(' ')); }
+  window.open(u.toString(), '_blank', 'noopener');
+  state.checkoutAt = Date.now();
+  closeForm();
+}
+// Back from checkout: refresh the hours (GenSuite adds them a few seconds after payment)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !state.checkoutAt || Date.now() - state.checkoutAt > 3600000) return;
+  const again = n => setTimeout(async () => { await refreshHours(); if (n > 0) again(n - 1); }, n === 3 ? 0 : 8000);
+  again(3);
+});
+async function refreshHours() {
+  const h = await getJSON(`${API}?action=client_hours&location_id=${encodeURIComponent(LOC)}${state.month ? '&month=' + encodeURIComponent(state.month) : ''}`).catch(() => null);
+  if (h && h.success) { state.hours = h; render(); }
+  const t = await getJSON(`${API}?action=client_tickets&location_id=${encodeURIComponent(LOC)}`).catch(() => null);
+  if (t && t.success) { state.tickets = t.tickets; render(); }
+}
 function closeForm() { const o = $('#ov'); if (o) o.remove(); document.removeEventListener('keydown', escClose); }
 
 async function sendForm(e) {

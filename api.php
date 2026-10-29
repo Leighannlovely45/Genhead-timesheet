@@ -150,7 +150,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // ─────────────────────────────────────────
 // Open without signing in: sign-in/reset flows, the login name list, the Chrome
 // extension, the client hours portal & hours-bank admin, and secret-protected GHL hooks.
-$PUBLIC_ACTIONS = ['submit_ticket','client_tickets','client_reply','gensuite_ticket_status','client_ticket_file','verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
+$PUBLIC_ACTIONS = ['gensuite_payment','submit_ticket','client_tickets','client_reply','gensuite_ticket_status','client_ticket_file','verify_password','set_password','check_password_set','forgot_pin','reset_pin','load','ext_login',
                    'upsert_time','client_hours','get_client_by_location',
                    'load_clients','ghl_add','fire_webhook'];
 $ROLE_RULES = [
@@ -678,6 +678,76 @@ if ($action === 'add_ticket_note' && $method === 'POST') {
     echo json_encode(['success'=>true]);
     exit;
 }
+// ── Buy hours online: packs link to GenSuite checkout; a GenSuite workflow calls back when paid ──
+function hourPacks() {
+    $v = json_decode((string)getSetting('hour_packs', ''), true);
+    if (!is_array($v)) $v = [['id'=>'p1','hours'=>5,'price'=>400,'label'=>'5-hour pack','url'=>''], ['id'=>'p2','hours'=>1,'price'=>80,'label'=>'1 hour','url'=>'']];
+    return array_map(function($p) { return ['id'=>(string)($p['id'] ?? ''), 'hours'=>(float)($p['hours'] ?? 0), 'price'=>(float)($p['price'] ?? 0),
+        'label'=>(string)($p['label'] ?? '') ?: ((float)$p['hours'] . ' support hours'), 'url'=>(string)($p['url'] ?? '')]; }, $v);
+}
+if ($action === 'payment_inbound_info') {
+    if (!in_array($AUTH['role'], ['admin','hr'], true)) { echo json_encode(['success'=>false,'error'=>'Admins only']); exit; }
+    $key = (string)getSetting('payment_inbound_key', '');
+    if ($key === '' || !empty($_GET['regenerate'])) { $key = bin2hex(random_bytes(16)); setSetting('payment_inbound_key', $key); }
+    echo json_encode(['success'=>true, 'url'=>appBaseUrl() . 'api.php?action=gensuite_payment&key=' . $key, 'packs'=>hourPacks()]);
+    exit;
+}
+if ($action === 'gensuite_payment') {
+    $db = getDB();
+    $in = array_merge($_GET, $_POST, json_decode(file_get_contents('php://input'), true) ?: []);
+    $key = (string)getSetting('payment_inbound_key', '');
+    if ($key === '' || !hash_equals($key, (string)($in['key'] ?? ($_SERVER['HTTP_X_TS_KEY'] ?? '')))) { http_response_code(403); echo json_encode(['success'=>false,'error'=>'Bad key']); exit; }
+    $hours = round((float)($in['hours'] ?? 0), 2);
+    $amount = round((float)preg_replace('/[^0-9.]/', '', (string)($in['amount'] ?? '0')), 2);
+    $ref = mb_substr(trim((string)($in['payment_id'] ?? ($in['order_id'] ?? ''))), 0, 80);
+    $email = strtolower(trim((string)($in['email'] ?? '')));
+    $name = mb_substr(trim((string)($in['name'] ?? '')), 0, 120);
+    $loc = trim((string)($in['location_id'] ?? ''));
+    if ($hours <= 0 || $hours > 500) { echo json_encode(['success'=>false,'error'=>'Send hours (the number of support hours bought).']); exit; }
+    // Which client paid: their sub-account id (passed through checkout), else a contact email we know
+    $client = $loc ? clientByLocation($db, $loc) : null;
+    if (!$client && $email !== '') {
+        $q = $db->prepare("SELECT client_id FROM tickets WHERE LOWER(contact_email) = ? AND client_id IS NOT NULL ORDER BY id DESC LIMIT 1"); $q->execute([$email]);
+        if ($cid = $q->fetchColumn()) { $cq = $db->prepare("SELECT * FROM clients WHERE id = ?"); $cq->execute([(int)$cid]); $client = $cq->fetch() ?: null; }
+    }
+    // Same payment sent twice (workflow re-run): only count it once
+    if ($ref !== '') {
+        $d = $db->prepare("SELECT id FROM client_hour_purchases WHERE note LIKE ? LIMIT 1"); $d->execute(['%ref ' . addcslashes($ref, '%_\\')]);
+        if ($d->fetchColumn()) { echo json_encode(['success'=>true,'duplicate'=>true]); exit; }
+    }
+    $money = $amount > 0 ? '$' . number_format($amount, 2) : '';
+    $what = "$hours support hours" . ($money ? " ($money)" : '');
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if (!$client) {
+        // Paid, but we can't tell who: make a ticket so the team can match it by hand
+        $db->prepare("INSERT INTO tickets (client_id, location_id, contact_name, contact_email, category, priority, subject, details, status, ip, updated_at) VALUES (NULL,?,?,?,'hours','urgent',?,?,'new',?,NOW())")
+           ->execute([$loc, $name ?: 'Unknown', $email ?: '', "Payment received: $what, client not matched",
+                      "A payment came in from GenSuite but it didn't say which client it was for.\n\nEmail: " . ($email ?: '(none)') . "\nSub-account: " . ($loc ?: '(none)') . ($ref ? "\nPayment: $ref" : '') . "\n\nMove this ticket to the right client, then add the hours under Hours Bank → + Hours.", $ip]);
+        $t = ticketRow($db, (int)$db->lastInsertId());
+        $staff = $db->query("SELECT id FROM users WHERE status = 'active' AND role IN ('admin','hr')")->fetchAll(PDO::FETCH_COLUMN);
+        ticketNotify($db, 'ticket', $t, $staff, 0, 'GenSuite payment', 'Payment received, client not matched');
+        ticketTeamEmail($t);
+        echo json_encode(['success'=>true,'matched'=>false,'ticket'=>ticketNo($t['id'])]);
+        exit;
+    }
+    // A completed request in the client's portal, so the purchase shows in their history
+    $db->prepare("INSERT INTO tickets (client_id, location_id, contact_name, contact_email, category, priority, subject, details, status, resolved_at, approved_at, approved_hours, approved_kind, approved_amount, invoice_sent, ip, updated_at)
+                  VALUES (?,?,?,?,'hours','normal',?,?,'resolved',NOW(),NOW(),?,'once',?,1,?,NOW())")
+       ->execute([(int)$client['id'], $client['location_id'] ?: $loc, $name ?: ($client['name'] ?? ''), $email, "Bought $what", "Paid online through GenSuite." . ($ref ? " Payment $ref." : ''), $hours, $amount ?: null, $ip]);
+    $tid = (int)$db->lastInsertId();
+    $db->prepare("INSERT INTO client_hour_purchases (client_id, hours, kind, note, purchased_on, ticket_id, created_by) VALUES (?,?, 'support', ?, ?, ?, NULL)")
+       ->execute([(int)$client['id'], $hours, mb_substr('Paid online' . ($money ? " · $money" : '') . ($ref ? " · ref $ref" : ''), 0, 255), date('Y-m-d'), $tid]);
+    $t = ticketRow($db, $tid);
+    ticketNote($db, $tid, null, 'GenSuite', "Payment received: $what. Hours added to the client's bank.", 0, 1);
+    $staff = $db->query("SELECT id FROM users WHERE status = 'active' AND role IN ('admin','hr')")->fetchAll(PDO::FETCH_COLUMN);
+    ticketNotify($db, 'ticket_paid', $t, $staff, 0, $client['name'], "Bought $what");
+    foreach (array_filter(array_map('trim', explode(',', (string)getSetting('ticket_team_email', 'support@genhead.com')))) as $one)
+        teamMail($one, 'Hours bought online [' . ticketNo($tid) . '] ' . $client['name'] . ": $what", ['Client' => $client['name'], 'Bought' => $what, 'Paid by' => trim("$name $email"), 'Payment' => $ref], $t);
+    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) ticketEmail($t, 'approved', ['summary' => "$hours support hours have been added to your account. Thank you!", 'invoiced' => false]);
+    echo json_encode(['success'=>true,'matched'=>true,'client'=>$client['name'],'ticket'=>ticketNo($tid),'hours'=>$hours]);
+    exit;
+}
+
 // Approve a support-hours request: add the hours and send an invoice through GenSuite
 if ($action === 'approve_hours' && $method === 'POST') {
     $db = getDB(); $b = json_decode(file_get_contents('php://input'), true) ?: [];
@@ -1933,6 +2003,7 @@ if ($method === 'GET') {
             'support'=>$S,'gm'=>$L['gm'],
             'bank'=>['total_hours'=>$S['available'],'included'=>$S['included'],'rollover'=>$S['rollover'],'purchased'=>$S['purchased'],'used_hours'=>$S['used'],'remaining'=>$S['remaining']],
             'rollover_on'=>rolloverOn(),'rollover_months'=>rolloverMonths(),
+            'packs'=>array_values(array_filter(hourPacks(), function($p) { return $p['url'] !== ''; })),
             'activity'=>$activity,'period'=>$month,'month'=>$month,'periods'=>monthList()]);
         exit;
     }
@@ -3460,11 +3531,22 @@ if ($method === 'POST') {
 
     // ── UPDATE SETTINGS ─────────────────────────────────────────────────────
     if ($action === 'update_settings') {
-        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails','ghl_invoice_webhook_url','support_hour_rate','ticket_team_email','ghl_email_webhook_url'];
+        $allowed = ['manager_password','hr_password','webhook_secret','ghl_webhook_url','ghl_invite_webhook_url','ghl_notify_webhook_url','ghl_reset_webhook_url','ghl_api_key','ghl_location_id','overtime_weekly_threshold','overtime_multiplier','hr_approval_mode','hr_pay_period','team_meeting_url','ghl_ticket_webhook_url','rollover_enabled','rollover_start','rollover_months','ticket_client_emails','ghl_invoice_webhook_url','support_hour_rate','ticket_team_email','ghl_email_webhook_url','hour_packs'];
         if (isset($body['team_meeting_url'])) {
             $mu = trim((string)$body['team_meeting_url']);
             if ($mu !== '' && !preg_match('#^https://[^\s<>"]+$#i', $mu)) { echo json_encode(['success'=>false,'error'=>'The meeting link must start with https://']); exit; }
             $body['team_meeting_url'] = $mu;
+        }
+        if (isset($body['hour_packs'])) {
+            $in = is_array($body['hour_packs']) ? $body['hour_packs'] : (json_decode((string)$body['hour_packs'], true) ?: []);
+            $clean = [];
+            foreach (array_slice($in, 0, 6) as $i => $p) {
+                $h = round((float)($p['hours'] ?? 0), 2); $pr = round((float)($p['price'] ?? 0), 2); $u = trim((string)($p['url'] ?? ''));
+                if ($h <= 0) continue;
+                if ($u !== '' && !preg_match('#^https://[^\s<>"]+$#i', $u)) { echo json_encode(['success'=>false,'error'=>'Checkout links must start with https://']); exit; }
+                $clean[] = ['id' => 'p' . ($i + 1), 'hours' => $h, 'price' => $pr, 'label' => mb_substr(trim((string)($p['label'] ?? '')), 0, 60), 'url' => $u];
+            }
+            $body['hour_packs'] = json_encode($clean);
         }
         foreach ($allowed as $key) {
             if (!isset($body[$key])) continue;

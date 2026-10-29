@@ -2111,6 +2111,23 @@ function renderDash(){
           <p style="font-size:.72rem;color:var(--mid);margin-top:.3rem">The link has a secret key. Keep it in GenSuite only.</p>
         </div>
         <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
+          <label style="font-weight:600">Buy hours online</label>
+          <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Packs clients can buy right away from their portal. Paste each pack's GenSuite checkout link (a funnel/order form page). The portal adds <code>?location_id=…&amp;email=…&amp;name=…</code> to the link so GenSuite knows which client is paying. Packs without a link don't show.</p>
+          <div id="pack-rows"></div>
+          <div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
+            <button class="btn btn-outline" style="font-size:.78rem" onclick="packAddRow()">+ Add a pack</button>
+            <button class="btn btn-primary" style="font-size:.78rem" onclick="packSave()">Save packs</button>
+          </div>
+          <label style="display:block;font-weight:600;margin-top:.9rem">Payment received link (for your GenSuite workflow)</label>
+          <p style="font-size:.78rem;color:var(--mid);margin:.2rem 0 .45rem">In the GenSuite workflow that runs when a pack is paid, add a <b>Webhook</b> action (POST) to this link with: <code>hours</code>, <code>amount</code>, <code>location_id</code>, <code>email</code>, <code>name</code>, <code>payment_id</code>. The hours are added to the client's bank right away, the client gets a confirmation, and the team is notified.</p>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+            <input class="ghl-input" id="wh-pay-url" readonly placeholder="Click Show link" style="flex:1;min-width:240px">
+            <button class="btn btn-outline" style="font-size:.78rem" onclick="payLink(0)">Show link</button>
+            <button class="btn btn-outline" style="font-size:.78rem" onclick="payCopy()">Copy</button>
+            <button class="btn btn-outline" style="font-size:.78rem;color:#ef4444" onclick="payLink(1)" title="Makes a new secret link. The old one stops working.">New link</button>
+          </div>
+        </div>
+        <div class="ghl-field" style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:1.1rem">
           <label style="font-weight:600">Support Hours Invoice Webhook URL</label>
           <p style="font-size:.8rem;color:var(--mid);margin:.25rem 0 .55rem">Fires when an Admin or HR approves a support-hours request in Ticketing. In GenSuite, start a workflow with an Inbound Webhook trigger, find the contact by <code>contact_email</code>, and create and send the invoice from these fields: <code>item_name</code>, <code>item_description</code>, <code>quantity</code>, <code>unit_price</code>, <code>amount</code>, <code>recurring</code> (true for monthly add-ons), <code>client_name</code>, <code>ticket_number</code>. Leave blank to use the ticket webhook (event <code>invoice_requested</code>).</p>
           <input class="ghl-input" id="wh-invoice-url" placeholder="https://services.leadconnectorhq.com/hooks/..." value="${escHtml(appSettings.ghl_invoice_webhook_url||'')}" onchange="api({action:'update_settings',ghl_invoice_webhook_url:this.value.trim()}).then(()=>{appSettings.ghl_invoice_webhook_url=this.value.trim();showToast('Invoice webhook saved.');})">
@@ -2206,7 +2223,7 @@ function switchTab(tab){
   if(tab==="clients") renderClients();
   if(tab==="projects") renderProjects();
   if(tab==="settings") renderSettings();
-  if(tab==="ghl") renderSettings(); // populate API key/secret fields in GHL tab
+  if(tab==="ghl"){renderSettings();packLoad();} // populate API key/secret fields + hour packs in GHL tab
 }
 
 // ── APPROVAL DELEGATION ──────────────────────────────────────────────────
@@ -3115,6 +3132,7 @@ function ntText(n){
   const who=escHtml(n.actor_name||"Someone"), task=escHtml(n.task_title||"a task");
   if(n.kind==="assigned") return `<b>${who}</b> assigned you <b>${task}</b>`;
   if(n.kind==="ticket") return `🎫 New support request from <b>${escHtml(n.ticket_client||n.actor_name||"a client")}</b>: <b>${escHtml(n.ticket_subject||n.message||"")}</b>`;
+  if(n.kind==="ticket_paid") return `💳 <b>${escHtml(n.ticket_client||n.actor_name||"A client")}</b> bought hours online: <b>${escHtml(n.message||"")}</b>`;
   if(n.kind==="ticket_reply") return `💬 <b>${escHtml(n.actor_name||"The client")}</b> (${escHtml(n.ticket_client||"client")}) replied on <b>${escHtml(n.ticket_subject||"")}</b>`;
   if(n.kind==="ticket_status") return `🎫 GenSuite updated <b>${escHtml(n.ticket_subject||"")}</b>: ${escHtml(n.message||"")}`;
   if(n.kind==="ticket_assigned") return `🎫 <b>${who}</b> assigned you a support request: <b>${escHtml(n.ticket_subject||"")}</b>`;
@@ -3412,6 +3430,39 @@ async function approveHours(id){
   await loadTickets(); if(_pm.view==="tickets")renderTickets(); openTicket(id);
 }
 function fmtTs(ts){const d=new Date(String(ts||"").replace(" ","T"));return isNaN(d)?"":d.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
+// ── Buy hours online (packs + payment link) ──
+let _packs=null;
+async function packLoad(){
+  const r=await fetch(`${API_BASE}?action=payment_inbound_info`).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success)return; _packs=r.packs||[]; packRender();
+}
+function packRender(){
+  const el=document.getElementById("pack-rows"); if(!el)return;
+  const inp="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:.35rem .5rem;font-size:.82rem;color:var(--dark);box-sizing:border-box";
+  el.innerHTML=(_packs||[]).map((p,i)=>`<div style="display:grid;grid-template-columns:70px 90px 1fr 2fr auto;gap:.4rem;margin-top:.35rem;align-items:center">
+    <input style="${inp}" type="number" min="0.5" step="0.5" value="${escHtml(String(p.hours||""))}" title="Hours" placeholder="Hrs" onchange="_packs[${i}].hours=this.value">
+    <input style="${inp}" type="number" min="0" step="1" value="${escHtml(String(p.price||""))}" title="Price ($)" placeholder="$" onchange="_packs[${i}].price=this.value">
+    <input style="${inp}" value="${escHtml(p.label||"")}" placeholder="Name (e.g. 5-hour pack)" onchange="_packs[${i}].label=this.value">
+    <input style="${inp}" value="${escHtml(p.url||"")}" placeholder="https://… GenSuite checkout link" onchange="_packs[${i}].url=this.value.trim()">
+    <button class="btn btn-outline" style="font-size:.75rem;color:#ef4444" onclick="_packs.splice(${i},1);packRender()" title="Remove">✕</button></div>`).join("")
+    +`<div style="display:grid;grid-template-columns:70px 90px 1fr 2fr auto;gap:.4rem;font-size:.68rem;color:var(--mid);margin-top:.2rem"><span>Hours</span><span>Price $</span><span>Name</span><span>Checkout link</span><span></span></div>`;
+}
+function packAddRow(){(_packs=_packs||[]).push({hours:"",price:"",label:"",url:""});packRender();}
+async function packSave(){
+  const r=await api({action:"update_settings",hour_packs:JSON.stringify(_packs||[])}).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't save the packs.");return;}
+  showToast("Packs saved. Clients see them under Buy more hours."); packLoad();
+}
+async function payLink(regen){
+  if(regen&&!(await uiConfirm("Make a new secret link? The current link stops working, so update it in your GenSuite workflow.",{title:"New link",ok:"Make new link",danger:true})))return;
+  const r=await fetch(`${API_BASE}?action=payment_inbound_info${regen?"&regenerate=1":""}`).then(x=>x.json()).catch(()=>({success:false}));
+  if(!r.success){showToast(r.error||"Couldn't load the link.");return;}
+  document.getElementById("wh-pay-url").value=r.url; if(regen)showToast("New link made. Paste it into GenSuite.");
+}
+async function payCopy(){
+  const el=document.getElementById("wh-pay-url"); if(!el.value)await payLink(0);
+  try{await navigator.clipboard.writeText(el.value);showToast("Link copied.");}catch(e){el.select();showToast("Press Ctrl+C to copy.");}
+}
 async function showInboundLink(regen){
   if(regen&&!(await uiConfirm("Make a new secret link? The current link stops working, so update it in your GenSuite workflow.",{title:"New link",ok:"Make new link",danger:true})))return;
   const r=await fetch(`${API_BASE}?action=ticket_inbound_info${regen?"&regenerate=1":""}`).then(x=>x.json()).catch(()=>({success:false}));
