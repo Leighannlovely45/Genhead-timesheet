@@ -694,7 +694,19 @@ if ($action === 'payment_inbound_info') {
 }
 if ($action === 'gensuite_payment') {
     $db = getDB();
-    $in = array_merge($_GET, $_POST, json_decode(file_get_contents('php://input'), true) ?: []);
+    $raw = json_decode(file_get_contents('php://input'), true) ?: [];
+    // GenSuite's Webhook action nests the fields you add under "customData"; those win over its standard fields
+    // (its top-level location is Genhead's own sub-account, never the client's)
+    $cd = [];
+    foreach (['customData','custom_data','customdata'] as $k) if (!empty($raw[$k]) && is_array($raw[$k])) $cd = array_merge($cd, $raw[$k]);
+    if ($cd) {
+        $std = ['email' => $raw['email'] ?? '', 'name' => $raw['full_name'] ?? ($raw['name'] ?? trim(($raw['first_name'] ?? '') . ' ' . ($raw['last_name'] ?? '')))];
+        unset($raw['location_id'], $raw['location']);
+        $in = array_merge($_GET, $_POST, array_filter($raw, 'is_scalar'), array_filter($std, 'strlen'), $cd);
+        if (!isset($cd['location_id']) && !isset($_GET['location_id'])) unset($in['location_id']);
+    } else {
+        $in = array_merge($_GET, $_POST, $raw);
+    }
     $key = (string)getSetting('payment_inbound_key', '');
     if ($key === '' || !hash_equals($key, (string)($in['key'] ?? ($_SERVER['HTTP_X_TS_KEY'] ?? '')))) { http_response_code(403); echo json_encode(['success'=>false,'error'=>'Bad key']); exit; }
     $hours = round((float)($in['hours'] ?? 0), 2);
