@@ -714,6 +714,12 @@ if ($action === 'gensuite_payment') {
     $qty = (int)preg_replace('/[^0-9]/', '', (string)($in['quantity'] ?? ''));
     if ($qty > 1 && $qty <= 100) $hours = round($hours * $qty, 2);
     $amount = round((float)preg_replace('/[^0-9.]/', '', (string)($in['amount'] ?? '0')), 2);
+    // No quantity from GenSuite: work it out from what they paid (e.g. $240 at $80/hr = 3 hours).
+    // Never less than the hours sent, so a discounted pack still gets its full hours.
+    if ($qty < 1 && $amount > 0) {
+        $rate = (float)($in['rate'] ?? 0) ?: (float)(getSetting('support_hour_rate', '80') ?: 80);
+        if ($rate > 0) $hours = max($hours, round(floor($amount / $rate * 4 + 0.0001) / 4, 2));
+    }
     $ref = mb_substr(trim((string)($in['payment_id'] ?? ($in['order_id'] ?? ''))), 0, 80);
     $email = strtolower(trim((string)($in['email'] ?? '')));
     $fl = trim(trim((string)($in['first_name'] ?? '')) . ' ' . trim((string)($in['last_name'] ?? '')));
