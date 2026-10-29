@@ -716,7 +716,9 @@ if ($action === 'gensuite_payment') {
     $amount = round((float)preg_replace('/[^0-9.]/', '', (string)($in['amount'] ?? '0')), 2);
     $ref = mb_substr(trim((string)($in['payment_id'] ?? ($in['order_id'] ?? ''))), 0, 80);
     $email = strtolower(trim((string)($in['email'] ?? '')));
-    $name = mb_substr(trim((string)($in['name'] ?? '')), 0, 120);
+    $fl = trim(trim((string)($in['first_name'] ?? '')) . ' ' . trim((string)($in['last_name'] ?? '')));
+    $name = mb_substr(trim((string)($in['name'] ?? '')) ?: $fl, 0, 120);
+    if (!empty($cd['first_name']) || !empty($cd['last_name'])) $name = mb_substr(trim(($cd['first_name'] ?? '') . ' ' . ($cd['last_name'] ?? '')), 0, 120);
     $loc = trim((string)($in['location_id'] ?? ''));
     if ($hours <= 0 || $hours > 500) { echo json_encode(['success'=>false,'error'=>'Send hours (the number of support hours bought).']); exit; }
     // Which client paid: their sub-account id (passed through checkout), else a contact email we know
