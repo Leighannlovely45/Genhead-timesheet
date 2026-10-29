@@ -698,6 +698,9 @@ if ($action === 'gensuite_payment') {
     $key = (string)getSetting('payment_inbound_key', '');
     if ($key === '' || !hash_equals($key, (string)($in['key'] ?? ($_SERVER['HTTP_X_TS_KEY'] ?? '')))) { http_response_code(403); echo json_encode(['success'=>false,'error'=>'Bad key']); exit; }
     $hours = round((float)($in['hours'] ?? 0), 2);
+    // hours = hours per item; when the checkout lets buyers pick a quantity, GenSuite sends it too
+    $qty = (int)preg_replace('/[^0-9]/', '', (string)($in['quantity'] ?? ''));
+    if ($qty > 1 && $qty <= 100) $hours = round($hours * $qty, 2);
     $amount = round((float)preg_replace('/[^0-9.]/', '', (string)($in['amount'] ?? '0')), 2);
     $ref = mb_substr(trim((string)($in['payment_id'] ?? ($in['order_id'] ?? ''))), 0, 80);
     $email = strtolower(trim((string)($in['email'] ?? '')));

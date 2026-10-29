@@ -2119,7 +2119,7 @@ function renderDash(){
             <button class="btn btn-primary" style="font-size:.78rem" onclick="packSave()">Save packs</button>
           </div>
           <label style="display:block;font-weight:600;margin-top:.9rem">Payment received link (for your GenSuite workflow)</label>
-          <p style="font-size:.78rem;color:var(--mid);margin:.2rem 0 .45rem">In the GenSuite workflow that runs when a pack is paid, add a <b>Webhook</b> action (POST) to this link with: <code>hours</code>, <code>amount</code>, <code>location_id</code>, <code>email</code>, <code>name</code>, <code>payment_id</code>. The hours are added to the client's bank right away, the client gets a confirmation, and the team is notified.</p>
+          <p style="font-size:.78rem;color:var(--mid);margin:.2rem 0 .45rem">In the GenSuite workflow that runs when a pack is paid, add a <b>Webhook</b> action (POST) to this link with: <code>hours</code> (hours per item), <code>quantity</code> (optional: how many they bought), <code>amount</code>, <code>location_id</code>, <code>email</code>, <code>name</code>, <code>payment_id</code>. The hours are added to the client's bank right away, the client gets a confirmation, and the team is notified.</p>
           <div style="display:flex;gap:.4rem;flex-wrap:wrap">
             <input class="ghl-input" id="wh-pay-url" readonly placeholder="Click Show link" style="flex:1;min-width:240px">
             <button class="btn btn-outline" style="font-size:.78rem" onclick="payLink(0)">Show link</button>
