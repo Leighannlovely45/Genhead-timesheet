@@ -1103,10 +1103,12 @@ if ($action === 'ext_track' && $method === 'POST') {
         if (!in_array($billingType, ['billable','nonbillable','marketing','growth'])) $billingType = 'billable';
 
         // This person's timesheet for the period
+        $lk = tsLock($db, $uid, $per['period']);
         $ts = $db->prepare("SELECT id, status FROM timesheets WHERE user_id = ? AND period = ? LIMIT 1");
         $ts->execute([$uid, $per['period']]);
         $sheet = $ts->fetch();
         if ($sheet && in_array($sheet['status'], ['submitted','under_review','approved'])) {
+            tsUnlock($db, $lk);
             $results[] = ['key'=>$key,'ok'=>false,'locked'=>true,'error'=>"Your {$per['period']} timesheet is already ".($sheet['status']==='approved'?'approved':'submitted')."."]; continue;
         }
         if (!$sheet) {
@@ -1141,6 +1143,7 @@ if ($action === 'ext_track' && $method === 'POST') {
         $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
                       total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?) WHERE id = ?")
            ->execute([$sheetId, $sheetId, $sheetId]);
+        tsUnlock($db, $lk);
         $results[] = ['key'=>$key,'ok'=>true,'hours'=>$hours,'client'=>$client ? $client['name'] : null,'linked'=>(bool)$client];
     }
     echo json_encode(['success'=>true,'results'=>$results]);
@@ -2287,6 +2290,7 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         if (!$per) { echo json_encode(['success'=>false,'error'=>'That date is outside the pay periods set up in the timesheet']); exit; }
 
         // Find or create this person's timesheet for that period
+        tsLock($db, $userId, $per['period']);   // released when the request ends
         $ts = $db->prepare("SELECT id, status FROM timesheets WHERE user_id = ? AND period = ? LIMIT 1");
         $ts->execute([$userId, $per['period']]);
         $sheet = $ts->fetch();
@@ -2706,6 +2710,7 @@ if ($method === 'POST') {
         }
 
         // Get or create timesheet
+        tsLock($db, $userId, $period);   // released when the request ends
         $stmt = $db->prepare("SELECT id FROM timesheets WHERE user_id = ? AND period = ? LIMIT 1");
         $stmt->execute([$userId, $period]);
         $ts = $stmt->fetch();
@@ -3077,6 +3082,7 @@ if ($method === 'POST') {
         $status      = $submitted ? 'submitted' : 'draft';
         $submittedAt = $submitted ? date('Y-m-d H:i:s') : null;
 
+        $tsLockName = tsLock($db, $dbId, $period);
         $stmt = $db->prepare("SELECT id, status FROM timesheets WHERE user_id = ? AND period = ?");
         $stmt->execute([$dbId, $period]);
         $existing = $stmt->fetch();
@@ -3164,6 +3170,7 @@ if ($method === 'POST') {
         $db->prepare("UPDATE timesheet_entries SET pay_rate = ? WHERE timesheet_id = ? AND (pay_rate IS NULL OR pay_rate = 0)")->execute([$payRate, $tsId]);
         $db->prepare("UPDATE timesheets SET total_hours = (SELECT COALESCE(SUM(hours),0) FROM timesheet_entries WHERE timesheet_id = ?),
                       total_pay = (SELECT COALESCE(SUM(hours * pay_rate),0) FROM timesheet_entries WHERE timesheet_id = ?) WHERE id = ?")->execute([$tsId, $tsId, $tsId]);
+        tsUnlock($db, $tsLockName);
 
         if ($submitted) {
             checkOvertime($db, $tsId, $dbId, $entries);
@@ -3585,6 +3592,15 @@ function ensureProjectMembers($db) {
         )");
     } catch (Exception $e) {}
 }
+// One writer at a time per person + pay period. Two saves landing together (auto-save and the Save
+// button, two open tabs, or the Chrome tracker) used to each wipe and re-add the lines, doubling them.
+function tsLock($db, $userId, $period) {
+    $n = 'gh_ts_' . md5((int)$userId . '|' . (string)$period);
+    $q = $db->prepare("SELECT GET_LOCK(?, 15)"); $q->execute([$n]);
+    return $n;
+}
+function tsUnlock($db, $n) { if ($n) { $db->prepare("SELECT RELEASE_LOCK(?)")->execute([$n]); } }
+
 function addProjectMember($db, $projectId, $userId) {
     if (!$projectId || !$userId) return;
     $db->prepare("INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)")->execute([(int)$projectId, (int)$userId]);

@@ -1528,7 +1528,14 @@ function flashSaved(msg){
   clearTimeout(el._t);
   el._t=setTimeout(()=>{el.textContent="";},2500);
 }
-async function saveTimesheet(uid,pi,submit){
+// Saves run one after another (auto-save, Save, Submit and switching periods could overlap and double the lines)
+let _saveChain=Promise.resolve();
+function saveTimesheet(uid,pi,submit){
+  const run=_saveChain.then(()=>_saveTimesheetNow(uid,pi,submit));
+  _saveChain=run.catch(()=>{});
+  return run;
+}
+async function _saveTimesheetNow(uid,pi,submit){
   const d=gd(uid,pi);
   const emp=EMPS.find(e=>e.id===uid)||cur;
   const rt=pfl(d.rate)||pfl(emp?.rate);
