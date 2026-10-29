@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="frame-ancestors *">
 <title>Client Support Center · Genhead</title>
@@ -150,6 +153,10 @@ select.month:focus{outline:none;border-color:var(--teal)}
 .pack .pn{font-size:13px;color:var(--mid)}
 .pack .pp{font-size:18px;font-weight:700;color:var(--ink);margin:4px 0 8px}
 .pack .btn{justify-content:center}
+.pack.one{margin-top:6px;gap:10px}
+.buy-now{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#E0F7F4;border:1px solid #A7E6DA;border-radius:10px;padding:12px 14px;margin-bottom:8px}
+.buy-now b{display:block;color:var(--ink);font-size:14.5px}.buy-now span{display:block;font-size:13px;color:var(--body);margin-top:2px}
+.pack.one .pn{font-size:14px;line-height:1.5}
 .buy-note{font-size:12.5px;color:var(--mid);margin-top:14px;line-height:1.5}
 .linkish{background:none;border:0;padding:0;color:var(--teal);font-weight:600;cursor:pointer;font:inherit;font-size:12.5px}
 .f{margin-bottom:14px}
@@ -453,6 +460,7 @@ function openForm(cat, subject) {
         <div class="choices">${Object.entries(cats).map(([k, v]) => `<label class="choice"><input type="radio" name="cat" value="${esc(k)}" ${k === pick ? 'checked' : ''}>${esc(v)}</label>`).join('')}</div>
       </div>
       <div class="hrs-box" id="hrs-box" ${pick === 'hours' ? '' : 'hidden'}>
+        ${buyBannerHTML()}
         <div class="f"><span class="lbl">How many hours?</span>
           <div class="seg" id="hrs-qty"><label><input type="radio" name="hq" value="5">5</label><label><input type="radio" name="hq" value="10" checked>10</label><label><input type="radio" name="hq" value="20">20</label><label><input type="radio" name="hq" value="other">Other</label></div>
           <input class="in hrs-other" id="hrs-other" type="number" min="1" step="1" placeholder="hrs" hidden aria-label="Number of hours">
@@ -560,15 +568,28 @@ function buyHours() {
   ov.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
     <div class="dlg-h"><div><h2 id="dlg-t">Buy support hours</h2><p class="muted">Pay securely and the hours are added to your account right away. Bought hours never expire.</p></div><button class="x" aria-label="Close" onclick="closeForm()">&times;</button></div>
     <div class="dlg-b">
-      <div class="packs">${packs.map((p, i) => `<div class="pack">
+      ${packs.length === 1 && Number(packs[0].hours) === 1 ? `<div class="pack one">
+        <div class="ph">${packs[0].price > 0 ? esc(money(packs[0].price)) : ''}<small> per hour</small></div>
+        <div class="pn">Support hours with the Genhead team. Choose how many hours you need at checkout.</div>
+        <button class="btn btn-primary" onclick="goCheckout(0)">Buy support hours</button></div>` : `<div class="packs">${packs.map((p, i) => `<div class="pack">
         <div class="ph">${esc(fmtH(p.hours))}<small> hr${p.hours == 1 ? '' : 's'}</small></div>
         <div class="pn">${esc(p.label || '')}</div>
         <div class="pp">${p.price > 0 ? esc(money(p.price)) : ''}</div>
-        <button class="btn btn-primary" onclick="goCheckout(${i})">Buy now</button></div>`).join('')}</div>
+        <button class="btn btn-primary" onclick="goCheckout(${i})">Buy now</button></div>`).join('')}</div>`}
       <p class="buy-note">Checkout opens in a new tab. When you're done, come back here and your hours will show.<br>Want hours added every month, or a different amount? <button class="linkish" onclick="closeForm();openForm('hours')">Send us a request</button>.</p>
     </div></div>`;
   ov.addEventListener('click', e => { if (e.target === ov) closeForm(); });
   document.body.appendChild(ov); document.addEventListener('keydown', escClose);
+}
+// Inside the request form: buy right away instead of waiting for a reply
+function buyBannerHTML() {
+  const packs = (state.hours && state.hours.packs) || [];
+  if (!packs.length) return '';
+  const one = packs.length === 1;
+  const price = one && packs[0].price > 0 ? '$' + Number(packs[0].price).toLocaleString('en-US', { maximumFractionDigits: 2 }) + (Number(packs[0].hours) === 1 ? ' per hour' : ' for ' + fmtH(packs[0].hours) + ' hrs') : '';
+  return `<div class="buy-now"><div><b>Buy support hours now${price ? ': ' + esc(price) : ''}</b><span>${one && Number(packs[0].hours) === 1 ? 'Choose how many hours at checkout. ' : ''}Hours are added to your account as soon as you pay.</span></div>
+    <button type="button" class="btn btn-primary" onclick="${one ? 'goCheckout(0)' : 'closeForm();buyHours()'}">Buy support hours</button></div>
+    <p class="muted" style="margin:0 0 12px">Or send a request below for monthly add-ons or a custom amount.</p>`;
 }
 function goCheckout(i) {
   const p = ((state.hours && state.hours.packs) || [])[i]; if (!p || !p.url) return;
