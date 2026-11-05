@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-10-27.6');
+define('SCHEMA_VERSION', '2026-11-04.1');
 
 function ensureSchema($db) {
     static $done = false;
@@ -259,6 +259,21 @@ function ensureSchema($db) {
         $exec("UPDATE timesheets t JOIN users u ON u.id = t.user_id SET t.pay_rate = u.rate WHERE (t.pay_rate IS NULL OR t.pay_rate = 0) AND u.rate > 0");
         $exec("UPDATE timesheets t JOIN (SELECT timesheet_id, SUM(hours * pay_rate) AS p FROM timesheet_entries GROUP BY timesheet_id) x ON x.timesheet_id = t.id
                SET t.total_pay = x.p WHERE x.p > 0");
+    }
+
+    // Early timesheets (the first version of the app) saved their start date a month off, e.g. "Dec 21 - Jan 03"
+    // stored as Nov 21. Put the start/end back on the pay-period grid when the label agrees.
+    if ($hasCol('timesheets', 'period_index') && $hasCol('timesheets', 'period_start')) {
+        try {
+            $fix = $db->prepare("UPDATE timesheets SET period_start = ?, period_end = ? WHERE id = ?");
+            foreach ($db->query("SELECT id, period, period_index, period_start FROM timesheets WHERE period_index IS NOT NULL")->fetchAll() as $t) {
+                $start = new DateTime('2026-04-27'); $start->modify('+' . (14 * (int)$t['period_index']) . ' days');
+                $end = clone $start; $end->modify('+13 days');
+                if ($start->format('M d') !== trim(explode('-', (string)$t['period'])[0])) continue;   // label disagrees: leave it
+                if (substr((string)$t['period_start'], 0, 10) === $start->format('Y-m-d')) continue;
+                $fix->execute([$start->format('Y-m-d'), $end->format('Y-m-d'), (int)$t['id']]);
+            }
+        } catch (Exception $e) { error_log('period date fix: ' . $e->getMessage()); }
     }
 
     try {

@@ -3976,6 +3976,7 @@ function clientMonthEntries($db, $clientIds, $month) {
         if (!$s || (float)$r['hours'] == 0) continue;
         $date = date('Y-m-d', strtotime($s.' +'.(int)$r['day_index'].' days'));
         if ($date < $mStart || $date > $mEnd) continue;
+        if ($date > date('Y-m-d')) continue;   // work can't be in the future: never count or show it
         $r['date'] = $date; $out[] = $r;
     }
     return $out;
