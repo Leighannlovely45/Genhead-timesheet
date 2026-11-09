@@ -166,7 +166,7 @@ $ROLE_RULES = [
     'hr_override'=>['admin','hr'], 'flag_discrepancy'=>['admin','hr','manager'], 'set_delegate'=>['admin','hr','manager'],
     'proxy_webhook'=>['admin','hr'], 'schema_report'=>['admin'], 'ext_link_location'=>['admin','hr'], 'ext_rename_client'=>['admin','hr'],
     'load_client_banks'=>['admin','hr'], 'set_client_hours'=>['admin','hr'],
-    'send_setup_link'=>['admin','hr'], 'test_email'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'delete_ticket'=>['admin','hr','manager'], 'approve_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'],
+    'send_setup_link'=>['admin','hr'], 'test_email'=>['admin','hr'], 'merge_users'=>['admin'], 'add_client_hours'=>['admin','hr'], 'delete_ticket'=>['admin','hr','manager'], 'approve_hours'=>['admin','hr'], 'client_purchases'=>['admin','hr'], 'delete_client_purchase'=>['admin'], 'update_project'=>['admin','hr','manager'],
 ];
 // Removed: one-time setup helpers that let anyone create admins or change PINs
 if (in_array($action, ['create_test_admin', 'set_pin', 'verify_pin'], true)) {
@@ -2622,25 +2622,66 @@ if ($method === 'POST') {
     if ($action === 'update_project') {
         $id     = (int)($body['id'] ?? 0);
         if (!$id) { echo json_encode(['success'=>false,'error'=>'id required']); exit; }
+        $ex = $db->prepare("SELECT id FROM projects WHERE id = ?"); $ex->execute([$id]);
+        if (!$ex->fetchColumn()) { echo json_encode(['success'=>false,'error'=>'Project not found']); exit; }
         $fields=[]; $params=[];
-        if (isset($body['name']))         { $fields[]='name = ?';         $params[]=trim($body['name']); }
-        if (isset($body['status']))       { $fields[]='status = ?';       $params[]=$body['status']; }
-        if (isset($body['billing_type'])) { $fields[]='billing_type = ?'; $params[]=$body['billing_type']; }
-        if (isset($body['due_date']))     { $fields[]='due_date = ?';     $params[]=$body['due_date']?:null; }
-        if (isset($body['description']))  { $fields[]='description = ?';  $params[]=$body['description']?:null; }
-        if (isset($body['client_name']))  { $fields[]='client_name = ?';  $params[]=$body['client_name']?:null; }
-        if (isset($body['client_id'])) {
+        if (isset($body['name'])) {
+            $nm = trim((string)$body['name']);
+            if ($nm === '') { echo json_encode(['success'=>false,'error'=>'Project name is required']); exit; }
+            $fields[]='name = ?'; $params[]=$nm;
+        }
+        if (isset($body['status'])) {
+            if (!in_array($body['status'], ['active','on_hold','completed','archived'], true)) { echo json_encode(['success'=>false,'error'=>'Unknown status']); exit; }
+            $fields[]='status = ?'; $params[]=$body['status'];
+        }
+        if (isset($body['billing_type'])) {
+            if (!in_array($body['billing_type'], ['billable','nonbillable','marketing','growth'], true)) { echo json_encode(['success'=>false,'error'=>'Unknown billing type']); exit; }
+            $fields[]='billing_type = ?'; $params[]=$body['billing_type'];
+        }
+        if (array_key_exists('due_date', $body)) {
+            $dd = trim((string)$body['due_date']);
+            if ($dd !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dd)) { echo json_encode(['success'=>false,'error'=>'Due date must be a date']); exit; }
+            $fields[]='due_date = ?'; $params[]=$dd ?: null;
+        }
+        if (array_key_exists('description', $body)) { $fields[]='description = ?'; $params[]=trim((string)$body['description']) ?: null; }
+        if (array_key_exists('estimated_hours', $body)) {
+            try { $db->exec("ALTER TABLE projects ADD COLUMN estimated_hours DECIMAL(8,2) DEFAULT NULL"); } catch(Exception $e) {}
+            $eh = $body['estimated_hours'];
+            $fields[]='estimated_hours = ?'; $params[]=($eh === '' || $eh === null) ? null : max(0, (float)$eh);
+        }
+        if (array_key_exists('client_id', $body)) {
             $cid = (int)$body['client_id'] ?: null;
-            $fields[]='client_id = ?'; $params[]=$cid;
-            if ($cid && !isset($body['client_name'])) {
+            $cname = null;
+            if ($cid) {
                 $cn = $db->prepare("SELECT name FROM clients WHERE id = ? LIMIT 1");
                 $cn->execute([$cid]);
-                $fields[]='client_name = ?'; $params[]=$cn->fetchColumn() ?: null;
+                $cname = $cn->fetchColumn();
+                if ($cname === false) { echo json_encode(['success'=>false,'error'=>'Client not found']); exit; }
             }
+            $fields[]='client_id = ?'; $params[]=$cid;
+            $fields[]='client_name = ?'; $params[]=$cname ?: null;
+        } elseif (isset($body['client_name'])) { $fields[]='client_name = ?'; $params[]=$body['client_name']?:null; }
+        $hasTeam = array_key_exists('user_ids', $body);
+        if (!$fields && !$hasTeam) { echo json_encode(['success'=>false,'error'=>'nothing to update']); exit; }
+        if ($hasTeam) ensureProjectMembers($db);   // may create the table: keep DDL out of the transaction
+        $db->beginTransaction();
+        try {
+            if ($fields) {
+                $params[]=$id;
+                $db->prepare("UPDATE projects SET ".implode(',',$fields)." WHERE id=?")->execute($params);
+            }
+            if ($hasTeam) {
+                $ids = is_array($body['user_ids']) ? $body['user_ids'] : explode(',', (string)$body['user_ids']);
+                $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+                $db->prepare("DELETE FROM project_members WHERE project_id = ?")->execute([$id]);
+                foreach ($ids as $mid) addProjectMember($db, $id, $mid);
+            }
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            error_log('update_project: '.$e->getMessage());
+            echo json_encode(['success'=>false,'error'=>'Could not save the project']); exit;
         }
-        if (!$fields) { echo json_encode(['success'=>false,'error'=>'nothing to update']); exit; }
-        $params[]=$id;
-        $db->prepare("UPDATE projects SET ".implode(',',$fields)." WHERE id=?")->execute($params);
         echo json_encode(['success'=>true]);
         exit;
     }
@@ -3966,7 +4007,7 @@ function clientMonthEntries($db, $clientIds, $month) {
         JOIN timesheets t ON te.timesheet_id = t.id
         JOIN users u ON t.user_id = u.id
         WHERE te.client_id IN ($in)
-          AND COALESCE(te.billing_type, CASE WHEN te.billable = 0 THEN 'nonbillable' ELSE 'billable' END) <> 'nonbillable'   -- non-billable time never uses a client's hours
+          AND COALESCE(te.billing_type, CASE WHEN te.billable = 0 THEN 'nonbillable' ELSE 'billable' END) NOT IN ('nonbillable','marketing')   -- non-billable and Marketing time never use a client's hours or show on their portal
           AND t.status IN ('draft','submitted','under_review','approved')
           AND (t.period IN ($lin) OR (t.period_start BETWEEN ? AND ?))");
     $st->execute(array_merge($clientIds, $labels, [date('Y-m-d', strtotime($mStart.' -13 days')), $mEnd]));

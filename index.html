@@ -4106,7 +4106,8 @@ function _pmProjectsView(clientFilter){
           <span class="btype-tag bt-${p.billing_type||'billable'}">${billingLabel}</span>
           ${p.due_date?`<span style="font-size:.72rem;color:${overdue?'#f87171':'var(--mid)'}">Due ${p.due_date}</span>`:''}
           ${p.estimated_hours?`<span style="font-size:.72rem;color:var(--teal)">~${parseFloat(p.estimated_hours).toFixed(1)}h est.</span>`:`<button onclick="event.stopPropagation();_pmSetEstHours(${p.id})" style="font-size:.68rem;color:var(--mid);background:none;border:1px dashed var(--border);border-radius:4px;padding:.1rem .4rem;cursor:pointer">+ Est. Hours</button>`}
-          ${canManage?`<button onclick="event.stopPropagation();_pmArchiveProject(${p.id})" style="margin-left:auto;font-size:.65rem;color:#f87171;background:none;border:1px solid #f87171;border-radius:4px;padding:.1rem .4rem;cursor:pointer;opacity:.6" title="Archive project (hide it)">Archive</button>`:''}
+          ${canManage?`<button onclick="event.stopPropagation();_pmEditProjectModal(${p.id})" style="margin-left:auto;font-size:.65rem;color:var(--teal);background:none;border:1px solid var(--teal);border-radius:4px;padding:.1rem .45rem;cursor:pointer" title="Edit project details">&#9998; Edit</button>`:''}
+          ${canManage?`<button onclick="event.stopPropagation();_pmArchiveProject(${p.id})" style="font-size:.65rem;color:#f87171;background:none;border:1px solid #f87171;border-radius:4px;padding:.1rem .4rem;cursor:pointer;opacity:.6" title="Archive project (hide it)">Archive</button>`:''}
           ${pmTeamIds(p).length?`<span style="font-size:.7rem;color:var(--mid)" title="${escHtml(p.member_names||'')}">&#128101; ${pmTeamIds(p).length}</span>`:''}
           ${canManage?`<button onclick="event.stopPropagation();_pmDeleteProject(${p.id})" style="font-size:.65rem;color:#fff;background:#ef4444;border:1px solid #ef4444;border-radius:4px;padding:.1rem .45rem;cursor:pointer" title="Delete project permanently">Delete</button>`:''}
         </div>
@@ -4290,6 +4291,7 @@ function _pmProjectBoard(projectId){
         </div>`;})()}
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
+      ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmEditProjectModal(${proj.id})">&#9998; Edit Project</button>`:''}
       ${canManage?`<button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="_pmProjectDetail(${proj.id})">☰ List View</button>`:''}
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="openMeetModal({projectId:${proj.id}})">📹 Meet now</button>
       <button class="btn btn-primary" onclick="_pmAddTaskModal(${proj.id})">+ Add Task</button>
@@ -4706,8 +4708,9 @@ function _pmProjectModalHTML(){
     ? CLIENTS.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('')
     : '';
   return `<div id="pm-proj-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;align-items:center;justify-content:center">
-    <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.35)">
-      <h3 style="margin:0 0 1.1rem;color:var(--dark)">New Project</h3>
+    <div style="background:var(--bg);border-radius:14px;padding:1.75rem;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.35);max-height:90vh;overflow-y:auto">
+      <h3 id="pm-proj-title" style="margin:0 0 1.1rem;color:var(--dark)">New Project</h3>
+      <input type="hidden" id="pm-proj-id" value="">
       <label class="pm-lbl">Project Name</label>
       <input id="pm-proj-name" type="text" placeholder="e.g. Acme Rebrand" class="pm-inp">
       <label class="pm-lbl">Description</label>
@@ -4715,6 +4718,13 @@ function _pmProjectModalHTML(){
       ${clientOpts?`<label class="pm-lbl">Client</label>
       <select id="pm-proj-client" class="pm-inp"><option value="">— Select client (required) —</option>${clientOpts}</select>`
       :'<input id="pm-proj-client" type="hidden" value="">'}
+      <div id="pm-proj-client-note" style="display:none;font-size:.72rem;color:var(--mid);margin:-.4rem 0 .6rem">Changing the client applies to new hours. Hours already on timesheets stay with the client they were logged to.</div>
+      <div id="pm-proj-status-wrap" style="display:none">
+        <label class="pm-lbl">Status</label>
+        <select id="pm-proj-status" class="pm-inp">
+          <option value="active">Active</option><option value="on_hold">On hold</option><option value="completed">Completed</option><option value="archived">Archived (hidden)</option>
+        </select>
+      </div>
       <label class="pm-lbl">Billing Type</label>
       <select id="pm-proj-billing" class="pm-inp">
         ${BILLING_TYPES.map(b=>`<option value="${b.key}">${b.label}</option>`).join('')}
@@ -4729,7 +4739,7 @@ function _pmProjectModalHTML(){
       </div>
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.5rem">
         <button class="btn btn-outline" onclick="document.getElementById('pm-proj-modal').style.display='none'">Cancel</button>
-        <button class="btn btn-primary" onclick="_pmSaveProject()">Create Project</button>
+        <button class="btn btn-primary" id="pm-proj-save" onclick="_pmSaveProject()">Create Project</button>
       </div>
     </div>
   </div>`;
@@ -4738,6 +4748,12 @@ function _pmProjectModalHTML(){
 function _pmAddProjectModal(){
   const modal=document.getElementById('pm-proj-modal');
   if(!modal)return;
+  modal.querySelector('#pm-proj-id').value='';
+  modal.querySelector('#pm-proj-title').textContent='New Project';
+  modal.querySelector('#pm-proj-save').textContent='Create Project';
+  modal.querySelector('#pm-proj-status-wrap').style.display='none';
+  modal.querySelector('#pm-proj-client-note').style.display='none';
+  modal.querySelector('#pm-proj-billing').value='billable';
   modal.querySelector('#pm-proj-name').value='';
   modal.querySelector('#pm-proj-desc').value='';
   modal.querySelector('#pm-proj-due').value='';
@@ -4747,6 +4763,38 @@ function _pmAddProjectModal(){
   if(csel)csel.value='';
   modal.querySelectorAll('.pm-newproj-cb').forEach(cb=>{cb.checked=(cb.value===myDbId());});
   modal.style.display='flex';
+}
+
+// Edit an existing project (Admin, HR, Managers): same form as New Project, filled in
+function _pmEditProjectModal(projectId){
+  if(!pmIsTeamEditor())return;
+  let modal=document.getElementById('pm-proj-modal');
+  if(!modal){pmRoot().insertAdjacentHTML('beforeend',_pmProjectModalHTML());modal=document.getElementById('pm-proj-modal');}
+  const p=_pm.projects.find(x=>parseInt(x.id)===parseInt(projectId));
+  if(!p||!modal)return;
+  modal.querySelector('#pm-proj-id').value=p.id;
+  modal.querySelector('#pm-proj-title').textContent='Edit Project';
+  modal.querySelector('#pm-proj-save').textContent='Save Changes';
+  modal.querySelector('#pm-proj-name').value=p.name||'';
+  modal.querySelector('#pm-proj-desc').value=p.description||'';
+  modal.querySelector('#pm-proj-due').value=(p.due_date||'').slice(0,10);
+  modal.querySelector('#pm-proj-est-hours').value=(p.estimated_hours!=null&&p.estimated_hours!=='')?parseFloat(p.estimated_hours):'';
+  const bill=modal.querySelector('#pm-proj-billing');bill.value=p.billing_type||'billable';if(!bill.value)bill.value='billable';
+  modal.querySelector('#pm-proj-status-wrap').style.display='';
+  const st=modal.querySelector('#pm-proj-status');st.value=p.status||'active';if(!st.value)st.value='active';
+  const csel=modal.querySelector('#pm-proj-client');
+  if(csel){
+    let cid=p.client_id?String(p.client_id):'';
+    if(!cid&&p.client_name){const c=CLIENTS.find(c=>c.name===p.client_name);if(c)cid=String(c.id);}
+    if(csel.tagName==='SELECT'&&cid&&![...csel.options].some(o=>o.value===cid))csel.insertAdjacentHTML('beforeend',`<option value="${escHtml(cid)}">${escHtml(p.client_name||'Current client')}</option>`);
+    csel.value=cid;csel.dataset.orig=cid;
+    csel.onchange=()=>{modal.querySelector('#pm-proj-client-note').style.display=(csel.value!==csel.dataset.orig)?'':'none';};
+  }
+  modal.querySelector('#pm-proj-client-note').style.display='none';
+  const team=new Set(pmTeamIds(p));
+  modal.querySelectorAll('.pm-newproj-cb').forEach(cb=>{cb.checked=team.has(cb.value);});
+  modal.style.display='flex';
+  setTimeout(()=>modal.querySelector('#pm-proj-name').focus(),30);
 }
 
 async function _pmArchiveProject(projectId){
@@ -4875,6 +4923,27 @@ async function _pmSaveProject(){
   const estHours=estEl&&estEl.value?estEl.value:'';
   if(!name){alert('Project name is required.');return;}
   if(clientEl&&clientEl.tagName==='SELECT'&&!clientId){alert('Please pick the client this project is for.');return;}
+  const editId=(document.getElementById('pm-proj-id')||{}).value;
+  if(editId){
+    const btn=document.getElementById('pm-proj-save');btn.disabled=true;
+    try{
+      const teamIds=[...document.querySelectorAll('.pm-newproj-cb:checked')].map(c=>c.value).join(',');
+      const body={id:parseInt(editId),name,description:desc,billing_type:billing,due_date:due||'',estimated_hours:estHours,
+        status:document.getElementById('pm-proj-status').value,user_ids:teamIds};
+      if(clientEl&&clientEl.tagName==='SELECT')body.client_id=clientId||'';
+      const r=await fetch(`${API_BASE}?action=update_project`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json());
+      if(!r.success)throw new Error(r.error||'Could not save');
+      document.getElementById('pm-proj-modal').style.display='none';
+      showToast('Project updated.');
+      const view=_pm.view;
+      await renderProjects();
+      const still=_pm.projects.find(x=>parseInt(x.id)===parseInt(editId));
+      if(still&&view==='detail')_pmProjectDetail(still.id);
+      else if(still&&view==='board')_pmProjectBoard(still.id);
+    }catch(e){alert('Error: '+e.message);}
+    finally{btn.disabled=false;}
+    return;
+  }
   try{
     const teamIds=[...document.querySelectorAll('.pm-newproj-cb:checked')].map(c=>c.value).join(',');
     const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',estimated_hours:estHours,created_by:myDbId(),client_id:clientId||'',user_ids:teamIds});
