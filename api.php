@@ -873,6 +873,24 @@ if ($action === 'ticket_to_task') {
     echo json_encode(['success'=>true,'task_id'=>$taskId,'project_id'=>$pid]);
     exit;
 }
+// ── Client teams: the people every new project for a client starts with ───
+function teamIdList($v) {
+    $ids = is_array($v) ? $v : explode(',', (string)$v);
+    return array_values(array_unique(array_filter(array_map('intval', $ids))));
+}
+function clientDefaultTeam($db, $cid) {
+    if (!$cid) return [];
+    try { $q = $db->prepare("SELECT default_team FROM clients WHERE id = ?"); $q->execute([(int)$cid]); return teamIdList($q->fetchColumn() ?: ''); }
+    catch (Exception $e) { return []; }
+}
+function saveClientTeam($db, $cid, $ids) {
+    global $AUTH;
+    if (!$cid || !$AUTH || !in_array($AUTH['role'] ?? '', ['admin','hr','manager'], true)) return false;
+    try { $db->exec("ALTER TABLE clients ADD COLUMN default_team VARCHAR(500) NULL"); } catch (Exception $e) {}
+    $ids = teamIdList($ids);
+    $db->prepare("UPDATE clients SET default_team = ? WHERE id = ?")->execute([$ids ? implode(',', $ids) : null, (int)$cid]);
+    return true;
+}
 function supportProjectFor($db, $t, $uid) {
     $cid = $t['client_id'] ? (int)$t['client_id'] : null;
     $q = $db->prepare("SELECT id FROM projects WHERE name = 'Client Support' AND " . ($cid ? "client_id = ?" : "client_id IS NULL") . " AND status != 'archived' ORDER BY id LIMIT 1");
@@ -881,7 +899,10 @@ function supportProjectFor($db, $t, $uid) {
     $cn = $t['client_name'] ?? null;
     $db->prepare("INSERT INTO projects (name, client_id, client_name, status, billing_type, description, created_by) VALUES ('Client Support', ?, ?, 'active', 'billable', ?, ?)")
        ->execute([$cid, $cn, 'Support requests from ' . ($cn ?: 'clients') . ' that came in through the client portal.', $uid ?: null]);
-    return (int)$db->lastInsertId();
+    $pid = (int)$db->lastInsertId();
+    ensureProjectMembers($db);
+    foreach (clientDefaultTeam($db, $cid) as $mid) addProjectMember($db, $pid, $mid);   // the client's team sees their support work
+    return $pid;
 }
 
 // ── Shared team meeting room (one Zoom room for quick calls) ─────────────
@@ -2211,8 +2232,11 @@ if ($method === 'GET' && in_array($action, ['add_project','archive_project','del
         $newProjectId = (int)$db->lastInsertId();
         ensureProjectMembers($db);
         addProjectMember($db, $newProjectId, $createdBy);
-        foreach (array_filter(explode(',', $body['user_ids'] ?? '')) as $mid) addProjectMember($db, $newProjectId, (int)$mid);
-        echo json_encode(['success'=>true,'id'=>$newProjectId]);
+        // No team sent (older callers, automations): start with the client's saved team
+        $team = array_key_exists('user_ids', $body) ? teamIdList($body['user_ids']) : clientDefaultTeam($db, $clientId);
+        foreach ($team as $mid) addProjectMember($db, $newProjectId, $mid);
+        $savedTeam = !empty($body['save_client_team']) && saveClientTeam($db, $clientId, $team);
+        echo json_encode(['success'=>true,'id'=>$newProjectId,'client_team_saved'=>$savedTeam]);
         exit;
     }
     if ($action === 'add_task') {
@@ -2681,6 +2705,10 @@ if ($method === 'POST') {
             $db->rollBack();
             error_log('update_project: '.$e->getMessage());
             echo json_encode(['success'=>false,'error'=>'Could not save the project']); exit;
+        }
+        if ($hasTeam && !empty($body['save_client_team'])) {
+            $pc = $db->prepare("SELECT client_id FROM projects WHERE id = ?"); $pc->execute([$id]);
+            saveClientTeam($db, (int)$pc->fetchColumn(), $body['user_ids']);
         }
         echo json_encode(['success'=>true]);
         exit;

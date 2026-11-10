@@ -3,7 +3,7 @@
 // Safe to run repeatedly: it only ADDS missing tables/columns. It never drops,
 // renames or changes existing data. Runs once per SCHEMA_VERSION, then skips.
 
-define('SCHEMA_VERSION', '2026-11-04.1');
+define('SCHEMA_VERSION', '2026-11-10.1');
 
 function ensureSchema($db) {
     static $done = false;
@@ -223,6 +223,7 @@ function ensureSchema($db) {
     $add('clients', 'ghl_contact_id', "VARCHAR(100) NULL");
     $add('clients', 'plan_type',      "VARCHAR(20) NULL");
     $add('clients', 'plan_label',     "VARCHAR(100) NULL");
+    $add('clients', 'default_team',   "VARCHAR(500) NULL");   // comma list of user ids: the team new projects for this client start with
     $add('clients', 'monthly_hours',  "DECIMAL(8,2) NULL");
     $add('clients', 'gm_monthly_hours', "DECIMAL(8,2) NULL");
     $add('client_hours_bank', 'gm_hours', "DECIMAL(8,2) NULL");

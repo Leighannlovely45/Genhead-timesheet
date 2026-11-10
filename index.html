@@ -4737,6 +4737,8 @@ function _pmProjectModalHTML(){
       <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:.25rem .6rem;margin-bottom:.75rem">
         ${EMPS.filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>{const id=String(e.id).replace(/^e/,"");return `<label style="display:flex;align-items:center;gap:.5rem;padding:.25rem 0;font-size:.82rem;color:var(--dark);cursor:pointer"><input type="checkbox" class="pm-newproj-cb" value="${id}"> ${escHtml(e.name)}</label>`;}).join("")}
       </div>
+      <div id="pm-proj-team-hint" style="display:none;font-size:.72rem;color:var(--teal);margin:-.4rem 0 .5rem"></div>
+      <label id="pm-proj-saveteam-row" style="display:none;align-items:flex-start;gap:.5rem;font-size:.78rem;color:var(--dark);margin-bottom:.6rem;cursor:pointer"><input type="checkbox" id="pm-proj-saveteam" style="margin-top:.15rem"> <span id="pm-proj-saveteam-lbl"></span></label>
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.5rem">
         <button class="btn btn-outline" onclick="document.getElementById('pm-proj-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" id="pm-proj-save" onclick="_pmSaveProject()">Create Project</button>
@@ -4760,9 +4762,44 @@ function _pmAddProjectModal(){
   const eh=modal.querySelector('#pm-proj-est-hours');
   if(eh)eh.value='';
   const csel=modal.querySelector('#pm-proj-client');
-  if(csel)csel.value='';
+  if(csel){csel.value='';csel.onchange=()=>_pmApplyClientTeam(true);}
   modal.querySelectorAll('.pm-newproj-cb').forEach(cb=>{cb.checked=(cb.value===myDbId());});
+  _pmApplyClientTeam(false);
   modal.style.display='flex';
+}
+
+// Each client keeps a saved team. Picking the client on a new project checks that team;
+// the boxes can still be changed, and the change can be saved back as the client's team.
+function _pmClientTeam(cid){
+  const c=CLIENTS.find(c=>String(c.id)===String(cid));
+  return c&&c.default_team?String(c.default_team).split(',').map(s=>s.trim()).filter(Boolean):[];
+}
+function _pmApplyClientTeam(fillBoxes){
+  const modal=document.getElementById('pm-proj-modal');if(!modal)return;
+  const csel=modal.querySelector('#pm-proj-client');
+  const editing=!!modal.querySelector('#pm-proj-id').value;
+  const cid=csel&&csel.tagName==='SELECT'?csel.value:'';
+  const c=CLIENTS.find(c=>String(c.id)===String(cid));
+  const team=_pmClientTeam(cid);
+  const hint=modal.querySelector('#pm-proj-team-hint'),row=modal.querySelector('#pm-proj-saveteam-row');
+  const box=modal.querySelector('#pm-proj-saveteam'),lbl=modal.querySelector('#pm-proj-saveteam-lbl');
+  if(!c||!pmIsTeamEditor()){hint.style.display='none';row.style.display='none';box.checked=false;return;}
+  if(fillBoxes&&team.length&&!editing){
+    const set=new Set(team);
+    modal.querySelectorAll('.pm-newproj-cb').forEach(cb=>{cb.checked=set.has(cb.value);});
+  }
+  if(team.length){
+    const names=team.map(id=>{const e=EMPS.find(e=>String(e.id).replace(/^e/,'')===id);return e?e.name.split(' ')[0]:null;}).filter(Boolean);
+    hint.textContent=(editing?`${c.name}'s saved team: `:`Team filled in from ${c.name}'s saved team: `)+names.join(', ');
+    hint.style.display='';
+    lbl.textContent=`Update ${c.name}'s saved team to the people checked above (used on their new projects)`;
+    box.checked=false;
+  }else{
+    hint.style.display='none';
+    lbl.textContent=`Save this as ${c.name}'s team, so it's filled in on every new project for them`;
+    box.checked=!editing;
+  }
+  row.style.display='flex';
 }
 
 // Edit an existing project (Admin, HR, Managers): same form as New Project, filled in
@@ -4788,11 +4825,12 @@ function _pmEditProjectModal(projectId){
     if(!cid&&p.client_name){const c=CLIENTS.find(c=>c.name===p.client_name);if(c)cid=String(c.id);}
     if(csel.tagName==='SELECT'&&cid&&![...csel.options].some(o=>o.value===cid))csel.insertAdjacentHTML('beforeend',`<option value="${escHtml(cid)}">${escHtml(p.client_name||'Current client')}</option>`);
     csel.value=cid;csel.dataset.orig=cid;
-    csel.onchange=()=>{modal.querySelector('#pm-proj-client-note').style.display=(csel.value!==csel.dataset.orig)?'':'none';};
+    csel.onchange=()=>{modal.querySelector('#pm-proj-client-note').style.display=(csel.value!==csel.dataset.orig)?'':'none';_pmApplyClientTeam(false);};
   }
   modal.querySelector('#pm-proj-client-note').style.display='none';
   const team=new Set(pmTeamIds(p));
   modal.querySelectorAll('.pm-newproj-cb').forEach(cb=>{cb.checked=team.has(cb.value);});
+  _pmApplyClientTeam(false);
   modal.style.display='flex';
   setTimeout(()=>modal.querySelector('#pm-proj-name').focus(),30);
 }
@@ -4930,11 +4968,14 @@ async function _pmSaveProject(){
       const teamIds=[...document.querySelectorAll('.pm-newproj-cb:checked')].map(c=>c.value).join(',');
       const body={id:parseInt(editId),name,description:desc,billing_type:billing,due_date:due||'',estimated_hours:estHours,
         status:document.getElementById('pm-proj-status').value,user_ids:teamIds};
+      const saveTeam=document.getElementById('pm-proj-saveteam')?.checked;
+      if(saveTeam)body.save_client_team=1;
       if(clientEl&&clientEl.tagName==='SELECT')body.client_id=clientId||'';
       const r=await fetch(`${API_BASE}?action=update_project`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json());
       if(!r.success)throw new Error(r.error||'Could not save');
+      if(saveTeam&&clientId){const c=CLIENTS.find(c=>String(c.id)===String(clientId));if(c)c.default_team=teamIds;}
       document.getElementById('pm-proj-modal').style.display='none';
-      showToast('Project updated.');
+      showToast(saveTeam?'Project updated, and saved as the client\'s team.':'Project updated.');
       const view=_pm.view;
       await renderProjects();
       const still=_pm.projects.find(x=>parseInt(x.id)===parseInt(editId));
@@ -4946,9 +4987,12 @@ async function _pmSaveProject(){
   }
   try{
     const teamIds=[...document.querySelectorAll('.pm-newproj-cb:checked')].map(c=>c.value).join(',');
+    const saveTeam=!!(clientId&&document.getElementById('pm-proj-saveteam')?.checked);
     const p=new URLSearchParams({action:'add_project',name,description:desc,billing_type:billing,due_date:due||'',estimated_hours:estHours,created_by:myDbId(),client_id:clientId||'',user_ids:teamIds});
+    if(saveTeam)p.set('save_client_team','1');
     const r=await fetch(API_BASE+'?'+p).then(x=>x.json());
     if(!r.success)throw new Error(r.error||'Unknown error');
+    if(r.client_team_saved){const c=CLIENTS.find(c=>String(c.id)===String(clientId));if(c)c.default_team=teamIds;showToast('Project created. That team is now saved for this client.');}
     document.getElementById('pm-proj-modal').style.display='none';
     await renderProjects();
   }catch(e){alert('Error: '+e.message);}
