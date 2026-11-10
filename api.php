@@ -415,9 +415,10 @@ function ticketNote($db, $tid, $uid, $name, $note, $public = 0, $activity = 0) {
        ->execute([(int)$tid, $uid === 0 ? 0 : ($uid ?: null), $name, $note, $public ? 1 : 0, $activity ? 1 : 0]);
     $db->prepare("UPDATE tickets SET updated_at = NOW() WHERE id = ?")->execute([(int)$tid]);
 }
+// Every ticket is open to the whole team, assigned or not, so anyone can see, reply and help.
+// Assigning, moving to another client, archiving and deleting stay with Managers, HR and Admin.
 function canWorkTicket($auth, $t) {
-    if (!$auth || !$t) return false;
-    return in_array($auth['role'], ['admin','hr','manager'], true) || (int)$t['assigned_to'] === (int)$auth['id'];
+    return $auth && $t && !empty($auth['id']);
 }
 function ticketNotify($db, $kind, $t, $userIds, $actorId, $actorName, $msg) {
     $ids = array_values(array_unique(array_filter(array_map('intval', $userIds), function($i) use ($actorId) { return $i > 0 && $i !== (int)$actorId; })));
@@ -484,7 +485,7 @@ if ($action === 'client_tickets') {
 // Team side (signed in)
 if ($action === 'load_tickets') {
     $db = getDB();
-    $where = in_array($AUTH['role'], ['admin','hr','manager'], true) ? '1=1' : 't.assigned_to = ' . (int)$AUTH['id'];
+    $where = '1=1';   // the whole team sees every ticket
     $rows = $db->query("SELECT t.id, t.client_id, t.contact_name, t.category, t.priority, t.subject, t.status, t.assigned_to, t.task_id, t.created_at, t.updated_at, COALESCE(t.archived,0) AS archived,
                                c.name AS client_name, u.name AS assigned_name, (SELECT COUNT(*) FROM ticket_files f WHERE f.ticket_id = t.id) AS file_count
                         FROM tickets t LEFT JOIN clients c ON c.id = t.client_id LEFT JOIN users u ON u.id = t.assigned_to

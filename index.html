@@ -3270,7 +3270,7 @@ function renderTickets(filter){
   const pri=p=>p==="urgent"?'<span style="color:#ef4444;font-weight:700">Urgent</span>':p==="low"?'<span style="color:var(--mid)">Low</span>':"Normal";
   root.innerHTML=`
   <div class="dash-top">
-    <div><h2>🎫 Ticketing</h2><p>Support requests from clients' portals${cur.role==="employee"?" assigned to you":""}</p></div>
+    <div><h2>🎫 Ticketing</h2><p>Support requests from clients' portals</p></div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;align-items:center">
       ${clients.length?`<select style="font-size:.8rem;padding:.35rem .7rem;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--dark)" onchange="_tk.client=this.value;renderTickets()"><option value="">All clients</option>${clients.map(c=>`<option${_tk.client===c?" selected":""}>${escHtml(c)}</option>`).join("")}</select>`:""}
       <button class="btn btn-outline" style="font-size:.8rem;padding:.4rem .9rem" onclick="goTickets()">↻ Refresh</button>
